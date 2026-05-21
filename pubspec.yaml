@@ -1,0 +1,64 @@
+name: smart_assistant
+description: "AI智能日程管家 - 帮你拆解目标、消除不确定性、修正人生路径的AI秘书管家"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  
+  # 状态管理
+  flutter_bloc: ^9.1.0
+  equatable: ^2.0.7
+  
+  # 云端同步 - Supabase
+  supabase_flutter: ^2.8.0
+  
+  # 日历视图
+  table_calendar: ^3.2.0
+  
+  # 本地存储
+  shared_preferences: ^2.5.0
+  
+  # 网络请求
+  dio: ^5.8.0
+  
+  # JSON序列化
+  json_annotation: ^4.9.0
+  freezed_annotation: ^2.4.4
+  
+  # 语音录入
+  speech_to_text: ^7.0.0
+  
+  # 通知
+  flutter_local_notifications: ^19.0.0
+  timezone: ^0.10.0
+  
+  # UI组件
+  flutter_screenutil: ^5.9.3
+  shimmer: ^3.0.0
+  flutter_slidable: ^4.0.0
+  
+  # 工具
+  intl: ^0.20.0
+  uuid: ^4.5.0
+  logger: ^2.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.15
+  json_serializable: ^6.9.0
+  freezed: ^2.5.7
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
