@@ -8,6 +8,8 @@ import '../../widgets/create_schedule_dialog.dart';
 import '../calendar/calendar_page.dart';
 import '../ai_chat/ai_chat_page.dart';
 import '../profile/profile_page.dart';
+import '../onboarding/onboarding_page.dart';
+import '../task/task_list_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,43 +22,103 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   final LocalStorageService _storage = LocalStorageService();
   int _pendingCount = 0;
-  int _inProgressCount = 0;
   int _completedCount = 0;
-
-  late final List<Widget> _pages;
+  bool _storageReady = false;
 
   @override
   void initState() {
     super.initState();
-    _pages = [
+    _initStorage();
+    _checkOnboarding();
+  }
+
+  void _checkOnboarding() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_storage.onboardingCompleted && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const OnboardingPage()),
+        );
+      }
+    });
+  }
+
+  List<Widget> _buildPages() {
+    return [
       _HomeContent(
         storage: _storage,
         pendingCount: _pendingCount,
-        inProgressCount: _inProgressCount,
         completedCount: _completedCount,
         onNavigateToChat: () => setState(() => _currentIndex = 2),
         onCreateSchedule: _createSchedule,
         onRefresh: _loadStats,
+        onOpenTaskStatus: _openTaskStatus,
+        onEditSchedule: _editSchedule,
+        onDeleteSchedule: _deleteSchedule,
       ),
       const CalendarPage(),
       const AiChatPage(),
       const ProfilePage(),
     ];
-    _initStorage();
   }
 
   Future<void> _initStorage() async {
     await _storage.init();
+    _storageReady = true;
     _loadStats();
   }
 
+  Future<void> _ensureStorageReady() async {
+    if (_storageReady) return;
+    await _storage.init();
+    _storageReady = true;
+  }
+
   void _loadStats() {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
     final tasks = _storage.getTasks();
+    final todaySchedules = _storage.getSchedules(startDate: todayStart, endDate: todayEnd);
     setState(() {
-      _pendingCount = tasks.where((t) => t.status == 'pending').length;
-      _inProgressCount = tasks.where((t) => t.status == 'in_progress').length;
-      _completedCount = tasks.where((t) => t.status == 'completed').length;
+      // 待办：时间段涉及今日且未完成的
+      _pendingCount =
+          tasks.where((t) => t.status == 'pending' && _timeRangeInvolvesToday(t.startDate, t.endDate)).length
+          + todaySchedules.where((s) => s.status != 'completed').length;
+      // 已完成：今日标记为已完成的
+      _completedCount =
+          tasks.where((t) => t.status == 'completed' && _isSameDay(t.updatedAt, now)).length
+          + todaySchedules.where((s) => s.status == 'completed' && _isSameDay(s.updatedAt, now)).length;
     });
+    // 更新隐式画像
+    _updateImplicitProfile(tasks, todaySchedules);
+  }
+
+  void _updateImplicitProfile(List tasks, List todaySchedules) {
+    final totalCreated = tasks.length;
+    final totalCompleted = tasks.where((t) => t.status == 'completed').length;
+    final completionRate = totalCreated > 0 ? (totalCompleted / totalCreated).clamp(0.0, 1.0) : 0.0;
+
+    _storage.updateImplicitProfile({
+      'avgTaskCompletionRate': completionRate,
+      'totalTasks': totalCreated,
+      'completedTasks': totalCompleted,
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// 判断时间范围是否涉及今日（无时间范围也算涉及）
+  bool _timeRangeInvolvesToday(DateTime? start, DateTime? end) {
+    if (start == null || end == null) return true;
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = todayStart.add(const Duration(days: 1));
+    return start.isBefore(todayEnd) && end.isAfter(todayStart);
+  }
+
+  /// 判断两个 DateTime 是否在同一天
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   String _getUserId() {
@@ -73,32 +135,120 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (result != null) {
-      final newSchedule = await _storage.createSchedule(
-        userId: _getUserId(),
+      try {
+        await _ensureStorageReady();
+        final newSchedule = await _storage.createSchedule(
+          userId: _getUserId(),
+          title: result['title'] as String,
+          description: result['description'] as String?,
+          startTime: result['startTime'] as DateTime,
+          endTime: result['endTime'] as DateTime,
+          priority: result['priority'] as String,
+        );
+        await NotificationService().scheduleReminderForSchedule(
+          scheduleId: newSchedule.id,
+          title: newSchedule.title,
+          startTime: newSchedule.startTime,
+          description: newSchedule.description,
+        );
+        _loadStats();
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('日程已创建')));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('创建日程失败：$e')));
+        }
+      }
+    }
+  }
+
+  Future<void> _openTaskStatus(String status, String title) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TaskListPage(status: status, title: title),
+      ),
+    );
+    await _ensureStorageReady();
+    _loadStats();
+  }
+
+  Future<void> _editSchedule(dynamic schedule) async {
+    final result = await showDialog<Object?>(
+      context: context,
+      builder: (context) => CreateScheduleDialog(
+        initialTitle: schedule.title as String,
+        initialDate: schedule.startTime as DateTime,
+        initialStartTime: schedule.startTime as DateTime,
+        initialEndTime: schedule.endTime as DateTime,
+        initialPriority: schedule.priority as String,
+        isEditing: true,
+      ),
+    );
+
+    if (result == 'delete') {
+      await _deleteSchedule(schedule);
+      return;
+    }
+
+    if (result != null && result is Map<String, dynamic>) {
+      final updated = schedule.copyWith(
         title: result['title'] as String,
         description: result['description'] as String?,
         startTime: result['startTime'] as DateTime,
         endTime: result['endTime'] as DateTime,
         priority: result['priority'] as String,
       );
-      // Schedule reminder notification
-      NotificationService().scheduleReminderForSchedule(
-        scheduleId: newSchedule.id,
-        title: newSchedule.title,
-        startTime: newSchedule.startTime,
-        description: newSchedule.description,
-      );
+      await _storage.updateSchedule(updated);
       _loadStats();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('日程已更新')));
+      }
+    }
+  }
+
+  Future<void> _deleteSchedule(dynamic schedule) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除日程'),
+        content: Text('确定要删除"${schedule.title}"吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _storage.deleteSchedule(schedule.id as String);
+      _loadStats();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('日程已删除')));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _buildPages()),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
@@ -125,11 +275,12 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createSchedule,
-        icon: const Icon(Icons.add),
-        label: const Text('新建'),
-      ),
+      floatingActionButton: _currentIndex == 0
+          ? FloatingActionButton(
+              onPressed: _createSchedule,
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 }
@@ -137,20 +288,24 @@ class _HomePageState extends State<HomePage> {
 class _HomeContent extends StatelessWidget {
   final LocalStorageService storage;
   final int pendingCount;
-  final int inProgressCount;
   final int completedCount;
   final VoidCallback onNavigateToChat;
   final VoidCallback onCreateSchedule;
   final VoidCallback onRefresh;
+  final void Function(String status, String title) onOpenTaskStatus;
+  final void Function(dynamic schedule) onEditSchedule;
+  final void Function(dynamic schedule) onDeleteSchedule;
 
   const _HomeContent({
     required this.storage,
     required this.pendingCount,
-    required this.inProgressCount,
     required this.completedCount,
     required this.onNavigateToChat,
     required this.onCreateSchedule,
     required this.onRefresh,
+    required this.onOpenTaskStatus,
+    required this.onEditSchedule,
+    required this.onDeleteSchedule,
   });
 
   @override
@@ -164,10 +319,7 @@ class _HomeContent extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '早上好！',
-                    style: Theme.of(context).textTheme.displaySmall,
-                  ),
+                  Text('早上好！', style: Theme.of(context).textTheme.displaySmall),
                   const SizedBox(height: 8),
                   Text(
                     pendingCount > 0 ? '今天有$pendingCount个待办事项' : '今天没有待办事项',
@@ -213,7 +365,6 @@ class _HomeContent extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildStatItem('待办', '$pendingCount', Icons.check_circle_outline),
-              _buildStatItem('进行中', '$inProgressCount', Icons.timelapse),
               _buildStatItem('已完成', '$completedCount', Icons.done_all),
             ],
           ),
@@ -223,26 +374,38 @@ class _HomeContent extends StatelessWidget {
   }
 
   Widget _buildStatItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white70, size: 28),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+    final status = switch (label) {
+      '待办' => 'pending',
+      '已完成' => 'completed',
+      _ => 'pending',
+    };
+
+    return Expanded(
+      child: InkWell(
+        onTap: () => onOpenTaskStatus(status, label),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            children: [
+              Icon(icon, color: Colors.white70, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
           ),
         ),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -267,7 +430,7 @@ class _HomeContent extends StatelessWidget {
               child: _buildActionCard(
                 'AI拆解目标',
                 Icons.auto_fix_high,
-                AppTheme.secondaryColor,
+                AppTheme.primaryColor,
                 onNavigateToChat,
               ),
             ),
@@ -277,7 +440,12 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildActionCard(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildActionCard(
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return Card(
       child: InkWell(
         onTap: onTap,
@@ -303,7 +471,10 @@ class _HomeContent extends StatelessWidget {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = todayStart.add(const Duration(days: 1));
-    final schedules = storage.getSchedules(startDate: todayStart, endDate: todayEnd);
+    final schedules = storage.getSchedules(
+      startDate: todayStart,
+      endDate: todayEnd,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -346,30 +517,38 @@ class _HomeContent extends StatelessWidget {
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
-                  leading: Container(
-                    width: 4,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _priorityColor(s.priority),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                  leading: Checkbox(
+                    value: s.status == 'completed',
+                    onChanged: (checked) {
+                      final newStatus = checked == true ? 'completed' : 'in_progress';
+                      storage.updateSchedule(s.copyWith(status: newStatus));
+                      onRefresh();
+                    },
                   ),
                   title: Text(s.title),
                   subtitle: Text(
                     '${s.startTime.hour}:${s.startTime.minute.toString().padLeft(2, '0')} - '
                     '${s.endTime.hour}:${s.endTime.minute.toString().padLeft(2, '0')}',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: onCreateSchedule,
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (action) {
+                      if (action == 'edit') onEditSchedule(s);
+                      if (action == 'delete') onDeleteSchedule(s);
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'edit', child: Text('编辑')),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Text('删除', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                  onTap: () => onEditSchedule(s),
                 ),
               );
             },
           ),
       ],
     );
-  }
-
-  Color _priorityColor(String p) {
-    return switch (p) { 'P0' => Colors.red, 'P1' => Colors.orange, 'P2' => Colors.green, _ => Colors.blue };
   }
 }

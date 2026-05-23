@@ -140,6 +140,12 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
         ),
       ),
       actions: [
+        if (widget.isEditing)
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'delete'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('取消'),

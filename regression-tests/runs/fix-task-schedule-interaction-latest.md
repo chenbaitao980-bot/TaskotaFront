@@ -1,0 +1,1 @@
+# Regression Run: fix-task-schedule-interaction\n- run_time: 2026-05-23T20:46\n- command: flutter test\n- status: success\n\n| case_id | 断言结果 |\n|---|---|\n| home-schedule-edit-tap | pass |\n| calendar-default-week | pass |\n| tasklist-fab-create | pass |\n| tasklist-popup-edit | pass |

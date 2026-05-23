@@ -23,17 +23,18 @@
 ### Requirement: 日历视图
 用户 SHALL 能在周视图和月视图中可视化查看所有日程，并支持在日历上直接新建、编辑、删除日程。
 
-#### Scenario: 查看月视图
+#### Scenario: 查看周视图
 - WHEN 用户切换到日历Tab
-- THEN 默认展示月视图
-- AND 有日程的日期显示圆点标记
-- AND 点击日期展示当日日程列表
-
-#### Scenario: 切换到周视图
-- WHEN 用户点击周视图切换按钮
-- THEN 日历切换为周视图
+- THEN 默认展示周视图
 - AND 显示该周每天的时间格子
 - AND 日程以时间块形式展示
+- AND 自动滚动到当前时间位置
+
+#### Scenario: 切换到月视图
+- WHEN 用户点击月视图切换按钮
+- THEN 日历切换为月视图
+- AND 有日程的日期显示圆点标记
+- AND 点击日期展示当日日程列表
 
 #### Scenario: 日历上新建日程
 - WHEN 用户长按某个日期/时间格
@@ -45,6 +46,12 @@
 - THEN 弹出日程详情/编辑页
 - AND 支持修改标题、时间、优先级、描述
 - AND 支持删除日程（确认后）
+
+#### Scenario: 标记日程完成状态
+- WHEN 用户在日程列表或日历视图中点击日程旁的复选框
+- THEN 勾选 SHALL 将日程状态设为已完成
+- AND 取消勾选 SHALL 将日程状态设为进行中
+- AND 状态变更 SHALL 立即持久化到本地存储
 
 ### Requirement: AI任务拆解
 用户 SHALL 能输入大目标，AI 将其递归拆解为 目标→月→周 三层结构化任务。
@@ -82,3 +89,13 @@
 - WHEN 未登录用户打开应用
 - THEN 展示登录页面
 - AND 阻止访问其他功能页面
+
+### Requirement: Windows 桌面打包
+每次代码变更后打包 SHALL 执行全量构建，确保无增量编译缓存残留。
+
+#### Scenario: 交付 Windows 桌面版
+- WHEN 用户要求打包 Windows 桌面版应用
+- THEN AI SHALL 先执行 `flutter clean` 清理增量编译缓存
+- AND 执行 `flutter build windows --release` 全量构建
+- AND 复制产物到 release 目录
+- AND 打包为 ZIP 分发包交付

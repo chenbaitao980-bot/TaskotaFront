@@ -15,6 +15,7 @@ class Schedule with _$Schedule {
     @Default('P2') String priority,
     @Default(false) bool focusRequired,
     @Default(false) bool parallelizable,
+    @Default('in_progress') String status,
     Map<String, dynamic>? metadata,
     @Default('manual') String source,
     String? parentTaskId,

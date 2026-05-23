@@ -68,15 +68,19 @@ class NotificationService {
     required String title,
     required DateTime startTime,
     String? description,
+    String priority = 'P2',
   }) async {
     final now = DateTime.now();
-    final fifteenMinBefore = startTime.subtract(const Duration(minutes: 15));
-    if (fifteenMinBefore.isAfter(now)) {
+    final urgency = _urgencyScore(startTime, priority);
+    final minutesBefore = _reminderMinutes(urgency);
+
+    final remindAt = startTime.subtract(Duration(minutes: minutesBefore));
+    if (remindAt.isAfter(now)) {
       await scheduleNotification(
         id: scheduleId.hashCode,
         title: '即将开始: $title',
-        body: description ?? '您的日程将在15分钟后开始',
-        scheduledDate: fifteenMinBefore,
+        body: description ?? '您的日程将在${minutesBefore}分钟后开始',
+        scheduledDate: remindAt,
       );
     }
     if (startTime.isAfter(now)) {
@@ -87,5 +91,29 @@ class NotificationService {
         scheduledDate: startTime,
       );
     }
+  }
+
+  double _urgencyScore(DateTime startTime, String priority) {
+    final now = DateTime.now();
+    final minutesUntilStart = startTime.difference(now).inMinutes;
+    if (minutesUntilStart <= 0) return 1.0;
+
+    final priorityWeight = switch (priority) {
+      'P0' => 1.0,
+      'P1' => 0.7,
+      'P2' => 0.4,
+      _ => 0.2,
+    };
+    final timeFactor = minutesUntilStart <= 60
+        ? 1.0
+        : (120.0 / minutesUntilStart).clamp(0.1, 1.0);
+    return (priorityWeight * 0.6 + timeFactor * 0.4).clamp(0.0, 1.0);
+  }
+
+  int _reminderMinutes(double urgency) {
+    if (urgency > 0.8) return 120; // 2倍任务时长 -> 2小时前
+    if (urgency > 0.5) return 60;  // 1倍任务时长 -> 1小时前
+    if (urgency > 0.3) return 30;  // 30分钟前
+    return 15; // 15分钟前
   }
 }

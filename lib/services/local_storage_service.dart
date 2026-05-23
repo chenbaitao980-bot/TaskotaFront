@@ -211,4 +211,44 @@ class LocalStorageService {
       );
     }
   }
+
+  // Profile
+  static const _profileKey = 'user_profile';
+  static const _onboardingKey = 'onboarding_completed';
+
+  bool get onboardingCompleted => _prefs?.getBool(_onboardingKey) ?? false;
+
+  Future<void> setOnboardingCompleted() async {
+    await _prefs?.setBool(_onboardingKey, true);
+  }
+
+  Future<void> saveExplicitProfile(Map<String, dynamic> data) async {
+    await _prefs?.setString(_profileKey, json.encode(data));
+  }
+
+  Map<String, dynamic>? getExplicitProfile() {
+    final jsonStr = _prefs?.getString(_profileKey);
+    if (jsonStr == null) return null;
+    return json.decode(jsonStr) as Map<String, dynamic>;
+  }
+
+  Future<void> updateImplicitProfile(Map<String, dynamic> data) async {
+    await _prefs?.setString('implicit_profile', json.encode(data));
+  }
+
+  Map<String, dynamic>? getImplicitProfile() {
+    final jsonStr = _prefs?.getString('implicit_profile');
+    if (jsonStr == null) return null;
+    return json.decode(jsonStr) as Map<String, dynamic>;
+  }
+
+  // Conflict detection
+  bool detectTimeConflict(DateTime start, DateTime end, {String? excludeId}) {
+    final schedules = getSchedules(startDate: start, endDate: end);
+    if (excludeId != null) {
+      schedules.removeWhere((s) => s.id == excludeId);
+    }
+    return schedules.any((s) =>
+        s.startTime.isBefore(end) && s.endTime.isAfter(start));
+  }
 }

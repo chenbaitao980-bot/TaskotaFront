@@ -30,6 +30,7 @@ mixin _$Schedule {
   String get priority => throw _privateConstructorUsedError;
   bool get focusRequired => throw _privateConstructorUsedError;
   bool get parallelizable => throw _privateConstructorUsedError;
+  String get status => throw _privateConstructorUsedError;
   Map<String, dynamic>? get metadata => throw _privateConstructorUsedError;
   String get source => throw _privateConstructorUsedError;
   String? get parentTaskId => throw _privateConstructorUsedError;
@@ -61,6 +62,7 @@ abstract class $ScheduleCopyWith<$Res> {
     String priority,
     bool focusRequired,
     bool parallelizable,
+    String status,
     Map<String, dynamic>? metadata,
     String source,
     String? parentTaskId,
@@ -93,6 +95,7 @@ class _$ScheduleCopyWithImpl<$Res, $Val extends Schedule>
     Object? priority = null,
     Object? focusRequired = null,
     Object? parallelizable = null,
+    Object? status = null,
     Object? metadata = freezed,
     Object? source = null,
     Object? parentTaskId = freezed,
@@ -137,6 +140,10 @@ class _$ScheduleCopyWithImpl<$Res, $Val extends Schedule>
                 ? _value.parallelizable
                 : parallelizable // ignore: cast_nullable_to_non_nullable
                       as bool,
+            status: null == status
+                ? _value.status
+                : status // ignore: cast_nullable_to_non_nullable
+                      as String,
             metadata: freezed == metadata
                 ? _value.metadata
                 : metadata // ignore: cast_nullable_to_non_nullable
@@ -182,6 +189,7 @@ abstract class _$$ScheduleImplCopyWith<$Res>
     String priority,
     bool focusRequired,
     bool parallelizable,
+    String status,
     Map<String, dynamic>? metadata,
     String source,
     String? parentTaskId,
@@ -213,6 +221,7 @@ class __$$ScheduleImplCopyWithImpl<$Res>
     Object? priority = null,
     Object? focusRequired = null,
     Object? parallelizable = null,
+    Object? status = null,
     Object? metadata = freezed,
     Object? source = null,
     Object? parentTaskId = freezed,
@@ -257,6 +266,10 @@ class __$$ScheduleImplCopyWithImpl<$Res>
             ? _value.parallelizable
             : parallelizable // ignore: cast_nullable_to_non_nullable
                   as bool,
+        status: null == status
+            ? _value.status
+            : status // ignore: cast_nullable_to_non_nullable
+                  as String,
         metadata: freezed == metadata
             ? _value._metadata
             : metadata // ignore: cast_nullable_to_non_nullable
@@ -295,6 +308,7 @@ class _$ScheduleImpl implements _Schedule {
     this.priority = 'P2',
     this.focusRequired = false,
     this.parallelizable = false,
+    this.status = 'in_progress',
     final Map<String, dynamic>? metadata,
     this.source = 'manual',
     this.parentTaskId,
@@ -326,6 +340,9 @@ class _$ScheduleImpl implements _Schedule {
   @override
   @JsonKey()
   final bool parallelizable;
+  @override
+  @JsonKey()
+  final String status;
   final Map<String, dynamic>? _metadata;
   @override
   Map<String, dynamic>? get metadata {
@@ -348,7 +365,7 @@ class _$ScheduleImpl implements _Schedule {
 
   @override
   String toString() {
-    return 'Schedule(id: $id, userId: $userId, title: $title, description: $description, startTime: $startTime, endTime: $endTime, priority: $priority, focusRequired: $focusRequired, parallelizable: $parallelizable, metadata: $metadata, source: $source, parentTaskId: $parentTaskId, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'Schedule(id: $id, userId: $userId, title: $title, description: $description, startTime: $startTime, endTime: $endTime, priority: $priority, focusRequired: $focusRequired, parallelizable: $parallelizable, status: $status, metadata: $metadata, source: $source, parentTaskId: $parentTaskId, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 
   @override
@@ -370,6 +387,7 @@ class _$ScheduleImpl implements _Schedule {
                 other.focusRequired == focusRequired) &&
             (identical(other.parallelizable, parallelizable) ||
                 other.parallelizable == parallelizable) &&
+            (identical(other.status, status) || other.status == status) &&
             const DeepCollectionEquality().equals(other._metadata, _metadata) &&
             (identical(other.source, source) || other.source == source) &&
             (identical(other.parentTaskId, parentTaskId) ||
@@ -393,6 +411,7 @@ class _$ScheduleImpl implements _Schedule {
     priority,
     focusRequired,
     parallelizable,
+    status,
     const DeepCollectionEquality().hash(_metadata),
     source,
     parentTaskId,
@@ -425,6 +444,7 @@ abstract class _Schedule implements Schedule {
     final String priority,
     final bool focusRequired,
     final bool parallelizable,
+    final String status,
     final Map<String, dynamic>? metadata,
     final String source,
     final String? parentTaskId,
@@ -453,6 +473,8 @@ abstract class _Schedule implements Schedule {
   bool get focusRequired;
   @override
   bool get parallelizable;
+  @override
+  String get status;
   @override
   Map<String, dynamic>? get metadata;
   @override
