@@ -22,4 +22,13 @@ class LoggedIn extends AuthEvent {
   List<Object?> get props => [email, password];
 }
 
+class LocalLogin extends AuthEvent {
+  final String email;
+
+  const LocalLogin({required this.email});
+
+  @override
+  List<Object?> get props => [email];
+}
+
 class LoggedOut extends AuthEvent {}

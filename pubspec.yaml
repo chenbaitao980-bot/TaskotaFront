@@ -34,9 +34,7 @@ dependencies:
   # 语音录入
   speech_to_text: ^7.0.0
   
-  # 通知
-  flutter_local_notifications: ^19.0.0
-  timezone: ^0.10.0
+  # 通知（用本地计划；flutter_local_notifications_windows 在 Dart 3.11+ AOT 编译时有 FFI 崩溃，仅在 Android/iOS/macOS 启用）
   
   # UI组件
   flutter_screenutil: ^5.9.3

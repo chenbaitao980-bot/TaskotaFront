@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "openspec/changes/init-smart-butler/tasks.md",
+                "file": "openspec/changes/mvp-core-features/specs/smart-butler/spec.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "tasks"
+              "title": "spec"
             }
           }
         ]
@@ -185,22 +185,46 @@
   },
   "active": "19b3501b1f0040ea",
   "lastOpenFiles": [
-    "openspec/changes/init-project/delivery.md",
-    "build/app/outputs/flutter-apk/app-debug.apk.sha1",
-    "build/app/outputs/flutter-apk/app-debug.apk",
-    "build/app/outputs/flutter-apk",
-    "build/app/intermediates/apk_ide_redirect_file/debug/createDebugApkListingFileRedirect/redirect.txt",
-    "build/app/intermediates/apk_ide_redirect_file/debug/createDebugApkListingFileRedirect",
-    "build/app/intermediates/apk_ide_redirect_file/debug",
-    "build/app/intermediates/apk_ide_redirect_file",
-    "build/app/outputs/apk/debug/output-metadata.json",
-    "build/app/intermediates/incremental/packageDebug/tmp/debug/zip-cache/androidResources",
-    "build/app/intermediates/incremental/packageDebug/tmp/debug/zip-cache/javaResources0",
+    "openspec/changes/fix-register-navigation/delivery.md",
+    "build/test_cache/build/89a6598c8854ed031dfc25d83c80860e.cache.dill.track.dill",
+    "build/test_cache/build/6b06f8b8",
+    "build/test_cache/build",
+    "build/test_cache",
+    "build/unit_test_assets/NativeAssetsManifest.json",
+    "build/unit_test_assets/shaders/stretch_effect.frag.spirv",
+    "build/unit_test_assets/shaders/ink_sparkle.frag.spirv",
+    "build/unit_test_assets/shaders/stretch_effect.frag",
+    "build/unit_test_assets/shaders/ink_sparkle.frag",
+    "build/unit_test_assets/NOTICES.Z",
+    "regression-tests/cases/fix-register-navigation.md",
+    "openspec/changes/fix-register-navigation/bugfix.md",
+    "openspec/changes/fix-register-navigation/tasks.md",
+    "openspec/changes/fix-register-navigation/specs/smart-butler/spec.md",
+    "openspec/changes/fix-register-navigation/design.md",
+    "openspec/changes/fix-register-navigation/proposal.md",
+    "node_modules/pg-protocol/README.md",
+    "node_modules/pg/README.md",
+    "node_modules/pg-cloudflare/README.md",
+    "node_modules/pg-types/README.md",
+    "node_modules/postgres-array/readme.md",
+    "node_modules/postgres-interval/readme.md",
+    "node_modules/pg-pool/README.md",
+    "node_modules/pgpass/README.md",
+    "node_modules/pg-connection-string/README.md",
+    "node_modules/postgres-date/readme.md",
+    "node_modules/pg-int8/README.md",
+    "openspec/changes/mvp-core-features/proposal.md",
+    "openspec/changes/mvp-core-features/tasks.md",
+    "openspec/changes/mvp-core-features/design.md",
+    "openspec/changes/mvp-core-features/delivery.md",
+    "regression-tests/runs/mvp-core-features-latest.md",
+    "regression-tests/cases/mvp-core-features.md",
+    "openspec/changes/windows-desktop-build/tasks.md",
+    "openspec/changes/mvp-core-features/specs/smart-butler/spec.md",
     "build/app/intermediates/packaged_res/debug/packageDebugResources/mipmap-xxxhdpi-v4/ic_launcher.png",
     "build/app/intermediates/packaged_res/debug/packageDebugResources/mipmap-xxhdpi-v4/ic_launcher.png",
     "build/app/intermediates/packaged_res/debug/packageDebugResources/mipmap-xhdpi-v4/ic_launcher.png",
     "build/app/intermediates/packaged_res/debug/packageDebugResources/mipmap-mdpi-v4/ic_launcher.png",
-    "build/app/intermediates/packaged_res/debug/packageDebugResources/mipmap-hdpi-v4/ic_launcher.png",
-    "openspec/changes/init-project/tasks.md"
+    "build/app/intermediates/packaged_res/debug/packageDebugResources/mipmap-hdpi-v4/ic_launcher.png"
   ]
 }

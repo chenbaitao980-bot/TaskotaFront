@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../models/entities/task_breakdown.dart';
+import '../../../services/local_storage_service.dart';
+import '../../blocs/auth/auth_bloc.dart';
 
 class CreateTaskPage extends StatefulWidget {
-  const CreateTaskPage({super.key});
+  final TaskBreakdown? existingTask;
+
+  const CreateTaskPage({super.key, this.existingTask});
 
   @override
   State<CreateTaskPage> createState() => _CreateTaskPageState();
@@ -10,10 +16,33 @@ class CreateTaskPage extends StatefulWidget {
 class _CreateTaskPageState extends State<CreateTaskPage> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  DateTime _startTime = DateTime.now();
-  DateTime _endTime = DateTime.now().add(const Duration(hours: 1));
-  String _priority = 'P2';
-  bool _focusRequired = false;
+  late DateTime _startDate;
+  late DateTime _endDate;
+  late String _priority;
+  late bool _focusRequired;
+  bool _isEditing = false;
+  final LocalStorageService _storage = LocalStorageService();
+
+  @override
+  void initState() {
+    super.initState();
+    _isEditing = widget.existingTask != null;
+    if (_isEditing) {
+      final t = widget.existingTask!;
+      _titleController.text = t.title;
+      _descriptionController.text = t.description ?? '';
+      _startDate = t.startDate ?? DateTime.now();
+      _endDate = t.endDate ?? DateTime.now().add(const Duration(days: 7));
+      _priority = t.priority;
+      _focusRequired = t.focusRequired;
+    } else {
+      _startDate = DateTime.now();
+      _endDate = DateTime.now().add(const Duration(days: 7));
+      _priority = 'P2';
+      _focusRequired = false;
+    }
+    _storage.init();
+  }
 
   @override
   void dispose() {
@@ -22,56 +51,72 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     super.dispose();
   }
 
-  Future<void> _selectDateTime(bool isStart) async {
+  String _getUserId() {
+    final state = context.read<AuthBloc>().state;
+    if (state is LocalAuthenticated) return state.email;
+    if (state is Authenticated) return state.user.id;
+    return 'local_user';
+  }
+
+  Future<void> _selectDate(bool isStart) async {
     final date = await showDatePicker(
       context: context,
-      initialDate: isStart ? _startTime : _endTime,
+      initialDate: isStart ? _startDate : _endDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+      lastDate: DateTime(2035),
     );
-
     if (date != null && mounted) {
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(
-          isStart ? _startTime : _endTime,
-        ),
-      );
-
-      if (time != null) {
-        setState(() {
-          final newDateTime = DateTime(
-            date.year,
-            date.month,
-            date.day,
-            time.hour,
-            time.minute,
-          );
-          if (isStart) {
-            _startTime = newDateTime;
-          } else {
-            _endTime = newDateTime;
-          }
-        });
-      }
+      setState(() {
+        if (isStart) {
+          _startDate = date;
+        } else {
+          _endDate = date;
+        }
+      });
     }
   }
 
-  void _saveTask() {
-    // TODO: 保存任务到数据库
-    Navigator.pop(context);
+  Future<void> _saveTask() async {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入任务标题')),
+      );
+      return;
+    }
+
+    if (_isEditing) {
+      final updated = widget.existingTask!.copyWith(
+        title: title,
+        description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        startDate: _startDate,
+        endDate: _endDate,
+        priority: _priority,
+        focusRequired: _focusRequired,
+      );
+      await _storage.updateTask(updated);
+    } else {
+      await _storage.createTask(
+        userId: _getUserId(),
+        title: title,
+        description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        level: 'weekly',
+        startDate: _startDate,
+        endDate: _endDate,
+        priority: _priority,
+      );
+    }
+
+    if (mounted) Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('新建任务'),
+        title: Text(_isEditing ? '编辑任务' : '新建任务'),
         actions: [
-          TextButton(
-            onPressed: _saveTask,
-            child: const Text('保存'),
-          ),
+          TextButton(onPressed: _saveTask, child: const Text('保存')),
         ],
       ),
       body: SingleChildScrollView(
@@ -96,30 +141,22 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
             ),
             const SizedBox(height: 24),
-            Text(
-              '时间',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('日期范围', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.access_time),
-              title: const Text('开始时间'),
-              subtitle: Text(_formatDateTime(_startTime)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _selectDateTime(true),
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('开始日期'),
+              subtitle: Text('${_startDate.year}-${_startDate.month.toString().padLeft(2, '0')}-${_startDate.day.toString().padLeft(2, '0')}'),
+              onTap: () => _selectDate(true),
             ),
             ListTile(
-              leading: const Icon(Icons.access_time_filled),
-              title: const Text('结束时间'),
-              subtitle: Text(_formatDateTime(_endTime)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _selectDateTime(false),
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('截止日期'),
+              subtitle: Text('${_endDate.year}-${_endDate.month.toString().padLeft(2, '0')}-${_endDate.day.toString().padLeft(2, '0')}'),
+              onTap: () => _selectDate(false),
             ),
             const SizedBox(height: 24),
-            Text(
-              '优先级',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('优先级', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -135,11 +172,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               title: const Text('需要专注'),
               subtitle: const Text('此任务需要全神贯注完成'),
               value: _focusRequired,
-              onChanged: (value) {
-                setState(() {
-                  _focusRequired = value;
-                });
-              },
+              onChanged: (value) => setState(() => _focusRequired = value),
             ),
           ],
         ),
@@ -148,36 +181,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   Widget _buildPriorityChip(String value, String label, Color color) {
-    final isSelected = _priority == value;
+    final selected = _priority == value;
     return ChoiceChip(
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 4),
           Text(label),
         ],
       ),
-      selected: isSelected,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _priority = value;
-          });
-        }
-      },
+      selected: selected,
+      onSelected: (s) { if (s) setState(() => _priority = value); },
     );
-  }
-
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
-        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 }

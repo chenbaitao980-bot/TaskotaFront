@@ -14,6 +14,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         super(AuthInitial()) {
     on<AppStarted>(_onAppStarted);
     on<LoggedIn>(_onLoggedIn);
+    on<LocalLogin>(_onLocalLogin);
     on<LoggedOut>(_onLoggedOut);
   }
 
@@ -49,6 +50,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } catch (e) {
       emit(AuthError(message: e.toString()));
     }
+  }
+
+  void _onLocalLogin(LocalLogin event, Emitter<AuthState> emit) async {
+    emit(LocalAuthenticated(email: event.email));
   }
 
   void _onLoggedOut(LoggedOut event, Emitter<AuthState> emit) async {

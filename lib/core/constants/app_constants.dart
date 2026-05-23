@@ -4,12 +4,12 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   
   // Supabase Config
-  static const String supabaseUrl = 'YOUR_SUPABASE_URL';
-  static const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+  static const String supabaseUrl = 'https://wlehkvsxftyxmxelcaps.supabase.co';
+  static const String supabaseAnonKey = 'sb_publishable_Nz2Ro_4jBthvDwjeQ8m-ww_tT0wYgcF';
   
   // API Config
   static const String deepseekApiUrl = 'https://api.deepseek.com/v1/chat/completions';
-  static const String deepseekApiKey = 'YOUR_DEEPSEEK_API_KEY';
+  static const String deepseekApiKey = 'sk-1923fb07640b45b8a0ab564192810321';
   
   // Priority Levels
   static const String priorityP0 = 'P0';

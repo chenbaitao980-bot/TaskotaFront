@@ -20,6 +20,15 @@ class Authenticated extends AuthState {
   List<Object?> get props => [user];
 }
 
+class LocalAuthenticated extends AuthState {
+  final String email;
+
+  const LocalAuthenticated({required this.email});
+
+  @override
+  List<Object?> get props => [email];
+}
+
 class Unauthenticated extends AuthState {}
 
 class AuthError extends AuthState {
