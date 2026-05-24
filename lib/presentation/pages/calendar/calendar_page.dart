@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../models/entities/task_breakdown.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import '../../widgets/create_schedule_dialog.dart';
+import '../task/create_task_page.dart';
+import '../task/task_detail_page.dart';
 
 class CalendarPage extends StatefulWidget {
-  const CalendarPage({super.key});
+  final int refreshToken;
+
+  const CalendarPage({super.key, this.refreshToken = 0});
 
   @override
   State<CalendarPage> createState() => _CalendarPageState();
@@ -20,6 +27,7 @@ class _CalendarPageState extends State<CalendarPage> {
   final LocalStorageService _storage = LocalStorageService();
   final ScrollController _weekScrollController = ScrollController();
   List<dynamic> _events = [];
+  List<TaskBreakdown> _rangeTasks = [];
   bool _initialized = false;
   bool _didAutoScrollWeek = false;
   static const double _hourHeight = 56;
@@ -30,6 +38,14 @@ class _CalendarPageState extends State<CalendarPage> {
     super.initState();
     _selectedDay = DateTime.now();
     _initStorage();
+  }
+
+  @override
+  void didUpdateWidget(covariant CalendarPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshToken != oldWidget.refreshToken) {
+      _loadEvents();
+    }
   }
 
   @override
@@ -62,6 +78,7 @@ class _CalendarPageState extends State<CalendarPage> {
         ? rangeStart.add(const Duration(days: 7))
         : DateTime(_focusedDay.year, _focusedDay.month + 1, 0, 23, 59, 59);
     _events = _storage.getSchedules(startDate: rangeStart, endDate: rangeEnd);
+    _rangeTasks = _storage.getTasks(startDate: rangeStart, endDate: rangeEnd);
     if (mounted) setState(() {});
   }
 
@@ -101,6 +118,22 @@ class _CalendarPageState extends State<CalendarPage> {
 
   List<dynamic> _getEventsForDay(DateTime day) {
     return _events.where((e) => _eventOverlapsDay(e, day)).toList();
+  }
+
+  bool _isSameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _isMultiDaySchedule(dynamic event) {
+    final start = event.startTime as DateTime;
+    final end = event.endTime as DateTime;
+    return !_isSameDate(start, end) || end.difference(start).inHours >= 24;
+  }
+
+  bool _isMultiDayTask(TaskBreakdown task) {
+    final start = task.startDate;
+    final end = task.endDate;
+    if (start == null || end == null) return false;
+    return !_isSameDate(start, end);
   }
 
   Future<void> _createSchedule() async {
@@ -178,6 +211,11 @@ class _CalendarPageState extends State<CalendarPage> {
       return;
     }
 
+    if (result == 'add_subtask') {
+      await _createSubtaskForSchedule(schedule);
+      return;
+    }
+
     if (result != null && result is Map<String, dynamic>) {
       final updated = schedule.copyWith(
         title: result['title'] as String,
@@ -189,6 +227,32 @@ class _CalendarPageState extends State<CalendarPage> {
       await _storage.updateSchedule(updated);
       _loadEvents();
     }
+  }
+
+  Future<void> _createSubtaskForSchedule(dynamic schedule) async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateTaskPage(
+          parentScheduleId: schedule.id as String,
+          initialStartDate: schedule.startTime as DateTime,
+          initialEndDate: schedule.endTime as DateTime,
+        ),
+      ),
+    );
+    if (created == true) {
+      await _ensureStorageReady();
+      _loadEvents();
+    }
+  }
+
+  Future<void> _openTaskDetail(TaskBreakdown task) async {
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => TaskDetailPage(taskId: task.id)),
+    );
+    await _ensureStorageReady();
+    _loadEvents();
   }
 
   Future<void> _deleteSchedule(dynamic schedule) async {
@@ -217,6 +281,30 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
+  Future<void> _moveTimelineItem(Object item, DateTime newStart) async {
+    if (item is TaskBreakdown) {
+      await _moveTask(item, newStart);
+      return;
+    }
+    await _moveSchedule(item, newStart);
+  }
+
+  Future<void> _resizeTimelineStart(Object item, DateTime newStart) async {
+    if (item is TaskBreakdown) {
+      await _resizeTaskStart(item, newStart);
+      return;
+    }
+    await _resizeScheduleStart(item, newStart);
+  }
+
+  Future<void> _resizeTimelineEnd(Object item, DateTime newEnd) async {
+    if (item is TaskBreakdown) {
+      await _resizeTaskEnd(item, newEnd);
+      return;
+    }
+    await _resizeScheduleEnd(item, newEnd);
+  }
+
   Future<void> _moveSchedule(dynamic schedule, DateTime newStart) async {
     try {
       await _ensureStorageReady();
@@ -239,6 +327,30 @@ class _CalendarPageState extends State<CalendarPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('更新时间失败：$e')));
+      }
+    }
+  }
+
+  Future<void> _moveTask(TaskBreakdown task, DateTime newStart) async {
+    try {
+      await _ensureStorageReady();
+      final start = task.startDate ?? DateTime.now();
+      final end = task.endDate ?? start.add(const Duration(hours: 1));
+      final duration = end.difference(start);
+      await _storage.updateTask(
+        task.copyWith(startDate: newStart, endDate: newStart.add(duration)),
+      );
+      _loadEvents();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Task time updated')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Update task failed: $e')));
       }
     }
   }
@@ -269,6 +381,60 @@ class _CalendarPageState extends State<CalendarPage> {
       newEnd,
       successMessage: '结束时间已更新',
     );
+  }
+
+  Future<void> _resizeTaskStart(TaskBreakdown task, DateTime newStart) async {
+    final end =
+        task.endDate ??
+        (task.startDate ?? newStart).add(const Duration(hours: 1));
+    if (!newStart.isBefore(end.subtract(const Duration(minutes: 15)))) {
+      _showInvalidRangeMessage();
+      return;
+    }
+    await _updateTaskRange(
+      task,
+      newStart,
+      end,
+      successMessage: 'Task start updated',
+    );
+  }
+
+  Future<void> _resizeTaskEnd(TaskBreakdown task, DateTime newEnd) async {
+    final start = task.startDate ?? newEnd.subtract(const Duration(hours: 1));
+    if (!newEnd.isAfter(start.add(const Duration(minutes: 15)))) {
+      _showInvalidRangeMessage();
+      return;
+    }
+    await _updateTaskRange(
+      task,
+      start,
+      newEnd,
+      successMessage: 'Task end updated',
+    );
+  }
+
+  Future<void> _updateTaskRange(
+    TaskBreakdown task,
+    DateTime start,
+    DateTime end, {
+    required String successMessage,
+  }) async {
+    try {
+      await _ensureStorageReady();
+      await _storage.updateTask(task.copyWith(startDate: start, endDate: end));
+      _loadEvents();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(successMessage)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Update task failed: $e')));
+      }
+    }
   }
 
   Future<void> _updateScheduleRange(
@@ -314,10 +480,10 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Color _priorityColor(String p) {
     return switch (p) {
-      'P0' => const Color(0xFFE53935),
-      'P1' => const Color(0xFFFF9800),
-      'P2' => const Color(0xFF43A047),
-      _ => const Color(0xFF1E88E5),
+      'P0' => AppTheme.priorityP0,
+      'P1' => AppTheme.priorityP1,
+      'P2' => AppTheme.priorityP2,
+      _ => AppTheme.priorityP3,
     };
   }
 
@@ -445,51 +611,58 @@ class _CalendarPageState extends State<CalendarPage> {
               final dayWidth =
                   (constraints.maxWidth - _timeColumnWidth).clamp(320, 2400) /
                   7;
-              return SingleChildScrollView(
-                controller: _weekScrollController,
-                child: SizedBox(
-                  height: totalHeight,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTimeColumn(totalHeight),
-                      SizedBox(
-                        width: dayWidth * 7,
+              return Column(
+                children: [
+                  _buildMultiDayLane(days, dayWidth),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _weekScrollController,
+                      child: SizedBox(
                         height: totalHeight,
-                        child: Stack(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            for (
-                              var dayIndex = 0;
-                              dayIndex < days.length;
-                              dayIndex++
-                            )
-                              Positioned(
-                                left: dayIndex * dayWidth,
-                                top: 0,
-                                width: dayWidth,
-                                height: totalHeight,
-                                child: _buildDayDropColumn(
-                                  days[dayIndex],
-                                  dayWidth,
-                                ),
+                            _buildTimeColumn(totalHeight),
+                            SizedBox(
+                              width: dayWidth * 7,
+                              height: totalHeight,
+                              child: Stack(
+                                children: [
+                                  for (
+                                    var dayIndex = 0;
+                                    dayIndex < days.length;
+                                    dayIndex++
+                                  )
+                                    Positioned(
+                                      left: dayIndex * dayWidth,
+                                      top: 0,
+                                      width: dayWidth,
+                                      height: totalHeight,
+                                      child: _buildDayDropColumn(
+                                        days[dayIndex],
+                                        dayWidth,
+                                      ),
+                                    ),
+                                  for (
+                                    var dayIndex = 0;
+                                    dayIndex < days.length;
+                                    dayIndex++
+                                  )
+                                    ..._buildEventBlocksForDay(
+                                      days[dayIndex],
+                                      dayIndex,
+                                      dayWidth,
+                                    ),
+                                  _buildCurrentTimeIndicator(days, dayWidth),
+                                ],
                               ),
-                            for (
-                              var dayIndex = 0;
-                              dayIndex < days.length;
-                              dayIndex++
-                            )
-                              ..._buildEventBlocksForDay(
-                                days[dayIndex],
-                                dayIndex,
-                                dayWidth,
-                              ),
-                            _buildCurrentTimeIndicator(days, dayWidth),
+                            ),
                           ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               );
             },
           ),
@@ -510,11 +683,132 @@ class _CalendarPageState extends State<CalendarPage> {
               alignment: Alignment.topCenter,
               child: Text(
                 '${hour.toString().padLeft(2, '0')}:00',
-                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
+                  fontSize: 11,
+                  color: AppTheme.textHint,
+                ),
               ),
             ),
           );
         }),
+      ),
+    );
+  }
+
+  Widget _buildMultiDayLane(List<DateTime> days, double dayWidth) {
+    final weekStart = DateTime(
+      days.first.year,
+      days.first.month,
+      days.first.day,
+    );
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final items = <_MultiDayItem>[
+      for (final event in _events.where(_isMultiDaySchedule))
+        _MultiDayItem(
+          title: event.title as String,
+          start: event.startTime as DateTime,
+          end: event.endTime as DateTime,
+          color: _priorityColor(event.priority as String),
+          onTap: () => _editSchedule(event),
+        ),
+      for (final task in _rangeTasks.where(_isMultiDayTask))
+        _MultiDayItem(
+          title: task.title,
+          start: task.startDate!,
+          end: task.endDate!.add(const Duration(days: 1)),
+          color: _priorityColor(task.priority),
+          onTap: () => _openTaskDetail(task),
+        ),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    const laneHeight = 36.0;
+    final height = (items.length * laneHeight).clamp(40.0, 144.0);
+    return Container(
+      height: height,
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: _timeColumnWidth),
+          SizedBox(
+            width: dayWidth * 7,
+            child: Stack(
+              children: [
+                for (var i = 0; i < items.length; i++)
+                  _buildMultiDayBar(
+                    items[i],
+                    i,
+                    weekStart,
+                    weekEnd,
+                    dayWidth,
+                    laneHeight,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiDayBar(
+    _MultiDayItem item,
+    int row,
+    DateTime weekStart,
+    DateTime weekEnd,
+    double dayWidth,
+    double laneHeight,
+  ) {
+    final start = item.start.isBefore(weekStart) ? weekStart : item.start;
+    final end = item.end.isAfter(weekEnd) ? weekEnd : item.end;
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = end.hour == 0 && end.minute == 0 && end.second == 0
+        ? DateTime(end.year, end.month, end.day)
+        : DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
+    final startOffset = startDay.difference(weekStart).inDays.clamp(0, 6);
+    final spanDays = endDay
+        .difference(startDay)
+        .inDays
+        .clamp(1, 7 - startOffset);
+    return Positioned(
+      left: startOffset * dayWidth + 4,
+      top: row * laneHeight + 4,
+      width: dayWidth * spanDays - 8,
+      height: laneHeight - 8,
+      child: Material(
+        color: item.color.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: item.onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.view_week_rounded,
+                  color: Colors.white,
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -546,11 +840,11 @@ class _CalendarPageState extends State<CalendarPage> {
               );
               switch (details.data.kind) {
                 case _TimelineDragKind.move:
-                  _moveSchedule(details.data.schedule, target);
+                  _moveTimelineItem(details.data.item, target);
                 case _TimelineDragKind.resizeStart:
-                  _resizeScheduleStart(details.data.schedule, target);
+                  _resizeTimelineStart(details.data.item, target);
                 case _TimelineDragKind.resizeEnd:
-                  _resizeScheduleEnd(details.data.schedule, target);
+                  _resizeTimelineEnd(details.data.item, target);
               }
             },
             builder: (context, candidateData, rejectedData) {
@@ -565,8 +859,8 @@ class _CalendarPageState extends State<CalendarPage> {
                         ).colorScheme.primary.withValues(alpha: 0.08)
                       : null,
                   border: Border(
-                    right: BorderSide(color: Colors.grey.shade200),
-                    bottom: BorderSide(color: Colors.grey.shade200),
+                    right: BorderSide(color: AppTheme.borderSubtle),
+                    bottom: BorderSide(color: AppTheme.borderSubtle),
                   ),
                 ),
               );
@@ -616,10 +910,17 @@ class _CalendarPageState extends State<CalendarPage> {
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
     final dayEvents = _events
-        .where((event) => _eventOverlapsDay(event, day))
+        .where(
+          (event) =>
+              _eventOverlapsDay(event, day) && !_isMultiDaySchedule(event),
+        )
+        .toList();
+    final dayTasks = _rangeTasks
+        .where((task) => _taskOverlapsDay(task, day) && !_isMultiDayTask(task))
         .toList();
 
-    return dayEvents.map((event) {
+    final blocks = <Widget>[];
+    for (final event in dayEvents) {
       final start = event.startTime as DateTime;
       final end = event.endTime as DateTime;
       final segmentStart = start.isAfter(dayStart) ? start : dayStart;
@@ -630,14 +931,164 @@ class _CalendarPageState extends State<CalendarPage> {
           (segmentEnd.difference(segmentStart).inMinutes / 60 * _hourHeight)
               .clamp(28.0, _hourHeight * 24);
 
-      return Positioned(
-        left: dayIndex * dayWidth + 3,
-        top: top + 2,
-        width: dayWidth - 6,
-        height: height - 4,
-        child: _buildDraggableEventBlock(event, start, end, segmentStart),
+      blocks.add(
+        Positioned(
+          left: dayIndex * dayWidth + 3,
+          top: top + 2,
+          width: dayWidth - 6,
+          height: height - 4,
+          child: _buildDraggableEventBlock(event, start, end, segmentStart),
+        ),
       );
-    }).toList();
+    }
+
+    for (final task in dayTasks) {
+      final start = task.startDate ?? dayStart;
+      final end = task.endDate ?? start.add(const Duration(hours: 1));
+      final segmentStart = start.isAfter(dayStart) ? start : dayStart;
+      final segmentEnd = end.isBefore(dayEnd) ? end : dayEnd;
+      final top =
+          segmentStart.difference(dayStart).inMinutes / 60 * _hourHeight;
+      final height =
+          (segmentEnd.difference(segmentStart).inMinutes / 60 * _hourHeight)
+              .clamp(28.0, _hourHeight * 24);
+      blocks.add(
+        Positioned(
+          left: dayIndex * dayWidth + 3,
+          top: top + 2,
+          width: dayWidth - 6,
+          height: height - 4,
+          child: _buildDraggableTaskBlock(task, start, end, segmentStart),
+        ),
+      );
+    }
+
+    return blocks;
+  }
+
+  bool _taskOverlapsDay(TaskBreakdown task, DateTime day) {
+    final start = task.startDate;
+    final end = task.endDate;
+    if (start == null && end == null) return false;
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final effectiveStart = start ?? end!;
+    final effectiveEnd = end ?? start!.add(const Duration(hours: 1));
+    return effectiveStart.isBefore(dayEnd) && effectiveEnd.isAfter(dayStart);
+  }
+
+  Widget _buildTaskBlock(TaskBreakdown task, DateTime start, DateTime end) {
+    final color = _priorityColor(task.priority);
+    return Material(
+      color: color.withValues(alpha: 0.88),
+      elevation: 2,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        onTap: () => _openTaskDetail(task),
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.account_tree_rounded,
+                color: Colors.white,
+                size: 14,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      task.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${_timeLabel(start)} - ${_timeLabel(end)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDraggableTaskBlock(
+    TaskBreakdown task,
+    DateTime start,
+    DateTime end,
+    DateTime segmentStart,
+  ) {
+    final block = _buildTaskBlock(task, start, end);
+    return Builder(
+      builder: (eventContext) => DragTarget<_TimelineDragData>(
+        onWillAcceptWithDetails: (details) =>
+            details.data.kind != _TimelineDragKind.move,
+        onAcceptWithDetails: (details) {
+          final box = eventContext.findRenderObject() as RenderBox?;
+          final local = box?.globalToLocal(details.offset) ?? Offset.zero;
+          final minuteOffset = (local.dy / _hourHeight * 60).round();
+          final snappedMinute = (minuteOffset / 15).round() * 15;
+          final target = segmentStart.add(Duration(minutes: snappedMinute));
+          switch (details.data.kind) {
+            case _TimelineDragKind.move:
+              _moveTimelineItem(details.data.item, target);
+            case _TimelineDragKind.resizeStart:
+              _resizeTimelineStart(details.data.item, target);
+            case _TimelineDragKind.resizeEnd:
+              _resizeTimelineEnd(details.data.item, target);
+          }
+        },
+        builder: (context, candidateData, rejectedData) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Draggable<_TimelineDragData>(
+                data: _TimelineDragData(_TimelineDragKind.move, task),
+                feedback: SizedBox(width: 120, height: 48, child: block),
+                childWhenDragging: Opacity(opacity: 0.35, child: block),
+                child: block,
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: 12,
+                child: _ResizeHandle(
+                  data: _TimelineDragData(_TimelineDragKind.resizeStart, task),
+                  alignment: Alignment.topCenter,
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 12,
+                child: _ResizeHandle(
+                  data: _TimelineDragData(_TimelineDragKind.resizeEnd, task),
+                  alignment: Alignment.bottomCenter,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildDraggableEventBlock(
@@ -664,7 +1115,9 @@ class _CalendarPageState extends State<CalendarPage> {
                 child: Checkbox(
                   value: event.status == 'completed',
                   onChanged: (checked) {
-                    final newStatus = checked == true ? 'completed' : 'in_progress';
+                    final newStatus = checked == true
+                        ? 'completed'
+                        : 'in_progress';
                     event.copyWith(status: newStatus);
                     _storage.updateSchedule(event.copyWith(status: newStatus));
                     _loadEvents();
@@ -707,7 +1160,8 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return Builder(
       builder: (eventContext) => DragTarget<_TimelineDragData>(
-        onWillAcceptWithDetails: (_) => true,
+        onWillAcceptWithDetails: (details) =>
+            details.data.kind != _TimelineDragKind.move,
         onAcceptWithDetails: (details) {
           final box = eventContext.findRenderObject() as RenderBox?;
           final local = box?.globalToLocal(details.offset) ?? Offset.zero;
@@ -716,11 +1170,11 @@ class _CalendarPageState extends State<CalendarPage> {
           final target = segmentStart.add(Duration(minutes: snappedMinute));
           switch (details.data.kind) {
             case _TimelineDragKind.move:
-              _moveSchedule(details.data.schedule, target);
+              _moveTimelineItem(details.data.item, target);
             case _TimelineDragKind.resizeStart:
-              _resizeScheduleStart(details.data.schedule, target);
+              _resizeTimelineStart(details.data.item, target);
             case _TimelineDragKind.resizeEnd:
-              _resizeScheduleEnd(details.data.schedule, target);
+              _resizeTimelineEnd(details.data.item, target);
           }
         },
         builder: (context, candidateData, rejectedData) {
@@ -784,7 +1238,7 @@ class _CalendarPageState extends State<CalendarPage> {
           const Padding(
             padding: EdgeInsets.all(32),
             child: Center(
-              child: Text('暂无日程', style: TextStyle(color: Colors.grey)),
+              child: Text('暂无日程', style: TextStyle(color: AppTheme.textHint)),
             ),
           )
         else
@@ -800,8 +1254,12 @@ class _CalendarPageState extends State<CalendarPage> {
                     leading: Checkbox(
                       value: event.status == 'completed',
                       onChanged: (checked) {
-                        final newStatus = checked == true ? 'completed' : 'in_progress';
-                        _storage.updateSchedule(event.copyWith(status: newStatus));
+                        final newStatus = checked == true
+                            ? 'completed'
+                            : 'in_progress';
+                        _storage.updateSchedule(
+                          event.copyWith(status: newStatus),
+                        );
                         _loadEvents();
                       },
                     ),
@@ -853,9 +1311,9 @@ enum _TimelineDragKind { move, resizeStart, resizeEnd }
 
 class _TimelineDragData {
   final _TimelineDragKind kind;
-  final Object schedule;
+  final Object item;
 
-  const _TimelineDragData(this.kind, this.schedule);
+  const _TimelineDragData(this.kind, this.item);
 }
 
 class _ResizeHandle extends StatelessWidget {
@@ -893,4 +1351,20 @@ class _ResizeHandle extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MultiDayItem {
+  final String title;
+  final DateTime start;
+  final DateTime end;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _MultiDayItem({
+    required this.title,
+    required this.start,
+    required this.end,
+    required this.color,
+    required this.onTap,
+  });
 }

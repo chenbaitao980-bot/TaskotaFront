@@ -31,17 +31,17 @@ GitNexus impact（预估 depth=2）:
 | `openspec/project.md` | 修改：追加打包约束 |
 
 ## 验收
-- [ ] Schedule 模型有 `status` 字段（`in_progress` / `completed`）
+- [x] Schedule 模型有 `status` 字段（`in_progress` / `completed`）
 - [x] 首页今日日程列表每项前有 checkbox
 - [x] 日历周视图事件块前有 checkbox
 - [x] 日历事件列表每项前有 checkbox
-- [ ] 勾选 = 已完成，取消 = 进行中
-- [ ] 状态持久化到本地存储
-- [ ] 打包规范已写入 spec
-- [ ] 已维护 `regression-tests/cases/schedule-status-checkbox-control.md`
-- [ ] `flutter test` 通过
-- [ ] `flutter clean && flutter build windows --release` 通过
-- [ ] `gitnexus detect-changes --scope all -r smart-assistant`
+- [x] 勾选 = 已完成，取消 = 进行中
+- [x] 状态持久化到本地存储
+- [x] 打包规范已写入 spec
+- [x] 已维护 `regression-tests/cases/schedule-status-checkbox-control.md`
+- [x] `flutter test` 通过
+- [x] `flutter clean && flutter build windows --release` 通过
+- [x] `gitnexus detect-changes --scope all -r smart-assistant`
 
 ## Bug 修复记录
 无（功能性新增）

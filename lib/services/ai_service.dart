@@ -3,67 +3,59 @@ import 'package:dio/dio.dart';
 import '../core/constants/app_constants.dart';
 
 class AIService {
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: AppConstants.deepseekApiUrl,
-    headers: {
-      'Authorization': 'Bearer ${AppConstants.deepseekApiKey}',
-      'Content-Type': 'application/json',
-    },
-    connectTimeout: const Duration(seconds: 30),
-    receiveTimeout: const Duration(seconds: 60),
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: AppConstants.deepseekApiUrl,
+      headers: {
+        'Authorization': 'Bearer ${AppConstants.deepseekApiKey}',
+        'Content-Type': 'application/json',
+      },
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 60),
+    ),
+  );
 
   static const _systemPrompt = '''
-你是用户的 AI 日程管家。你的核心任务是帮助用户拆解大目标。
+你是用户的 AI 日程管家。你的核心任务是帮助用户拆解大目标，或者直接识别日程安排。
 
-## 渐进式引导规则（必须严格遵守）
+## 回复格式要求（禁止项）
 
-1. **每次只问一个最关键的问题**，不要一次性列出所有问题
-2. 从最重要到次要逐步收窄：目标理解 → 当前水平 → 可用时间 → 截止日期 → 其他约束
-3. 用简洁的自然对话方式提问，不要结构化列表
+对话中只能出现两类内容：
+1. 自然的中文对话文字
+2. 在提问末尾加一行 [OPTIONS: 选项A | 选项B | 选项C] 供 UI 渲染选项卡
 
-## 建议回复选项（必须遵守）
+**绝对禁止输出以下内容（严重违规）：**
+- 步骤编号（如"step1"、"第1步"、"step1"、"步骤1"）
+- 技术术语（如"diagnose_goal"、"classify_missing_slots"、"route_assignment"、"TaskFlow"等）
+- UI 标记（如 [TABLE_BEGIN]、[TABLE_END]、[HIERARCHY_BEGIN]、[HIERARCHY_END]）
+- 任何 `###` 或 `##` 标题标记
 
-当你的消息以"？"或"？"结尾时，必须在回复**末尾**添加一行建议回复选项：
+你的每一条回复都要像和朋友聊天一样自然，不能带任何技术痕迹。
 
-[OPTIONS: 选项A | 选项B | 选项C]
+## 规划对话流程（仅内部遵循，不要输出）
 
-根据当前提问内容生成3个最合适的选项，示例：
-- 问水平/基础 → [OPTIONS: 零基础 | 会一点点 | 有基础]
-- 问时间/频率 → [OPTIONS: 每天30分钟 | 每天1小时 | 每天2小时以上]
-- 问目标/程度 → [OPTIONS: 简单入门就好 | 达到中级水平 | 希望精通]
-- 确认理解 → [OPTIONS: 是的，没错 | 不太准确 | 让我重新说]
+按以下步骤走，但**每一步都只用自然语言表达**：
 
-选项要简短（2-6字），用半角 | 分隔。
+1. 先简单确认你理解用户的目标（一句话即可）
+2. 内心判断：当前水平、可用时间、截止日期、其他约束、偏好安排中哪些信息缺失
+3. 从缺失信息中选最重要的一条，用自然语气只问这一个问题
+4. 在问题末尾加 [OPTIONS:] 提供3个简短选项（2-6字，半角|分隔）
+5. 用户回答后，再问下一个问题，以此类推
+6. 信息收集足够后，输出完整计划：先一个 Markdown 表格（|阶段|任务|时间范围|说明|），再一个缩进列表展示层级结构。不需要任何前后标记。
+7. 最后问用户"这个计划可以吗？需要调整哪里？"
 
-## 拆解框架
-最终交付三层拆解：
-- 战略层：季度里程碑
-- 战术层：每月关键交付
-- 执行层：每周具体任务
+## 对话上下文规则
 
-## 对话阶段判断
+如果用户中途换了话题（例如先说了"踢足球"又说了"弹吉他"），则立即清空之前的话题，专注于新话题。不要混用不同话题的信息。
 
-### 第1轮（用户刚输入目标）
-- 先简洁确认你理解的目标
-- 只问 1 个最关键的问题（如"你目前在这个领域是什么水平？"）
-- 不要问其他问题，不要给建议
+## 日程识别规则
 
-### 第2轮（用户已回答第一轮）
-- 简短认可用户的回答
-- 只问下 1 个关键问题（如"你每周大约能投入多少时间？"）
-
-### 第3轮
-- 只问最后 1 个关键问题（如"你希望什么时间完成？"）
-
-### 信息充足后
-- 输出完整三层拆解计划
-- 格式：用 Markdown 结构清晰展示
-- 结尾询问"这个计划可以吗？需要调整哪里？"
-
-## 日程解析（非目标拆解时）
-如果用户只是描述一个日程时间，解析为 JSON：
+当用户输入明显是一个具体日程（如"明天下午3点开会"、"今天晚上吃饭"等含明确时间和动作的），输出 JSON：
 {"type": "schedule", "title": "...", "start_time": "ISO8601", "end_time": "ISO8601", "priority": "P2"}
+
+如果用户输入的是一个目标/愿望（如"想学日语"、"练好踢足球"、"学会弹吉他"等），按上述规划流程走。
+如果是"这周踢足球"、"周末弹吉他"这类模糊安排，按目标规划走，不要直接当日程处理。
+如果有歧义，优先按目标规划处理，并用自然语言向用户确认。
 
 始终用中文回复。保持对话自然流畅，像真人助手一样。
 
@@ -77,7 +69,10 @@ class AIService {
     Map<String, dynamic>? userProfile,
   }) async {
     final prompt = userProfile != null && userProfile.isNotEmpty
-        ? _systemPrompt.replaceFirst('{user_profile}', _formatProfile(userProfile))
+        ? _systemPrompt.replaceFirst(
+            '{user_profile}',
+            _formatProfile(userProfile),
+          )
         : _systemPrompt.replaceFirst('{user_profile}', '暂无用户画像，请通过引导式提问获取。\n');
 
     final messages = <Map<String, String>>[
@@ -86,20 +81,27 @@ class AIService {
       {'role': 'user', 'content': userMessage},
     ];
 
-    final response = await _dio.post('', data: {
-      'model': 'deepseek-chat',
-      'messages': messages,
-      'temperature': 0.7,
-      'max_tokens': 2048,
-    });
+    final response = await _dio.post(
+      '',
+      data: {
+        'model': 'deepseek-chat',
+        'messages': messages,
+        'temperature': 0.7,
+        'max_tokens': 2048,
+      },
+    );
 
     return response.data['choices'][0]['message']['content'] as String;
   }
 
   String _formatProfile(Map<String, dynamic> profile) {
     final buf = StringBuffer();
-    if (profile['name'] != null) buf.writeln('- 姓名：${profile['name']}');
-    if (profile['occupation'] != null) buf.writeln('- 职业：${profile['occupation']}');
+    if (profile['name'] != null) {
+      buf.writeln('- 姓名：${profile['name']}');
+    }
+    if (profile['occupation'] != null) {
+      buf.writeln('- 职业：${profile['occupation']}');
+    }
     if (profile['goals'] != null) {
       final goals = profile['goals'] as List;
       buf.writeln('- 目标：${goals.join('、')}');
@@ -111,7 +113,9 @@ class AIService {
         buf.writeln('- ${goals[i]} 当前水平：${levels[i]}');
       }
     }
-    buf.writeln('- 任务完成率：${((profile['completionRate'] as num?) ?? 0.0).toStringAsFixed(0)}%');
+    buf.writeln(
+      '- 任务完成率：${((profile['completionRate'] as num?) ?? 0.0).toStringAsFixed(0)}%',
+    );
     return buf.toString();
   }
 
@@ -121,7 +125,9 @@ class AIService {
     required Map<String, dynamic> existingSchedule,
     Map<String, dynamic>? userProfile,
   }) async {
-    final profileText = userProfile != null ? _formatProfile(userProfile) : '暂无';
+    final profileText = userProfile != null
+        ? _formatProfile(userProfile)
+        : '暂无';
     final messages = [
       {
         'role': 'system',
@@ -134,18 +140,23 @@ $profileText''',
       },
       {
         'role': 'user',
-        'content': '新日程：${newSchedule['title']} (${newSchedule['start']}~${newSchedule['end']})\n冲突日程：${existingSchedule['title']} (${existingSchedule['start']}~${existingSchedule['end']})\n请给出3个处理方案。',
+        'content':
+            '新日程：${newSchedule['title']} (${newSchedule['start']}~${newSchedule['end']})\n冲突日程：${existingSchedule['title']} (${existingSchedule['start']}~${existingSchedule['end']})\n请给出3个处理方案。',
       },
     ];
 
     try {
-      final response = await _dio.post('', data: {
-        'model': 'deepseek-chat',
-        'messages': messages,
-        'temperature': 0.5,
-        'max_tokens': 1024,
-      });
-      final content = response.data['choices'][0]['message']['content'] as String;
+      final response = await _dio.post(
+        '',
+        data: {
+          'model': 'deepseek-chat',
+          'messages': messages,
+          'temperature': 0.5,
+          'max_tokens': 1024,
+        },
+      );
+      final content =
+          response.data['choices'][0]['message']['content'] as String;
       final match = RegExp(r'\{.*\}', dotAll: true).firstMatch(content);
       if (match == null) return null;
       return json.decode(match.group(0)!) as Map<String, dynamic>;
@@ -164,17 +175,21 @@ $profileText''',
 {"type": "schedule", "title": "...", "start_time": "ISO8601", "end_time": "ISO8601", "priority": "P2"}
 如果是目标/愿望（如"我想学日语"），输出：
 {"type": "goal", "title": "...", "description": "..."}
-当前时间: ${DateTime.now().toIso8601String()}。只输出JSON。'''
+如果是模糊目标（如"踢足球"、"弹吉他"），按 goal 处理。
+当前时间: ${DateTime.now().toIso8601String()}。只输出JSON。''',
       },
       {'role': 'user', 'content': text},
     ];
 
-    final response = await _dio.post('', data: {
-      'model': 'deepseek-chat',
-      'messages': messages,
-      'temperature': 0.3,
-      'max_tokens': 1024,
-    });
+    final response = await _dio.post(
+      '',
+      data: {
+        'model': 'deepseek-chat',
+        'messages': messages,
+        'temperature': 0.3,
+        'max_tokens': 1024,
+      },
+    );
 
     final content = response.data['choices'][0]['message']['content'] as String;
     final jsonStr = content.trim().replaceAll(RegExp(r'^```json\s*|```$'), '');

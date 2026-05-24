@@ -43,12 +43,12 @@ GitNexus impact（depth=3，全局 UI + AI 对话逻辑）:
 - [x] AI 建议回复按钮关键词修复（时间优先于水平匹配）
 - [x] 首页今日概览去掉「进行中」统计（仅保留待办和已完成）
 - [x] 待办和已完成计数按今日过滤
-- [ ] AI 助手页面展示快捷选项（如"拆解目标""安排日程"等），点击即触发对应对话流
-- [ ] AI 提问时自动显示建议回复按钮（如"水平 → 零基础/会一点点/有基础"），点击可作答
-- [ ] AI 每个阶段只提 1-2 个问题，不一次性列出所有
-- [ ] 输入框保留为备选输入方式（非唯一入口）
-- [ ] 已维护 `regression-tests/cases/claude-ui-and-progressive-ai.md`
-- [ ] `flutter clean && flutter build windows --release` 通过
+- [x] AI 助手页面展示快捷选项（如"拆解目标""安排日程"等），点击即触发对应对话流
+- [x] AI 提问时自动显示建议回复按钮（如"水平 → 零基础/会一点点/有基础"），点击可作答
+- [x] AI 每个阶段只提 1-2 个问题，不一次性列出所有
+- [x] 输入框保留为备选输入方式（非唯一入口）
+- [x] 已维护 `regression-tests/cases/claude-ui-and-progressive-ai.md`
+- [x] `flutter clean && flutter build windows --release` 通过
 
 ## Bug 修复记录
 无（功能性改造）

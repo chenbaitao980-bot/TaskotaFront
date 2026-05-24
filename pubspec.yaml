@@ -36,6 +36,9 @@ dependencies:
   
   # 通知（用本地计划；flutter_local_notifications_windows 在 Dart 3.11+ AOT 编译时有 FFI 崩溃，仅在 Android/iOS/macOS 启用）
   
+  # 自定义字体
+  google_fonts: ^6.2.1
+
   # UI组件
   flutter_screenutil: ^5.9.3
   shimmer: ^3.0.0

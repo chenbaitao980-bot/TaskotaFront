@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../models/entities/schedule.dart';
 import '../../../models/entities/task_breakdown.dart';
 import '../../../services/local_storage_service.dart';
@@ -29,7 +30,7 @@ class _TaskListPageState extends State<TaskListPage> {
 
   Future<void> _loadTasks() async {
     await _storage.init();
-    final tasks = _storage.getTasks(status: widget.status);
+    final tasks = _storage.getTasks(status: widget.status, rootOnly: true);
     final pendingSchedules = widget.status == 'pending'
         ? _storage.getSchedules()
         : <Schedule>[];
@@ -84,7 +85,7 @@ class _TaskListPageState extends State<TaskListPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除任务'),
-        content: Text('确定删除“${task.title}”吗？'),
+        content: Text('确定删除"${task.title}"吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -92,7 +93,7 @@ class _TaskListPageState extends State<TaskListPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
             child: const Text('删除'),
           ),
         ],
@@ -184,10 +185,10 @@ class _TaskListPageState extends State<TaskListPage> {
   };
 
   Color _priorityColor(String priority) => switch (priority) {
-    'P0' => const Color(0xFFE53935),
-    'P1' => const Color(0xFFFF9800),
-    'P2' => const Color(0xFF43A047),
-    _ => const Color(0xFF1E88E5),
+    'P0' => AppTheme.priorityP0,
+    'P1' => AppTheme.priorityP1,
+    'P2' => AppTheme.priorityP2,
+    _ => AppTheme.priorityP3,
   };
 }
 
@@ -218,44 +219,169 @@ class _TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        onTap: onTap,
-        leading: CircleAvatar(
-          backgroundColor: priorityColor.withValues(alpha: 0.14),
-          child: Icon(statusIcon, color: priorityColor),
-        ),
-        title: Text(task.title),
-        subtitle: Text(
-          [
-            statusLabel,
-            priorityLabel,
-            if (dateLabel != null) '截止 $dateLabel',
-          ].join(' · '),
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') {
-              onEdit();
-            } else if (value == 'delete') {
-              onDelete();
-            } else {
-              onSetStatus(value);
-            }
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'edit', child: Text('编辑')),
-            PopupMenuDivider(),
-            PopupMenuItem(value: 'pending', child: Text('设为待办')),
-            PopupMenuItem(value: 'in_progress', child: Text('设为进行中')),
-            PopupMenuItem(value: 'completed', child: Text('设为已完成')),
-            PopupMenuDivider(),
-            PopupMenuItem(
-              value: 'delete',
-              child: Text('删除', style: TextStyle(color: Colors.red)),
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Row(
+        children: [
+          // Color bar
+          Container(
+            width: 4,
+            decoration: BoxDecoration(
+              color: priorityColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                bottomLeft: Radius.circular(14),
+              ),
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(14),
+                  bottomRight: Radius.circular(14),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: priorityColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(statusIcon, color: priorityColor, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              task.title,
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: priorityColor.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    priorityLabel,
+                                    style: TextStyle(
+                                      color: priorityColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  statusLabel,
+                                  style: const TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                if (dateLabel != null) ...[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '截止 $dateLabel',
+                                    style: const TextStyle(
+                                      color: AppTheme.textHint,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            onEdit();
+                          } else if (value == 'delete') {
+                            onDelete();
+                          } else {
+                            onSetStatus(value);
+                          }
+                        },
+                        icon: const Icon(
+                          Icons.more_horiz,
+                          color: AppTheme.textHint,
+                          size: 20,
+                        ),
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.edit_outlined,
+                                  size: 18,
+                                  color: AppTheme.textPrimary,
+                                ),
+                                SizedBox(width: 8),
+                                Text('编辑'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'pending',
+                            child: Text('设为待办'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'in_progress',
+                            child: Text('设为进行中'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'completed',
+                            child: Text('设为已完成'),
+                          ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text(
+                              '删除',
+                              style: TextStyle(color: AppTheme.error),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -269,18 +395,91 @@ class _SchedulePendingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        onTap: onTap,
-        leading: CircleAvatar(
-          backgroundColor: Colors.green.withValues(alpha: 0.14),
-          child: const Icon(Icons.event_note, color: Colors.green),
-        ),
-        title: Text(schedule.title),
-        subtitle: Text(
-          '日程 · ${_timeLabel(schedule.startTime)} - ${_timeLabel(schedule.endTime)}',
-        ),
-        trailing: const Icon(Icons.calendar_today_outlined),
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            decoration: BoxDecoration(
+              color: AppTheme.success,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                bottomLeft: Radius.circular(14),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(14),
+                  bottomRight: Radius.circular(14),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: AppTheme.success.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.event_note,
+                          color: AppTheme.success,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              schedule.title,
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '日程 · ${_timeLabel(schedule.startTime)} - ${_timeLabel(schedule.endTime)}',
+                              style: const TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.calendar_today_outlined,
+                        size: 18,
+                        color: AppTheme.textHint,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -303,9 +502,15 @@ class _EmptyTaskState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.assignment_outlined, size: 48, color: Colors.grey[400]),
-            const SizedBox(height: 12),
-            Text('$title暂无任务', style: TextStyle(color: Colors.grey[600])),
+            Icon(Icons.inbox_rounded, size: 56, color: AppTheme.textHint),
+            const SizedBox(height: 16),
+            Text(
+              '$title暂无任务',
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 15,
+              ),
+            ),
           ],
         ),
       ),

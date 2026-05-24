@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/local_storage_service.dart';
 
@@ -13,10 +14,30 @@ class _OnboardingPageState extends State<OnboardingPage> {
   int _step = 0;
   final _nameController = TextEditingController();
   final _occupationController = TextEditingController();
-  final List<String> _goals = ['', '', ''];
+  late final List<TextEditingController> _goalControllers;
   final List<String> _levels = ['', '', ''];
 
   static const _levelOptions = ['零基础', '初级入门', '有基础', '中级', '高级'];
+
+  @override
+  void initState() {
+    super.initState();
+    _goalControllers = List.generate(3, (_) => TextEditingController());
+    for (final controller in _goalControllers) {
+      controller.addListener(_refreshGoalValidation);
+    }
+  }
+
+  List<String> get _goals => _goalControllers
+      .map((controller) => controller.text.trim())
+      .where((goal) => goal.isNotEmpty)
+      .toList();
+
+  bool get _canContinueGoals => _goals.isNotEmpty;
+
+  void _refreshGoalValidation() {
+    if (mounted) setState(() {});
+  }
 
   void _nextStep() {
     if (_step < 2) {
@@ -32,11 +53,30 @@ class _OnboardingPageState extends State<OnboardingPage> {
     await storage.saveExplicitProfile({
       'name': _nameController.text.trim(),
       'occupation': _occupationController.text.trim(),
-      'goals': _goals.where((g) => g.isNotEmpty).toList(),
-      'levels': _levels.where((l) => l.isNotEmpty).toList(),
+      'goals': _goals,
+      'levels': _levels.where((level) => level.isNotEmpty).toList(),
     });
     await storage.setOnboardingCompleted();
-    Navigator.of(context).pop(true);
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
+  Future<void> _skipOnboarding() async {
+    final storage = LocalStorageService();
+    await storage.init();
+    await storage.setOnboardingCompleted();
+    if (mounted) Navigator.of(context).pop(false);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _occupationController.dispose();
+    for (final controller in _goalControllers) {
+      controller
+        ..removeListener(_refreshGoalValidation)
+        ..dispose();
+    }
+    super.dispose();
   }
 
   @override
@@ -46,21 +86,30 @@ class _OnboardingPageState extends State<OnboardingPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        automaticallyImplyLeading: false,
         leading: _step > 0
             ? IconButton(
-                icon: const Icon(Icons.arrow_back),
+                tooltip: '上一步',
+                icon: const Icon(Icons.arrow_back_ios_new, size: 18),
                 onPressed: () => setState(() => _step--),
               )
             : null,
+        actions: [
+          IconButton(
+            tooltip: '返回首页',
+            icon: const Icon(Icons.close_rounded, size: 20),
+            onPressed: _skipOnboarding,
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildProgress(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 36),
               Expanded(child: _buildStep()),
             ],
           ),
@@ -78,8 +127,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
         ),
         const Spacer(),
         ...List.generate(3, (i) {
-          return Container(
-            width: 24,
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: i == _step ? 32 : 24,
             height: 4,
             margin: const EdgeInsets.only(left: 4),
             decoration: BoxDecoration(
@@ -93,64 +143,46 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   Widget _buildStep() {
-    switch (_step) {
-      case 0:
-        return _buildBasicInfo();
-      case 1:
-        return _buildGoals();
-      case 2:
-        return _buildLevels();
-      default:
-        return const SizedBox();
-    }
+    return switch (_step) {
+      0 => _buildBasicInfo(),
+      1 => _buildGoals(),
+      2 => _buildLevels(),
+      _ => const SizedBox(),
+    };
   }
 
   Widget _buildBasicInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('先认识一下你 👋',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
+        Text(
+          '先认识一下你',
+          style: GoogleFonts.instrumentSerifTextTheme().displaySmall?.copyWith(
+            color: AppTheme.textPrimary,
+            fontSize: 28,
+          ),
+        ),
         const SizedBox(height: 8),
-        const Text('这些信息帮助 AI 更好地了解你的背景',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
+        const Text(
+          '这些信息都是可选项，之后也可以再补充。',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+        ),
         const SizedBox(height: 32),
         TextField(
           controller: _nameController,
-          style: const TextStyle(color: AppTheme.textPrimary),
-          decoration: const InputDecoration(
-            labelText: '你的名字',
-            labelStyle: TextStyle(color: AppTheme.textSecondary),
-            filled: true,
-            fillColor: AppTheme.bgCard,
-            border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.all(Radius.circular(12))),
-          ),
+          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15),
+          decoration: const InputDecoration(labelText: '你的名字（可选）'),
         ),
         const SizedBox(height: 16),
         TextField(
           controller: _occupationController,
-          style: const TextStyle(color: AppTheme.textPrimary),
-          decoration: const InputDecoration(
-            labelText: '职业（选填）',
-            labelStyle: TextStyle(color: AppTheme.textSecondary),
-            filled: true,
-            fillColor: AppTheme.bgCard,
-            border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.all(Radius.circular(12))),
-          ),
+          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15),
+          decoration: const InputDecoration(labelText: '职业（可选）'),
         ),
         const Spacer(),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _nextStep,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('下一步', style: TextStyle(fontSize: 16)),
-          ),
-        ),
+        _primaryButton('下一步', _nextStep),
+        const SizedBox(height: 8),
+        _secondaryButton('暂不填写，进入首页', _skipOnboarding),
         const SizedBox(height: 16),
       ],
     );
@@ -160,111 +192,158 @@ class _OnboardingPageState extends State<OnboardingPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('你想达成什么目标？',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
+        Text(
+          '你想达成什么目标？',
+          style: GoogleFonts.instrumentSerifTextTheme().displaySmall?.copyWith(
+            color: AppTheme.textPrimary,
+            fontSize: 28,
+          ),
+        ),
         const SizedBox(height: 8),
-        const Text('最多 3 个，比如"考过N1""存5万""减10斤"',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
-        const SizedBox(height: 32),
+        const Text(
+          '最多 3 个，比如“考过 N1”“学吉他”“减 10 斤”。',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+        ),
+        const SizedBox(height: 28),
         ...List.generate(3, (i) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: TextField(
-              onChanged: (v) => _goals[i] = v,
-              style: const TextStyle(color: AppTheme.textPrimary),
+              controller: _goalControllers[i],
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15),
               decoration: InputDecoration(
-                labelText: '目标 ${i + 1}（${i == 0 ? '必填' : '选填'}）',
-                labelStyle: const TextStyle(color: AppTheme.textSecondary),
-                filled: true,
-                fillColor: AppTheme.bgCard,
-                border: const OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.all(Radius.circular(12))),
+                labelText: '目标 ${i + 1}（${i == 0 ? '至少填一个' : '可选'}）',
               ),
             ),
           );
         }),
         const Spacer(),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _goals.first.isNotEmpty ? _nextStep : null,
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('下一步', style: TextStyle(fontSize: 16)),
-          ),
-        ),
+        _primaryButton('下一步', _canContinueGoals ? _nextStep : null),
+        const SizedBox(height: 8),
+        _secondaryButton('暂不填写，进入首页', _skipOnboarding),
         const SizedBox(height: 16),
       ],
     );
   }
 
   Widget _buildLevels() {
-    final nonEmptyGoals = _goals.where((g) => g.isNotEmpty).toList();
+    final goals = _goals;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('你目前在这些领域是什么水平？',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        const Text('这帮助 AI 为你定制个性化的任务拆解',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 15)),
-        const SizedBox(height: 24),
-        ...nonEmptyGoals.asMap().entries.map((entry) {
-          final idx = entry.key;
-          final goal = entry.value;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(goal,
-                    style: const TextStyle(color: AppTheme.primaryColor, fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _levelOptions.map((level) {
-                    final selected = _levels[idx] == level;
-                    return ChoiceChip(
-                      label: Text(level),
-                      selected: selected,
-                      selectedColor: AppTheme.primaryColor.withValues(alpha: 0.3),
-                      backgroundColor: AppTheme.bgCard,
-                      labelStyle: TextStyle(
-                        color: selected ? AppTheme.primaryColor : AppTheme.textSecondary,
-                      ),
-                      onSelected: (_) => setState(() => _levels[idx] = level),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          );
-        }),
-        const Spacer(),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: () => _complete(),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('开始使用', style: TextStyle(fontSize: 16)),
+        Text(
+          '现在是什么水平？',
+          style: GoogleFonts.instrumentSerifTextTheme().displaySmall?.copyWith(
+            color: AppTheme.textPrimary,
+            fontSize: 28,
           ),
         ),
+        const SizedBox(height: 8),
+        const Text(
+          '可以跳过，AI 会在拆解任务时继续追问。',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+        ),
+        const SizedBox(height: 28),
+        Expanded(
+          child: ListView(
+            children: goals.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final goal = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        goal,
+                        style: const TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _levelOptions.map((level) {
+                        final selected = _levels[idx] == level;
+                        return ChoiceChip(
+                          label: Text(
+                            level,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: selected
+                                  ? AppTheme.primaryColor
+                                  : AppTheme.textSecondary,
+                            ),
+                          ),
+                          selected: selected,
+                          selectedColor: AppTheme.primaryColor.withValues(
+                            alpha: 0.12,
+                          ),
+                          backgroundColor: AppTheme.bgInput,
+                          side: BorderSide(
+                            color: selected
+                                ? AppTheme.primaryColor
+                                : AppTheme.borderSubtle,
+                            width: selected ? 1.5 : 0.5,
+                          ),
+                          onSelected: (_) =>
+                              setState(() => _levels[idx] = level),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        _primaryButton('开始使用', _complete),
+        const SizedBox(height: 8),
+        _secondaryButton('跳过水平，进入首页', _skipOnboarding),
         const SizedBox(height: 16),
       ],
     );
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _occupationController.dispose();
-    super.dispose();
+  Widget _primaryButton(String label, VoidCallback? onPressed) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primaryColor,
+          disabledBackgroundColor: AppTheme.primaryColor.withValues(alpha: 0.4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 16)),
+      ),
+    );
+  }
+
+  Widget _secondaryButton(String label, VoidCallback onPressed) {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: TextButton(onPressed: onPressed, child: Text(label)),
+    );
   }
 }

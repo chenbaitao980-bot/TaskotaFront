@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
 
@@ -12,16 +14,30 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  late final AnimationController _animController;
+  late final Animation<double> _fadeIn;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeIn = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
+    _animController.forward();
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
@@ -30,16 +46,15 @@ class _LoginPageState extends State<LoginPage> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请输入邮箱和密码')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入邮箱和密码')),
+      );
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // Try Supabase auth first, fall back to local
       if (AppConstants.supabaseUrl == 'YOUR_SUPABASE_URL') {
         final storage = LocalStorageService();
         await storage.init();
@@ -51,26 +66,22 @@ class _LoginPageState extends State<LoginPage> {
           }
         } else {
           if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('密码错误')));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('密码错误')),
+            );
           }
         }
       } else {
-        context.read<AuthBloc>().add(
-          LoggedIn(email: email, password: password),
-        );
+        context.read<AuthBloc>().add(LoggedIn(email: email, password: password));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('登录失败: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('登录失败: $e')),
+        );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -81,9 +92,9 @@ class _LoginPageState extends State<LoginPage> {
         if (state is Authenticated || state is LocalAuthenticated) {
           AppRouter.navigateToAndReplace(context, AppRouter.home);
         } else if (state is AuthError) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(state.message)));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message)),
+          );
         }
       },
       builder: (context, state) {
@@ -91,102 +102,135 @@ class _LoginPageState extends State<LoginPage> {
 
         return Scaffold(
           body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.smart_toy,
-                    size: 80,
-                    color: Colors.deepPurple,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    '智能小管家',
-                    style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '你的AI日程管家',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(color: Colors.grey[600]),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 48),
-                  TextField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: '邮箱',
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: '密码',
-                      prefixIcon: const Icon(Icons.lock_outlined),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {},
-                      child: const Text('忘记密码？'),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: isSubmitting ? null : _login,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: isSubmitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('登录', style: TextStyle(fontSize: 16)),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+            child: FadeTransition(
+              opacity: _fadeIn,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
+                  child: Column(
                     children: [
-                      Text('还没有账号？', style: TextStyle(color: Colors.grey[600])),
-                      TextButton(
-                        onPressed: () {
-                          AppRouter.navigateTo(context, AppRouter.register);
-                        },
-                        child: const Text('立即注册'),
+                      const Spacer(flex: 2),
+
+                      // Logo & Title
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(
+                          Icons.smart_toy_rounded,
+                          size: 44,
+                          color: AppTheme.primaryColor,
+                        ),
                       ),
+                      const SizedBox(height: 20),
+                      Text(
+                        '智能小管家',
+                        style: GoogleFonts.instrumentSerifTextTheme().displayMedium?.copyWith(
+                          color: AppTheme.textPrimary,
+                          fontSize: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '你的 AI 日程管家',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 15,
+                        ),
+                      ),
+
+                      const Spacer(flex: 2),
+
+                      // Form
+                      TextField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: '邮箱',
+                          prefixIcon: Icon(Icons.email_outlined, size: 20),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        decoration: InputDecoration(
+                          labelText: '密码',
+                          prefixIcon: const Icon(Icons.lock_outlined, size: 20),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                            ),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {},
+                          child: const Text('忘记密码？'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Login Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: isSubmitting ? null : _login,
+                          style: ElevatedButton.styleFrom(
+                            elevation: 0,
+                            backgroundColor: AppTheme.primaryColor,
+                            disabledBackgroundColor: AppTheme.primaryColor.withValues(alpha: 0.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('登录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+
+                      const Spacer(),
+
+                      // Register link
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('还没有账号？', style: TextStyle(color: AppTheme.textHint, fontSize: 14)),
+                          TextButton(
+                            onPressed: () => AppRouter.navigateTo(context, AppRouter.register),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            child: const Text('立即注册'),
+                          ),
+                        ],
+                      ),
+
+                      const Spacer(),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../../core/theme/app_theme.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -17,6 +19,7 @@ class ProfilePage extends StatelessWidget {
             _buildStatsSection(context),
             const SizedBox(height: 16),
             _buildMenuSection(),
+            const SizedBox(height: 32),
           ],
         ),
       ),
@@ -25,23 +28,28 @@ class ProfilePage extends StatelessWidget {
 
   Widget _buildProfileHeader(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 28),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
+        gradient: AppTheme.primaryGradient,
         borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(30),
-          bottomRight: Radius.circular(30),
+          bottomLeft: Radius.circular(32),
+          bottomRight: Radius.circular(32),
         ),
       ),
       child: Column(
         children: [
-          const CircleAvatar(
-            radius: 50,
-            backgroundColor: Colors.white,
-            child: Icon(
-              Icons.person,
-              size: 50,
-              color: Colors.grey,
+          // Avatar with glow
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 2),
+            ),
+            child: const CircleAvatar(
+              radius: 44,
+              backgroundColor: Colors.white,
+              child: Icon(Icons.person_rounded, size: 48, color: AppTheme.textHint),
             ),
           ),
           const SizedBox(height: 16),
@@ -49,33 +57,32 @@ class ProfilePage extends StatelessWidget {
             '用户昵称',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             'user@example.com',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.75),
               fontSize: 14,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           OutlinedButton.icon(
-            onPressed: () {
-              // TODO: 编辑资料
-            },
-            icon: const Icon(Icons.edit, color: Colors.white),
+            onPressed: () {},
+            icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 16),
             label: const Text(
               '编辑资料',
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(color: Colors.white, fontSize: 14),
             ),
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.white),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.6)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
             ),
           ),
         ],
@@ -88,105 +95,118 @@ class ProfilePage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Expanded(
-            child: _buildStatCard(context, '总任务', '128', Icons.assignment),
+          Expanded(child: _buildStatCard('总任务', '128', Icons.assignment_rounded)),
+          const SizedBox(width: 10),
+          Expanded(child: _buildStatCard('完成率', '78%', Icons.trending_up_rounded)),
+          const SizedBox(width: 10),
+          Expanded(child: _buildStatCard('连续', '15天', Icons.local_fire_department_rounded)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: AppTheme.primaryColor, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.jetBrainsMonoTextTheme().headlineSmall?.copyWith(
+              color: AppTheme.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildStatCard(context, '完成率', '78%', Icons.trending_up),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildStatCard(context, '连续', '15天', Icons.local_fire_department),
+          Text(
+            label,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(BuildContext context, String label, String value, IconData icon) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget _buildMenuSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppTheme.cardShadow,
+        ),
         child: Column(
           children: [
-            Icon(icon, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
+            _buildMenuItem(Icons.settings_rounded, '设置', () {}, showTop: true),
+            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            _buildMenuItem(Icons.notifications_rounded, '提醒设置', () {}),
+            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            _buildMenuItem(Icons.palette_outlined, '主题', () {}),
+            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            _buildMenuItem(Icons.help_outline_rounded, '帮助与反馈', () {}),
+            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            _buildMenuItem(Icons.info_outline_rounded, '关于', () {}),
+            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            _buildMenuItem(Icons.logout_rounded, '退出登录', () {}, isDestructive: true, showBottom: true),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMenuSection() {
-    return Column(
-      children: [
-        _buildMenuItem(
-          icon: Icons.settings,
-          title: '设置',
-          onTap: () {},
-        ),
-        _buildMenuItem(
-          icon: Icons.notifications,
-          title: '提醒设置',
-          onTap: () {},
-        ),
-        _buildMenuItem(
-          icon: Icons.palette,
-          title: '主题',
-          onTap: () {},
-        ),
-        _buildMenuItem(
-          icon: Icons.help_outline,
-          title: '帮助与反馈',
-          onTap: () {},
-        ),
-        _buildMenuItem(
-          icon: Icons.info_outline,
-          title: '关于',
-          onTap: () {},
-        ),
-        const Divider(),
-        _buildMenuItem(
-          icon: Icons.logout,
-          title: '退出登录',
-          textColor: Colors.red,
-          onTap: () {
-            // TODO: 退出登录
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMenuItem({
-    required IconData icon,
-    required String title,
-    Color? textColor,
-    required VoidCallback onTap,
+  Widget _buildMenuItem(
+    IconData icon,
+    String title,
+    VoidCallback onTap, {
+    bool isDestructive = false,
+    bool showTop = false,
+    bool showBottom = false,
   }) {
-    return ListTile(
-      leading: Icon(icon, color: textColor),
-      title: Text(
-        title,
-        style: TextStyle(color: textColor),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.vertical(
+          top: showTop ? const Radius.circular(16) : Radius.zero,
+          bottom: showBottom ? const Radius.circular(16) : Radius.zero,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: isDestructive ? AppTheme.error : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: isDestructive ? AppTheme.error : AppTheme.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: AppTheme.textHint,
+              ),
+            ],
+          ),
+        ),
       ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
     );
   }
 }

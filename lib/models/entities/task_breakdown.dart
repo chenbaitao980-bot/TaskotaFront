@@ -9,6 +9,7 @@ class TaskBreakdown with _$TaskBreakdown {
     required String id,
     required String userId,
     String? parentGoalId,
+    String? parentTaskId,
     String? parentScheduleId,
     required String title,
     String? description,

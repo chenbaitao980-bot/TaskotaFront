@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
@@ -9,6 +10,7 @@ import '../calendar/calendar_page.dart';
 import '../ai_chat/ai_chat_page.dart';
 import '../profile/profile_page.dart';
 import '../onboarding/onboarding_page.dart';
+import '../task/create_task_page.dart';
 import '../task/task_list_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -20,19 +22,22 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
+  int _calendarRefreshToken = 0;
   final LocalStorageService _storage = LocalStorageService();
   int _pendingCount = 0;
   int _completedCount = 0;
   bool _storageReady = false;
+  bool _onboardingPromptChecked = false;
 
   @override
   void initState() {
     super.initState();
     _initStorage();
-    _checkOnboarding();
   }
 
   void _checkOnboarding() {
+    if (_onboardingPromptChecked || _storage.onboardingCompleted) return;
+    _onboardingPromptChecked = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_storage.onboardingCompleted && mounted) {
         Navigator.push(
@@ -56,7 +61,7 @@ class _HomePageState extends State<HomePage> {
         onEditSchedule: _editSchedule,
         onDeleteSchedule: _deleteSchedule,
       ),
-      const CalendarPage(),
+      CalendarPage(refreshToken: _calendarRefreshToken),
       const AiChatPage(),
       const ProfilePage(),
     ];
@@ -66,6 +71,7 @@ class _HomePageState extends State<HomePage> {
     await _storage.init();
     _storageReady = true;
     _loadStats();
+    _checkOnboarding();
   }
 
   Future<void> _ensureStorageReady() async {
@@ -79,26 +85,41 @@ class _HomePageState extends State<HomePage> {
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = todayStart.add(const Duration(days: 1));
     final tasks = _storage.getTasks();
-    final todaySchedules = _storage.getSchedules(startDate: todayStart, endDate: todayEnd);
+    final todaySchedules = _storage.getSchedules(
+      startDate: todayStart,
+      endDate: todayEnd,
+    );
     setState(() {
-      // 待办：时间段涉及今日且未完成的
       _pendingCount =
-          tasks.where((t) => t.status == 'pending' && _timeRangeInvolvesToday(t.startDate, t.endDate)).length
-          + todaySchedules.where((s) => s.status != 'completed').length;
-      // 已完成：今日标记为已完成的
+          tasks
+              .where(
+                (t) =>
+                    t.status == 'pending' &&
+                    _timeRangeInvolvesToday(t.startDate, t.endDate),
+              )
+              .length +
+          todaySchedules.where((s) => s.status != 'completed').length;
       _completedCount =
-          tasks.where((t) => t.status == 'completed' && _isSameDay(t.updatedAt, now)).length
-          + todaySchedules.where((s) => s.status == 'completed' && _isSameDay(s.updatedAt, now)).length;
+          tasks
+              .where(
+                (t) => t.status == 'completed' && _isSameDay(t.updatedAt, now),
+              )
+              .length +
+          todaySchedules
+              .where(
+                (s) => s.status == 'completed' && _isSameDay(s.updatedAt, now),
+              )
+              .length;
     });
-    // 更新隐式画像
     _updateImplicitProfile(tasks, todaySchedules);
   }
 
   void _updateImplicitProfile(List tasks, List todaySchedules) {
     final totalCreated = tasks.length;
     final totalCompleted = tasks.where((t) => t.status == 'completed').length;
-    final completionRate = totalCreated > 0 ? (totalCompleted / totalCreated).clamp(0.0, 1.0) : 0.0;
-
+    final completionRate = totalCreated > 0
+        ? (totalCompleted / totalCreated).clamp(0.0, 1.0)
+        : 0.0;
     _storage.updateImplicitProfile({
       'avgTaskCompletionRate': completionRate,
       'totalTasks': totalCreated,
@@ -107,7 +128,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  /// 判断时间范围是否涉及今日（无时间范围也算涉及）
   bool _timeRangeInvolvesToday(DateTime? start, DateTime? end) {
     if (start == null || end == null) return true;
     final now = DateTime.now();
@@ -116,7 +136,6 @@ class _HomePageState extends State<HomePage> {
     return start.isBefore(todayEnd) && end.isAfter(todayStart);
   }
 
-  /// 判断两个 DateTime 是否在同一天
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
@@ -152,6 +171,9 @@ class _HomePageState extends State<HomePage> {
           description: newSchedule.description,
         );
         _loadStats();
+        if (mounted) {
+          setState(() => _calendarRefreshToken++);
+        }
         if (mounted) {
           ScaffoldMessenger.of(
             context,
@@ -196,6 +218,11 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    if (result == 'add_subtask') {
+      await _createSubtaskForSchedule(schedule);
+      return;
+    }
+
     if (result != null && result is Map<String, dynamic>) {
       final updated = schedule.copyWith(
         title: result['title'] as String,
@@ -207,9 +234,32 @@ class _HomePageState extends State<HomePage> {
       await _storage.updateSchedule(updated);
       _loadStats();
       if (mounted) {
+        setState(() => _calendarRefreshToken++);
+      }
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('日程已更新')));
+      }
+    }
+  }
+
+  Future<void> _createSubtaskForSchedule(dynamic schedule) async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateTaskPage(
+          parentScheduleId: schedule.id as String,
+          initialStartDate: schedule.startTime as DateTime,
+          initialEndDate: schedule.endTime as DateTime,
+        ),
+      ),
+    );
+    if (created == true) {
+      await _ensureStorageReady();
+      _loadStats();
+      if (mounted) {
+        setState(() => _calendarRefreshToken++);
       }
     }
   }
@@ -227,7 +277,7 @@ class _HomePageState extends State<HomePage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
             child: const Text('删除'),
           ),
         ],
@@ -237,6 +287,9 @@ class _HomePageState extends State<HomePage> {
     if (confirm == true) {
       await _storage.deleteSchedule(schedule.id as String);
       _loadStats();
+      if (mounted) {
+        setState(() => _calendarRefreshToken++);
+      }
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -249,41 +302,119 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _buildPages()),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: '首页',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today_outlined),
-            activeIcon: Icon(Icons.calendar_today),
-            label: '日历',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            activeIcon: Icon(Icons.chat_bubble),
-            label: 'AI助手',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: '我的',
-          ),
-        ],
-      ),
+      bottomNavigationBar: _buildBottomNav(),
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
               onPressed: _createSchedule,
+              elevation: 2,
               child: const Icon(Icons.add),
             )
           : null,
     );
   }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        border: const Border(
+          top: BorderSide(color: AppTheme.borderSubtle, width: 0.5),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+              if (index == 1) {
+                _calendarRefreshToken++;
+              }
+            });
+          },
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          items: [
+            _navItem(0, Icons.home_rounded, Icons.home_rounded, '首页'),
+            _navItem(
+              1,
+              Icons.calendar_month_outlined,
+              Icons.calendar_month,
+              '日历',
+            ),
+            _navItem(
+              2,
+              Icons.chat_bubble_outline_rounded,
+              Icons.chat_bubble_rounded,
+              'AI助手',
+            ),
+            _navItem(
+              3,
+              Icons.person_outline_rounded,
+              Icons.person_rounded,
+              '我的',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  BottomNavigationBarItem _navItem(
+    int index,
+    IconData outlined,
+    IconData filled,
+    String label,
+  ) {
+    final isSelected = _currentIndex == index;
+    return BottomNavigationBarItem(
+      icon: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(outlined, size: 24),
+          if (isSelected)
+            Container(
+              margin: const EdgeInsets.only(top: 2),
+              width: 4,
+              height: 4,
+              decoration: const BoxDecoration(
+                color: AppTheme.primaryColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+        ],
+      ),
+      activeIcon: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(filled, size: 24),
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            width: 4,
+            height: 4,
+            decoration: const BoxDecoration(
+              color: AppTheme.primaryColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ],
+      ),
+      label: label,
+    );
+  }
 }
+
+// ────────────────────────────────────────────────────────────
+// Home Content
+// ────────────────────────────────────────────────────────────
 
 class _HomeContent extends StatelessWidget {
   final LocalStorageService storage;
@@ -315,24 +446,23 @@ class _HomeContent extends StatelessWidget {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('早上好！', style: Theme.of(context).textTheme.displaySmall),
-                  const SizedBox(height: 8),
-                  Text(
-                    pendingCount > 0 ? '今天有$pendingCount个待办事项' : '今天没有待办事项',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
+                  const SizedBox(height: 12),
+                  // Greeting
+                  _buildGreeting(),
                   const SizedBox(height: 24),
+                  // Overview Card
                   _buildTodayOverview(),
                   const SizedBox(height: 24),
+                  // Quick Actions
                   _buildQuickActions(context),
                   const SizedBox(height: 24),
+                  // Today's Schedules
                   _buildRecentSchedules(context),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -342,69 +472,99 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildTodayOverview() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: AppTheme.primaryGradient,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '今日概览',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+  Widget _buildGreeting() {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? '早上好'
+        : hour < 18
+        ? '下午好'
+        : '晚上好';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$greeting！',
+          style: GoogleFonts.instrumentSerifTextTheme().displaySmall?.copyWith(
+            color: AppTheme.textPrimary,
+            fontSize: 26,
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatItem('待办', '$pendingCount', Icons.check_circle_outline),
-              _buildStatItem('已完成', '$completedCount', Icons.done_all),
-            ],
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          pendingCount > 0 ? '今天有 $pendingCount 个待办事项' : '今天没有待办事项',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+        ),
+      ],
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon) {
-    final status = switch (label) {
-      '待办' => 'pending',
-      '已完成' => 'completed',
-      _ => 'pending',
-    };
-
-    return Expanded(
-      child: InkWell(
-        onTap: () => onOpenTaskStatus(status, label),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            children: [
-              Icon(icon, color: Colors.white70, size: 28),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                label,
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-            ],
+  Widget _buildTodayOverview() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          // Coral accent bar
+          Container(
+            height: 3,
+            decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '今日概览',
+                      style: GoogleFonts.interTextTheme().titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatCard(
+                        label: '待办',
+                        value: '$pendingCount',
+                        icon: Icons.check_circle_outline,
+                        color: AppTheme.primaryColor,
+                        onTap: () => onOpenTaskStatus('pending', '待办'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _StatCard(
+                        label: '已完成',
+                        value: '$completedCount',
+                        icon: Icons.done_all_rounded,
+                        color: AppTheme.success,
+                        onTap: () => onOpenTaskStatus('completed', '已完成'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -413,57 +573,32 @@ class _HomeContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('快捷操作', style: Theme.of(context).textTheme.headlineMedium),
-        const SizedBox(height: 12),
+        Text('快捷操作', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 14),
         Row(
           children: [
             Expanded(
-              child: _buildActionCard(
-                '语音录入',
-                Icons.mic,
-                AppTheme.primaryColor,
-                onNavigateToChat,
+              child: _ActionCard(
+                label: '语音录入',
+                icon: Icons.mic_rounded,
+                color: AppTheme.primaryColor,
+                bgColor: AppTheme.primaryColor.withValues(alpha: 0.08),
+                onTap: onNavigateToChat,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _buildActionCard(
-                'AI拆解目标',
-                Icons.auto_fix_high,
-                AppTheme.primaryColor,
-                onNavigateToChat,
+              child: _ActionCard(
+                label: 'AI拆解目标',
+                icon: Icons.auto_fix_high_rounded,
+                color: AppTheme.primaryColor,
+                bgColor: AppTheme.primaryColor.withValues(alpha: 0.08),
+                onTap: onNavigateToChat,
               ),
             ),
           ],
         ),
       ],
-    );
-  }
-
-  Widget _buildActionCard(
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 32),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(color: color, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -482,29 +617,57 @@ class _HomeContent extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('今日日程', style: Theme.of(context).textTheme.headlineMedium),
-            TextButton(onPressed: onRefresh, child: const Text('刷新')),
+            Text('今日日程', style: Theme.of(context).textTheme.titleLarge),
+            TextButton.icon(
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('刷新'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         if (schedules.isEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(Icons.event_busy, size: 40, color: Colors.grey[400]),
-                    const SizedBox(height: 8),
-                    Text('暂无日程', style: TextStyle(color: Colors.grey[500])),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: onCreateSchedule,
-                      child: const Text('创建第一个日程'),
-                    ),
-                  ],
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            decoration: BoxDecoration(
+              color: AppTheme.bgCard,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: AppTheme.cardShadow,
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.event_busy_rounded,
+                  size: 44,
+                  color: AppTheme.textHint,
                 ),
-              ),
+                const SizedBox(height: 12),
+                Text(
+                  '暂无日程',
+                  style: TextStyle(color: AppTheme.textHint, fontSize: 15),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: onCreateSchedule,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                    side: const BorderSide(color: AppTheme.primaryColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                  ),
+                  child: const Text('创建第一个日程'),
+                ),
+              ],
             ),
           )
         else
@@ -514,41 +677,317 @@ class _HomeContent extends StatelessWidget {
             itemCount: schedules.length,
             itemBuilder: (context, index) {
               final s = schedules[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  leading: Checkbox(
-                    value: s.status == 'completed',
-                    onChanged: (checked) {
-                      final newStatus = checked == true ? 'completed' : 'in_progress';
-                      storage.updateSchedule(s.copyWith(status: newStatus));
-                      onRefresh();
-                    },
-                  ),
-                  title: Text(s.title),
-                  subtitle: Text(
-                    '${s.startTime.hour}:${s.startTime.minute.toString().padLeft(2, '0')} - '
-                    '${s.endTime.hour}:${s.endTime.minute.toString().padLeft(2, '0')}',
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (action) {
-                      if (action == 'edit') onEditSchedule(s);
-                      if (action == 'delete') onDeleteSchedule(s);
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: 'edit', child: Text('编辑')),
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Text('删除', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
-                  onTap: () => onEditSchedule(s),
-                ),
+              return _ScheduleCard(
+                schedule: s,
+                onToggle: (checked) {
+                  final newStatus = checked == true
+                      ? 'completed'
+                      : 'in_progress';
+                  storage.updateSchedule(s.copyWith(status: newStatus));
+                  onRefresh();
+                },
+                onEdit: () => onEditSchedule(s),
+                onDelete: () => onDeleteSchedule(s),
               );
             },
           ),
       ],
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// Sub-widgets
+// ────────────────────────────────────────────────────────────
+
+class _StatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: GoogleFonts.jetBrainsMonoTextTheme().headlineMedium
+                    ?.copyWith(
+                      color: color,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              Text(
+                label,
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionCard extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color bgColor;
+  final VoidCallback onTap;
+
+  const _ActionCard({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.bgColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: AppTheme.bgCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: AppTheme.cardShadow,
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleCard extends StatelessWidget {
+  final dynamic schedule;
+  final void Function(bool? checked) onToggle;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _ScheduleCard({
+    required this.schedule,
+    required this.onToggle,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  Color _priorityColor(String? priority) {
+    switch (priority) {
+      case 'P0':
+        return AppTheme.priorityP0;
+      case 'P1':
+        return AppTheme.priorityP1;
+      case 'P2':
+        return AppTheme.priorityP2;
+      case 'P3':
+        return AppTheme.priorityP3;
+      default:
+        return AppTheme.primaryColor;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _priorityColor(schedule.priority as String?);
+    final isCompleted = schedule.status == 'completed';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            // Color bar
+            Container(
+              width: 4,
+              decoration: BoxDecoration(
+                color: isCompleted ? AppTheme.textHint : color,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(14),
+                  bottomLeft: Radius.circular(14),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    // Checkbox
+                    GestureDetector(
+                      onTap: () => onToggle(!isCompleted),
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isCompleted
+                              ? AppTheme.primaryColor
+                              : Colors.transparent,
+                          border: Border.all(
+                            color: isCompleted
+                                ? AppTheme.primaryColor
+                                : AppTheme.textHint,
+                            width: 2,
+                          ),
+                        ),
+                        child: isCompleted
+                            ? const Icon(
+                                Icons.check,
+                                size: 14,
+                                color: Colors.white,
+                              )
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            schedule.title as String,
+                            style: TextStyle(
+                              color: isCompleted
+                                  ? AppTheme.textHint
+                                  : AppTheme.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              decoration: isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${schedule.startTime.hour.toString().padLeft(2, '0')}:${schedule.startTime.minute.toString().padLeft(2, '0')}  →  ${schedule.endTime.hour.toString().padLeft(2, '0')}:${schedule.endTime.minute.toString().padLeft(2, '0')}',
+                            style: GoogleFonts.jetBrainsMonoTextTheme()
+                                .bodySmall
+                                ?.copyWith(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 12,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Menu
+                    SizedBox(
+                      width: 32,
+                      child: PopupMenuButton<String>(
+                        onSelected: (action) {
+                          if (action == 'edit') onEdit();
+                          if (action == 'delete') onDelete();
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.edit_outlined,
+                                  size: 18,
+                                  color: AppTheme.textPrimary,
+                                ),
+                                SizedBox(width: 8),
+                                Text('编辑'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.delete_outline,
+                                  size: 18,
+                                  color: AppTheme.error,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  '删除',
+                                  style: TextStyle(color: AppTheme.error),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        icon: const Icon(
+                          Icons.more_horiz,
+                          color: AppTheme.textHint,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

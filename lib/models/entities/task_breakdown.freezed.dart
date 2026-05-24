@@ -24,6 +24,7 @@ mixin _$TaskBreakdown {
   String get id => throw _privateConstructorUsedError;
   String get userId => throw _privateConstructorUsedError;
   String? get parentGoalId => throw _privateConstructorUsedError;
+  String? get parentTaskId => throw _privateConstructorUsedError;
   String? get parentScheduleId => throw _privateConstructorUsedError;
   String get title => throw _privateConstructorUsedError;
   String? get description => throw _privateConstructorUsedError;
@@ -59,6 +60,7 @@ abstract class $TaskBreakdownCopyWith<$Res> {
     String id,
     String userId,
     String? parentGoalId,
+    String? parentTaskId,
     String? parentScheduleId,
     String title,
     String? description,
@@ -93,6 +95,7 @@ class _$TaskBreakdownCopyWithImpl<$Res, $Val extends TaskBreakdown>
     Object? id = null,
     Object? userId = null,
     Object? parentGoalId = freezed,
+    Object? parentTaskId = freezed,
     Object? parentScheduleId = freezed,
     Object? title = null,
     Object? description = freezed,
@@ -120,6 +123,10 @@ class _$TaskBreakdownCopyWithImpl<$Res, $Val extends TaskBreakdown>
             parentGoalId: freezed == parentGoalId
                 ? _value.parentGoalId
                 : parentGoalId // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            parentTaskId: freezed == parentTaskId
+                ? _value.parentTaskId
+                : parentTaskId // ignore: cast_nullable_to_non_nullable
                       as String?,
             parentScheduleId: freezed == parentScheduleId
                 ? _value.parentScheduleId
@@ -192,6 +199,7 @@ abstract class _$$TaskBreakdownImplCopyWith<$Res>
     String id,
     String userId,
     String? parentGoalId,
+    String? parentTaskId,
     String? parentScheduleId,
     String title,
     String? description,
@@ -225,6 +233,7 @@ class __$$TaskBreakdownImplCopyWithImpl<$Res>
     Object? id = null,
     Object? userId = null,
     Object? parentGoalId = freezed,
+    Object? parentTaskId = freezed,
     Object? parentScheduleId = freezed,
     Object? title = null,
     Object? description = freezed,
@@ -252,6 +261,10 @@ class __$$TaskBreakdownImplCopyWithImpl<$Res>
         parentGoalId: freezed == parentGoalId
             ? _value.parentGoalId
             : parentGoalId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        parentTaskId: freezed == parentTaskId
+            ? _value.parentTaskId
+            : parentTaskId // ignore: cast_nullable_to_non_nullable
                   as String?,
         parentScheduleId: freezed == parentScheduleId
             ? _value.parentScheduleId
@@ -317,6 +330,7 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
     required this.id,
     required this.userId,
     this.parentGoalId,
+    this.parentTaskId,
     this.parentScheduleId,
     required this.title,
     this.description,
@@ -341,6 +355,8 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
   final String userId;
   @override
   final String? parentGoalId;
+  @override
+  final String? parentTaskId;
   @override
   final String? parentScheduleId;
   @override
@@ -382,7 +398,7 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
 
   @override
   String toString() {
-    return 'TaskBreakdown(id: $id, userId: $userId, parentGoalId: $parentGoalId, parentScheduleId: $parentScheduleId, title: $title, description: $description, level: $level, startDate: $startDate, endDate: $endDate, status: $status, progress: $progress, priority: $priority, focusRequired: $focusRequired, dependencies: $dependencies, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'TaskBreakdown(id: $id, userId: $userId, parentGoalId: $parentGoalId, parentTaskId: $parentTaskId, parentScheduleId: $parentScheduleId, title: $title, description: $description, level: $level, startDate: $startDate, endDate: $endDate, status: $status, progress: $progress, priority: $priority, focusRequired: $focusRequired, dependencies: $dependencies, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 
   @override
@@ -394,6 +410,8 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
             (identical(other.userId, userId) || other.userId == userId) &&
             (identical(other.parentGoalId, parentGoalId) ||
                 other.parentGoalId == parentGoalId) &&
+            (identical(other.parentTaskId, parentTaskId) ||
+                other.parentTaskId == parentTaskId) &&
             (identical(other.parentScheduleId, parentScheduleId) ||
                 other.parentScheduleId == parentScheduleId) &&
             (identical(other.title, title) || other.title == title) &&
@@ -427,6 +445,7 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
     id,
     userId,
     parentGoalId,
+    parentTaskId,
     parentScheduleId,
     title,
     description,
@@ -461,6 +480,7 @@ abstract class _TaskBreakdown implements TaskBreakdown {
     required final String id,
     required final String userId,
     final String? parentGoalId,
+    final String? parentTaskId,
     final String? parentScheduleId,
     required final String title,
     final String? description,
@@ -485,6 +505,8 @@ abstract class _TaskBreakdown implements TaskBreakdown {
   String get userId;
   @override
   String? get parentGoalId;
+  @override
+  String? get parentTaskId;
   @override
   String? get parentScheduleId;
   @override

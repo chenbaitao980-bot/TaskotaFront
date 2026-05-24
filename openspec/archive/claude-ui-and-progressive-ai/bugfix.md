@@ -4,7 +4,7 @@
 
 | bug_id | 现象 | 关联文件/函数 | bugfix_count | 当前状态 | 是否需沉淀 |
 |---|---|---|---:|---|---|
-| ai-suggestion-mismatch | AI 提问时建议回复选项不匹配（关键词误命中） | `ai_chat_page.dart` / `_generateSuggestions` | 2 | open | 否 |
+| ai-suggestion-mismatch | AI 提问时建议回复选项不匹配（关键词误命中） | `ai_chat_page.dart` / `_generateSuggestions` | 2 | fixed | 是 |
 
 ## Bug Events
 
@@ -33,5 +33,5 @@
   1. 移除 `contains('时间')` 关键词
   2. 只保留明确时间单位模式：`'每天', '每周', '多久', '小时', '分钟'`
   3. 将目标匹配（'想达到'/'期限'）优先级提升到时间之前
-- 验证结果：pending
+- 验证结果：`flutter analyze --no-fatal-infos` passed; `flutter test` passed
 - 是否同一 bug：是，第 2 次（同一函数 `_generateSuggestions`，同一现象「选项不匹配」）

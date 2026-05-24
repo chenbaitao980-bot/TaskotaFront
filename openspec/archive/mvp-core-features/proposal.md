@@ -35,19 +35,19 @@
 | `lib/presentation/widgets/week_view.dart` | 新增 | 周视图组件 |
 
 ## 验收
-- [ ] 语音录入按钮可触发系统麦克风并识别文本
-- [ ] 文字录入可解析自然语言为结构化日程
+- [x] 语音录入按钮可触发系统麦克风并识别文本
+- [x] 文字录入可解析自然语言为结构化日程
 - [x] 日历支持月视图和周视图切换
 - [x] 日历支持新建、编辑、删除日程
 - [x] AI 聊天可调用 DeepSeek API 进行任务拆解
 - [x] DeepSeek API Key 已配置（sk-1923fb07640b45b8a0ab564192810321）
 - [x] 用户可通过邮箱+密码注册和登录
 - [x] 未登录用户无法访问功能页
-- [ ] 无网络时日程数据保存在本地
-- [ ] 已维护 `regression-tests/cases/mvp-core-features.md`
-- [ ] `flutter analyze` 无 error
-- [ ] `flutter build windows --release` 成功
-- [ ] `gitnexus detect-changes` 无异常范围外变更
+- [x] 无网络时日程数据保存在本地
+- [x] 已维护 `regression-tests/cases/mvp-core-features.md`
+- [x] `flutter analyze` 无 error
+- [x] `flutter build windows --release` 成功
+- [x] `gitnexus detect-changes` 无异常范围外变更
 
 ## Bug 修复记录
 无（本 change 为新增功能，非 bugfix）

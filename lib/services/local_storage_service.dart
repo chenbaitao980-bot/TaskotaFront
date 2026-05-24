@@ -27,7 +27,10 @@ class LocalStorageService {
     final users = existing != null
         ? json.decode(existing) as Map<String, dynamic>
         : <String, dynamic>{};
-    users[email] = {'password': password, 'createdAt': DateTime.now().toIso8601String()};
+    users[email] = {
+      'password': password,
+      'createdAt': DateTime.now().toIso8601String(),
+    };
     await _prefs?.setString(_userKey, json.encode(users));
     return true;
   }
@@ -56,13 +59,16 @@ class LocalStorageService {
     final jsonStr = _prefs?.getString(_schedulesKey);
     if (jsonStr == null) return [];
     final list = json.decode(jsonStr) as List;
-    var schedules = list.map((e) => Schedule.fromJson(e as Map<String, dynamic>)).toList();
+    var schedules = list
+        .map((e) => Schedule.fromJson(e as Map<String, dynamic>))
+        .toList();
 
-    if (startDate != null) {
-      schedules = schedules.where((s) => s.startTime.isAfter(startDate) || s.startTime.isAtSameMomentAs(startDate)).toList();
-    }
-    if (endDate != null) {
-      schedules = schedules.where((s) => s.endTime.isBefore(endDate) || s.endTime.isAtSameMomentAs(endDate)).toList();
+    if (startDate != null || endDate != null) {
+      final rangeStart = startDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final rangeEnd = endDate ?? DateTime(9999, 12, 31);
+      schedules = schedules.where((s) {
+        return s.startTime.isBefore(rangeEnd) && s.endTime.isAfter(rangeStart);
+      }).toList();
     }
     schedules.sort((a, b) => a.startTime.compareTo(b.startTime));
     return schedules;
@@ -118,14 +124,46 @@ class LocalStorageService {
   }
 
   // Tasks
-  List<TaskBreakdown> getTasks({String? level, String? status}) {
+  List<TaskBreakdown> getTasks({
+    String? level,
+    String? status,
+    String? parentTaskId,
+    bool rootOnly = false,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
     final jsonStr = _prefs?.getString(_tasksKey);
     if (jsonStr == null) return [];
     final list = json.decode(jsonStr) as List;
-    var tasks = list.map((e) => TaskBreakdown.fromJson(e as Map<String, dynamic>)).toList();
+    var tasks = list
+        .map((e) => TaskBreakdown.fromJson(e as Map<String, dynamic>))
+        .toList();
 
     if (level != null) tasks = tasks.where((t) => t.level == level).toList();
     if (status != null) tasks = tasks.where((t) => t.status == status).toList();
+    if (parentTaskId != null) {
+      tasks = tasks.where((t) => t.parentTaskId == parentTaskId).toList();
+    }
+    if (rootOnly) {
+      tasks = tasks
+          .where((t) => t.parentTaskId == null && t.parentScheduleId == null)
+          .toList();
+    }
+    if (startDate != null || endDate != null) {
+      final rangeStart = startDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final rangeEnd = endDate ?? DateTime(9999, 12, 31);
+      tasks = tasks.where((t) {
+        final taskStart = t.startDate;
+        final taskEnd = t.endDate;
+        if (taskStart == null && taskEnd == null) return false;
+        final effectiveStart = taskStart ?? taskEnd!;
+        final effectiveEnd = (taskEnd ?? taskStart!).add(
+          const Duration(days: 1),
+        );
+        return effectiveStart.isBefore(rangeEnd) &&
+            effectiveEnd.isAfter(rangeStart);
+      }).toList();
+    }
     tasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return tasks;
   }
@@ -139,6 +177,8 @@ class LocalStorageService {
     DateTime? endDate,
     String priority = 'P2',
     String? parentGoalId,
+    String? parentTaskId,
+    String? parentScheduleId,
   }) async {
     final now = DateTime.now();
     final task = TaskBreakdown(
@@ -153,7 +193,8 @@ class LocalStorageService {
       progress: 0,
       priority: priority,
       parentGoalId: parentGoalId,
-      parentScheduleId: null,
+      parentTaskId: parentTaskId,
+      parentScheduleId: parentScheduleId,
       focusRequired: false,
       dependencies: const [],
       createdAt: now,
@@ -175,8 +216,15 @@ class LocalStorageService {
     return tasks[index];
   }
 
+  bool hasChildTasks(String id) {
+    return getTasks().any((task) => task.parentTaskId == id);
+  }
+
   Future<void> deleteTask(String id) async {
     final tasks = getTasks();
+    if (tasks.any((t) => t.parentTaskId == id)) {
+      throw StateError('Task has child tasks');
+    }
     tasks.removeWhere((t) => t.id == id);
     await _saveTasks(tasks);
   }
@@ -248,7 +296,8 @@ class LocalStorageService {
     if (excludeId != null) {
       schedules.removeWhere((s) => s.id == excludeId);
     }
-    return schedules.any((s) =>
-        s.startTime.isBefore(end) && s.endTime.isAfter(start));
+    return schedules.any(
+      (s) => s.startTime.isBefore(end) && s.endTime.isAfter(start),
+    );
   }
 }
