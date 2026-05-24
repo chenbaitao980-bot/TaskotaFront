@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -122,11 +123,12 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     _callAI(message);
   }
 
-  void _addMessage({required bool isUser, required String message}) {
+  void _addMessage({required bool isUser, required String message, String? rawMessage}) {
     setState(() {
       _messages.add({
         'isUser': isUser,
         'message': message,
+        'rawMessage': rawMessage ?? message,
         'time': DateTime.now(),
       });
     });
@@ -144,14 +146,25 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       if (implicit != null) userProfile.addAll(implicit);
       userProfile['completionRate'] = implicit?['avgTaskCompletionRate'] ?? 0.0;
 
-      final response = await _aiService.chat(
+      final result = await _aiService.chat(
         userMessage: userMessage,
         history: history,
         userProfile: userProfile,
       );
-      final optionPayload = _extractExplicitOptions(response);
-      final displayMessage = _cleanDisplayMarkdown(optionPayload.message);
-      _addMessage(isUser: false, message: displayMessage);
+      // AI 以 JSON 格式返回 {"message": "...", "options": ["...", "..."]}
+      final rawMessage = json.encode(result);
+      final aiMessage = result['message'] as String? ?? '';
+      final explicitSuggestions = (result['options'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          <String>[];
+      final displayMessage = _cleanDisplayMarkdown(aiMessage);
+      final suggestions = _resolveSuggestions(
+        explicitSuggestions,
+        displayMessage,
+      );
+      // 存储原始 JSON 回复，供 _buildHistory 发送给 AI 维持格式连续性
+      _addMessage(isUser: false, message: displayMessage, rawMessage: rawMessage);
 
       final trimmed = displayMessage.trim();
       final isPlan = _looksLikeFinalPlan(trimmed);
@@ -159,21 +172,15 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         setState(() {
           _messages.last['action'] = 'plan_view';
           _messages.last['planRows'] = _extractPlanRows(trimmed);
-        });
-      } else if (_canUseExplicitOptions(trimmed, optionPayload.suggestions)) {
-        setState(() {
-          _messages.last['suggestions'] = optionPayload.suggestions;
-        });
-      }
-      if (!isPlan && _shouldSuggestForQuestion(trimmed)) {
-        final suggestions = optionPayload.suggestions.isNotEmpty
-            ? optionPayload.suggestions
-            : _generateSuggestions(trimmed);
-        if (suggestions.isNotEmpty) {
-          setState(() {
+          _messages.last['planExtras'] = _extractPlanExtras(trimmed);
+          if (suggestions.isNotEmpty) {
             _messages.last['suggestions'] = suggestions;
-          });
-        }
+          }
+        });
+      } else if (suggestions.isNotEmpty) {
+        setState(() {
+          _messages.last['suggestions'] = suggestions;
+        });
       }
 
       final parsed = await _aiService.parseSchedule(userMessage);
@@ -190,57 +197,49 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     }
   }
 
-  List<String> _generateSuggestions(String aiMessage) {
-    if (!_isShortQuestion(aiMessage) || _looksLikePlanContent(aiMessage)) {
-      return const [];
+  List<String> _resolveSuggestions(
+    List<String> explicitSuggestions,
+    String message,
+  ) {
+    final cleaned = <String>[];
+    for (final suggestion in explicitSuggestions) {
+      final text = suggestion.trim();
+      if (text.isEmpty || cleaned.contains(text)) continue;
+      cleaned.add(text);
+      if (cleaned.length >= 4) break;
     }
-    if (aiMessage.contains('计划可以') ||
-        aiMessage.contains('需要调整') ||
-        aiMessage.contains('可以吗')) {
-      return const [];
-    }
-    if (aiMessage.contains('每天') ||
-        aiMessage.contains('每周') ||
-        aiMessage.contains('多久') ||
-        aiMessage.contains('小时') ||
-        aiMessage.contains('分钟')) {
-      return ['每天30分钟', '每天1小时', '每天2小时以上'];
-    }
-    if (aiMessage.contains('水平') ||
-        aiMessage.contains('基础') ||
-        aiMessage.contains('学过')) {
-      return ['零基础', '会一点点', '有一些基础'];
-    }
-    if (aiMessage.contains('目标') ||
-        aiMessage.contains('想达到') ||
-        aiMessage.contains('希望') ||
-        aiMessage.contains('期限')) {
-      return ['简单入门就好', '达到中级水平', '希望精通'];
-    }
-    if (aiMessage.contains('确认') ||
-        aiMessage.contains('理解') ||
-        aiMessage.contains('对吗') ||
-        aiMessage.contains('是不是')) {
-      return ['是的，没错', '不太准确', '让我重新说'];
-    }
-    return ['好的，继续', '让我想想', '换个方向'];
+    if (cleaned.isNotEmpty) return cleaned;
+    if (!_looksLikeQuestion(message)) return const [];
+    return _fallbackSuggestionsForQuestion(message);
   }
 
-  bool _canUseExplicitOptions(String message, List<String> suggestions) {
-    return suggestions.isNotEmpty &&
-        _looksLikeQuestion(message) &&
-        !_looksLikePlanContent(message);
+  List<String> _fallbackSuggestionsForQuestion(String message) {
+    final text = message.toLowerCase();
+    if (_containsAny(text, ['调整', '修改', '怎么样', '可以吗', '确认'])) {
+      return const ['没问题继续', '调整一下', '换个方案'];
+    }
+    if (_containsAny(text, ['水平', '基础', '了解', '经验', '会不会'])) {
+      return const ['完全零基础', '有一点基础', '已经熟悉'];
+    }
+    if (_containsAny(text, ['时间', '多久', '每天', '每周', '频率'])) {
+      return const ['每天30分钟', '每天1小时', '每周3次'];
+    }
+    if (_containsAny(text, ['目标', '效果', '达到', '希望', '结果'])) {
+      return const ['掌握基础', '完成实战', '系统提升'];
+    }
+    if (_containsAny(text, ['日期', '截止', '什么时候', '哪天'])) {
+      return const ['一周内', '一个月内', '暂不限制'];
+    }
+
+    final userTurns = _messages.where((m) => m['isUser'] == true).length;
+    if (userTurns <= 1) return const ['完全零基础', '有一点基础', '已经熟悉'];
+    if (userTurns == 2) return const ['每天30分钟', '每天1小时', '每周3次'];
+    if (userTurns == 3) return const ['掌握基础', '完成实战', '系统提升'];
+    return const ['没问题继续', '调整一下', '换个方案'];
   }
 
-  bool _shouldSuggestForQuestion(String message) {
-    return _looksLikeQuestion(message) &&
-        _isShortQuestion(message) &&
-        !_looksLikePlanContent(message);
-  }
-
-  bool _isShortQuestion(String message) {
-    final normalized = message.replaceAll(RegExp(r'\s+'), '');
-    return normalized.length <= 160 && message.split('\n').length <= 4;
+  bool _containsAny(String text, List<String> keywords) {
+    return keywords.any(text.contains);
   }
 
   bool _looksLikeQuestion(String message) {
@@ -383,6 +382,77 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     return rows;
   }
 
+  _PlanExtras _extractPlanExtras(String message) {
+    final materials = <String>[];
+    final keyPoints = <String>[];
+    var progress = 0.0;
+    var section = '';
+
+    for (final rawLine in message.split('\n')) {
+      final line = _cleanPlanText(rawLine);
+      if (line.isEmpty) continue;
+      if (_containsAny(line, ['装备', '材料', '准备清单', '需要准备', '清单'])) {
+        section = 'materials';
+        final inline = _afterSectionTitle(line);
+        if (inline.isNotEmpty) materials.addAll(_splitInlineItems(inline));
+        continue;
+      }
+      if (_containsAny(line, ['要点', '重点', '核心', '零基础'])) {
+        section = 'keyPoints';
+        final inline = _afterSectionTitle(line);
+        if (inline.isNotEmpty) keyPoints.addAll(_splitInlineItems(inline));
+        continue;
+      }
+      if (_containsAny(line, ['进度', 'progress'])) {
+        final percent = RegExp(r'(\d{1,3})\s*%').firstMatch(line);
+        if (percent != null) {
+          progress = (int.parse(percent.group(1)!).clamp(0, 100)) / 100;
+        } else {
+          progress = progress == 0 ? 0.15 : progress;
+        }
+      }
+
+      final isListItem = rawLine.trimLeft().startsWith('-') ||
+          rawLine.trimLeft().startsWith('*') ||
+          rawLine.trimLeft().startsWith('•');
+      if (!isListItem) continue;
+      if (section == 'materials' && materials.length < 6) {
+        materials.add(line);
+      } else if (section == 'keyPoints' && keyPoints.length < 4) {
+        keyPoints.add(line);
+      }
+    }
+
+    return _PlanExtras(
+      materials: _uniqueStrings(materials).take(6).toList(),
+      keyPoints: _uniqueStrings(keyPoints).take(4).toList(),
+      progress: progress,
+    );
+  }
+
+  String _afterSectionTitle(String line) {
+    final parts = line.split(RegExp(r'[:：]'));
+    if (parts.length < 2) return '';
+    return parts.skip(1).join('：').trim();
+  }
+
+  List<String> _splitInlineItems(String value) {
+    return value
+        .split(RegExp(r'[、，,；;+/＋]'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  List<String> _uniqueStrings(List<String> values) {
+    final result = <String>[];
+    for (final value in values) {
+      if (value.isEmpty || result.contains(value)) continue;
+      result.add(value);
+    }
+    return result;
+  }
+
   List<String> _extractPlanTableCells(String line) {
     final trimmed = line.trim();
     if (!trimmed.contains('|')) return const [];
@@ -433,31 +503,6 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         .trim();
   }
 
-  ({String message, List<String> suggestions}) _extractExplicitOptions(
-    String aiMessage,
-  ) {
-    final optionPattern = RegExp(
-      r'^\s*\[OPTIONS:\s*([^\]]+)\]\s*$',
-      multiLine: true,
-    );
-    final suggestions = <String>[];
-    final displayMessage = aiMessage.replaceAllMapped(optionPattern, (match) {
-      final rawOptions = match.group(1) ?? '';
-      suggestions.addAll(
-        rawOptions
-            .split('|')
-            .map((option) => option.trim())
-            .where((option) => option.isNotEmpty),
-      );
-      return '';
-    }).trim();
-
-    return (
-      message: displayMessage.isEmpty ? aiMessage : displayMessage,
-      suggestions: suggestions,
-    );
-  }
-
   void _suggestionClicked(String text) {
     _addMessage(isUser: true, message: text);
     _callAI(text);
@@ -469,10 +514,12 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     for (var i = start; i < _messages.length - 1; i++) {
       final m = _messages[i];
       if (m['action'] != null) continue;
+      // 使用原始回复（含 [OPTIONS:]）发送给 AI，让 AI 在对话历史中看到自己的格式范例
+      final content = (m['rawMessage'] as String?) ?? (m['message'] as String);
       if (m['isUser'] as bool) {
         history.add({'role': 'user', 'content': m['message'] as String});
       } else {
-        history.add({'role': 'assistant', 'content': m['message'] as String});
+        history.add({'role': 'assistant', 'content': content});
       }
     }
     return history;
@@ -656,37 +703,43 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
               if (isUser) const SizedBox(width: 8),
             ],
           ),
-          // AI option buttons
           if (!isUser && suggestions != null && suggestions.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(left: 38, top: 8),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: suggestions.map((s) {
-                  return ActionChip(
-                    label: Text(
-                      s,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                    onPressed: () => _suggestionClicked(s),
-                    backgroundColor: AppTheme.bgCard,
-                    side: BorderSide(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  );
-                }).toList(),
+            _buildSuggestionChips(suggestions, leftPadding: 38),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionChips(
+    List<String> suggestions, {
+    double leftPadding = 0,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(left: leftPadding, top: 8),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: suggestions.map((s) {
+          return ActionChip(
+            label: Text(
+              s,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.primaryColor,
               ),
             ),
-        ],
+            onPressed: () => _suggestionClicked(s),
+            backgroundColor: AppTheme.bgCard,
+            side: BorderSide(
+              color: AppTheme.primaryColor.withValues(alpha: 0.3),
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          );
+        }).toList(),
       ),
     );
   }
@@ -808,6 +861,9 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   Widget _buildPlanCard(Map<String, dynamic> msg) {
     final text = msg['message'] as String;
     final rows = (msg['planRows'] as List<_PlanRow>?) ?? const <_PlanRow>[];
+    final extras = msg['planExtras'] as _PlanExtras? ??
+        const _PlanExtras(materials: [], keyPoints: [], progress: 0);
+    final suggestions = msg['suggestions'] as List<String>?;
     return GestureDetector(
       onSecondaryTapDown: (details) => _showPlanContextMenu(details, rows),
       child: Padding(
@@ -888,6 +944,14 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 12),
                     _buildPlanFlow(rows),
+                    if (extras.hasContent) ...[
+                      const SizedBox(height: 14),
+                      _buildPlanExtras(extras),
+                    ],
+                    if (suggestions != null && suggestions.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _buildSuggestionChips(suggestions),
+                    ],
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerRight,
@@ -963,6 +1027,111 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     }
   }
 
+  Widget _buildPlanExtras(_PlanExtras extras) {
+    final progress = extras.progress.clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (extras.materials.isNotEmpty)
+          _planInfoPanel(
+            title: '需要准备清单',
+            icon: Icons.inventory_2_outlined,
+            children: extras.materials,
+          ),
+        if (extras.materials.isNotEmpty && extras.keyPoints.isNotEmpty)
+          const SizedBox(height: 10),
+        if (extras.keyPoints.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: AppTheme.primaryColor.withValues(alpha: 0.28),
+              ),
+            ),
+            child: Text(
+              extras.keyPoints.join(' → '),
+              style: const TextStyle(
+                color: AppTheme.primaryColor,
+                fontSize: 13,
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        if (progress > 0) ...[
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 16,
+              value: progress,
+              backgroundColor: AppTheme.borderSubtle,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Center(
+            child: Text(
+              '训练进度',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _planInfoPanel({
+    required String title,
+    required IconData icon,
+    required List<String> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgInput,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: AppTheme.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final item in children)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                item,
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPlanTable(List<_PlanRow> rows) {
     return Container(
       decoration: BoxDecoration(
@@ -971,7 +1140,7 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       ),
       child: Column(
         children: [
-          _planTableRow('阶段', '任务', '说明', isHeader: true),
+          _planTableRow('日期', '主题', '训练内容', isHeader: true),
           for (final row in rows) _planTableRow(row.stage, row.task, row.note),
         ],
       ),
@@ -1027,6 +1196,9 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   }
 
   Widget _buildPlanFlow(List<_PlanRow> rows) {
+    return _buildScreenshotPlanFlow(rows);
+
+    /*
     final grouped = <String, List<_PlanRow>>{};
     for (final row in rows.take(10)) {
       grouped.putIfAbsent(row.stage, () => <_PlanRow>[]).add(row);
@@ -1074,7 +1246,104 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       ),
     );
   }
+    */
+  }
 
+  Widget _buildScreenshotPlanFlow(List<_PlanRow> rows) {
+    final nodes = rows.take(7).toList();
+    final colors = const [
+      Color(0xFFE9E7FF),
+      Color(0xFFDDF5EC),
+      Color(0xFFE3F1FF),
+      Color(0xFFFFF1DD),
+      Color(0xFFFFE8F0),
+      Color(0xFFEAF6DD),
+      Color(0xFFFFECE4),
+    ];
+    final borders = const [
+      Color(0xFF9B8CFF),
+      Color(0xFF59B98E),
+      Color(0xFF5D9CE8),
+      Color(0xFFE7A145),
+      Color(0xFFE86F98),
+      Color(0xFF84B55A),
+      Color(0xFFFF8B6B),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (var i = 0; i < nodes.length; i++) ...[
+            _flowStepNode(
+              row: nodes[i],
+              background: colors[i % colors.length],
+              border: borders[i % borders.length],
+            ),
+            if (i < nodes.length - 1)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 24,
+                  color: AppTheme.textHint,
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _flowStepNode({
+    required _PlanRow row,
+    required Color background,
+    required Color border,
+  }) {
+    return Container(
+      width: 252,
+      constraints: const BoxConstraints(minHeight: 78),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            row.stage,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            row.task,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /*
   Widget _mindConnector({required double width}) {
     return SizedBox(
       width: width,
@@ -1173,6 +1442,7 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       ),
     );
   }
+  */
 
   Future<void> _openPlanAssignmentPreview(List<_PlanRow> rows) async {
     if (rows.isEmpty) return;
@@ -1506,6 +1776,21 @@ class _PlanRow {
   final String note;
 
   const _PlanRow({required this.stage, required this.task, required this.note});
+}
+
+class _PlanExtras {
+  final List<String> materials;
+  final List<String> keyPoints;
+  final double progress;
+
+  const _PlanExtras({
+    required this.materials,
+    required this.keyPoints,
+    required this.progress,
+  });
+
+  bool get hasContent =>
+      materials.isNotEmpty || keyPoints.isNotEmpty || progress > 0;
 }
 
 class _PlanTaskDraft {

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "Locate the AI chat parsing/rendering symbols and run GitNexus impact analysis or closest available CLI equivalent before editing.",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "Harden AI prompt/output parsing so assistant questions consistently attach structured options.",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "Add current-stage fallback options for missing [OPTIONS] output without stale keyword matching.",
+      "done": false
+    },
+    {
+      "id": 4,
+      "text": "Update final plan parsing/rendering to support weekly table rows matching the provided plan screenshot.",
+      "done": false
+    },
+    {
+      "id": 5,
+      "text": "Update final plan flow rendering to support colored nodes, arrows, checklist, key-point band, and progress bar matching the provided flow screenshot.",
+      "done": false
+    },
+    {
+      "id": 6,
+      "text": "Add or update regression coverage for options fallback and screenshot-aligned plan rendering.",
+      "done": false
+    },
+    {
+      "id": 7,
+      "text": "Run flutter analyze --no-fatal-infos.",
+      "done": false
+    },
+    {
+      "id": 8,
+      "text": "Run GitNexus change detection or closest available CLI equivalent before delivery.",
+      "done": false
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "User confirms AI questions always show relevant options.",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "User confirms final weekly plan table matches the provided table reference.",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "User confirms final flowchart layout matches the provided flowchart reference.",
+      "done": false
+    }
+  ]
+}

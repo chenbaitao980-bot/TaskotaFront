@@ -30,7 +30,7 @@ class _CalendarPageState extends State<CalendarPage> {
   List<TaskBreakdown> _rangeTasks = [];
   bool _initialized = false;
   bool _didAutoScrollWeek = false;
-  static const double _hourHeight = 56;
+  double _hourHeight = 56;
   static const double _timeColumnWidth = 48;
 
   @override
@@ -317,11 +317,6 @@ class _CalendarPageState extends State<CalendarPage> {
       );
       await _storage.updateSchedule(updated);
       _loadEvents();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('日程时间已更新')));
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -341,11 +336,6 @@ class _CalendarPageState extends State<CalendarPage> {
         task.copyWith(startDate: newStart, endDate: newStart.add(duration)),
       );
       _loadEvents();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Task time updated')));
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -423,11 +413,6 @@ class _CalendarPageState extends State<CalendarPage> {
       await _ensureStorageReady();
       await _storage.updateTask(task.copyWith(startDate: start, endDate: end));
       _loadEvents();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(successMessage)));
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -448,11 +433,6 @@ class _CalendarPageState extends State<CalendarPage> {
       final updated = schedule.copyWith(startTime: start, endTime: end);
       await _storage.updateSchedule(updated);
       _loadEvents();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(successMessage)));
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -467,6 +447,80 @@ class _CalendarPageState extends State<CalendarPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间至少15分钟')));
+  }
+
+  void _setHourHeight(double height) {
+    setState(() => _hourHeight = height);
+  }
+
+  void _showTaskContextMenu(TaskBreakdown task) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        content: const Text('确定要删除这个任务吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await _ensureStorageReady();
+                await _storage.deleteTask(task.id);
+                _loadEvents();
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('删除失败：$e')),
+                  );
+                }
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showScheduleContextMenu(dynamic schedule) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(schedule.title as String, maxLines: 1, overflow: TextOverflow.ellipsis),
+        content: const Text('确定要删除这个日程吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await _ensureStorageReady();
+                await _storage.deleteSchedule(schedule.id as String);
+                _loadEvents();
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('删除失败：$e')),
+                  );
+                }
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _priorityLabel(String p) {
@@ -510,6 +564,17 @@ class _CalendarPageState extends State<CalendarPage> {
               visualDensity: VisualDensity.compact,
               textStyle: WidgetStateProperty.all(const TextStyle(fontSize: 13)),
             ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.zoom_out, size: 22),
+            tooltip: '缩小时间线',
+            onPressed: () => _setHourHeight((_hourHeight - 8).clamp(32, 120)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.zoom_in, size: 22),
+            tooltip: '放大时间线',
+            onPressed: () => _setHourHeight((_hourHeight + 8).clamp(32, 120)),
           ),
           const SizedBox(width: 8),
           IconButton(
@@ -985,6 +1050,7 @@ class _CalendarPageState extends State<CalendarPage> {
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: () => _openTaskDetail(task),
+        onSecondaryTap: () => _showTaskContextMenu(task),
         borderRadius: BorderRadius.circular(6),
         child: Padding(
           padding: const EdgeInsets.all(6),
@@ -1104,6 +1170,7 @@ class _CalendarPageState extends State<CalendarPage> {
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: () => _editSchedule(event),
+        onSecondaryTap: () => _showScheduleContextMenu(event),
         borderRadius: BorderRadius.circular(6),
         child: Padding(
           padding: const EdgeInsets.all(6),
