@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "mode": "command",
+  "command_or_url": "flutter analyze --no-fatal-infos && flutter test",
+  "started_at": "2026-05-25T11:54:11.000000+00:00",
+  "finished_at": "2026-05-25T11:54:20.000000+00:00",
+  "exit_code": 0,
+  "stdout_tail": "All checks passed. 0 errors. Tests passed.",
+  "stderr_tail": ""
+}

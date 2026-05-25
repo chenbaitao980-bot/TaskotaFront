@@ -1,0 +1,77 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T08:08:14.087738+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T08:09:10.143574+00:00",
+      "reason": "四件套已按用户反馈补齐"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T08:09:48.254890+00:00",
+      "reason": "用户确认执行"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T08:10:00.940976+00:00",
+      "reason": "开始修改计划表、流程图和一键分配逻辑"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T08:22:21.029195+00:00",
+      "reason": "实现任务和自动验证已完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T08:22:26.146176+00:00",
+      "reason": "等待用户验证四个反馈点"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-25T08:57:57.531090+00:00",
+      "reason": "用户反馈流程图仍未展示全部节点，返回实施阶段继续修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T09:01:44.490194+00:00",
+      "reason": "流程图节点已改为按可用宽度自动换行并展示全部计划行，分析和测试通过"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T09:01:44.717130+00:00",
+      "reason": "等待用户确认思维导图已完整展示全部流程"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T09:21:44.060321+00:00",
+      "reason": "用户通过归档命令确认全部4项验证通过，启动归档流程"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T09:21:51.265478+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false
+}

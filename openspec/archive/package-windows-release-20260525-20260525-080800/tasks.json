@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "执行 flutter clean",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "执行 flutter pub get",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "执行 flutter build windows --release",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "复制 Release 产物到 smart_assistant_windows_release",
+      "done": true
+    },
+    {
+      "id": 5,
+      "text": "压缩为 smart_assistant_windows_release.zip",
+      "done": true
+    },
+    {
+      "id": 6,
+      "text": "记录验证结果",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "用户确认 ZIP 包可解压并启动应用",
+      "done": true
+    }
+  ]
+}

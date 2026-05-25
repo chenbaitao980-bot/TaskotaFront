@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "mode": "command",
+  "command_or_url": "flutter analyze --no-fatal-infos",
+  "started_at": "2026-05-25T07:56:48.517494+00:00",
+  "finished_at": "2026-05-25T07:56:55.646242+00:00",
+  "exit_code": 0,
+  "stdout_tail": "Analyzing smart_assistant...                                    \n\n   info - 'localeId' is deprecated and shouldn't be used. Use SpeechListenOptions.localeId instead - lib\\presentation\\pages\\ai_chat\\ai_chat_page.dart:101:7 - deprecated_member_use\n   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\\presentation\\pages\\calendar\\calendar_page.dart:477:40 - use_build_context_synchronously\n   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\\presentation\\pages\\calendar\\calendar_page.dart:512:40 - use_build_context_synchronously\n   info - Unnecessary braces in a string interpolation - lib\\services\\notification_service.dart:82:37 - unnecessary_brace_in_string_interps\n\n",
+  "stderr_tail": "4 issues found. (ran in 3.4s)\n"
+}

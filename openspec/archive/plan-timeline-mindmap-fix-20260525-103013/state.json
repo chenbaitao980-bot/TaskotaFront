@@ -1,0 +1,77 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T09:24:25.662063+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T09:26:24.284371+00:00",
+      "reason": "四件套（proposal + design + spec + tasks）已全部编写完成"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T09:29:42.777438+00:00",
+      "reason": "用户确认执行全部方案"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T09:29:46.879423+00:00",
+      "reason": "开始实施12个任务"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T09:34:53.821012+00:00",
+      "reason": "所有12个实施任务已完成，analyze无错误，run记录已设为pass"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T09:34:58.377867+00:00",
+      "reason": "门禁全部通过"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-25T10:24:18.374341+00:00",
+      "reason": "用户确认5项验证通过，新增bug：AI有时返回xxx活动+忽略/添加到日历或纯文本计划表，需修复为始终返回标准计划视图"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T10:26:43.177007+00:00",
+      "reason": "bug修复：增强AI计划检测，阻止日程覆盖计划视图，支持星期+活动文本格式"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T10:26:48.376937+00:00",
+      "reason": "等待用户验证第6项：AI计划检测修复"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T10:30:04.108943+00:00",
+      "reason": "用户确认全部6项验证通过，启动归档"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T10:30:13.392928+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false
+}

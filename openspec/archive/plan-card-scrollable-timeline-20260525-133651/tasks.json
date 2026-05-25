@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "将 _buildTimelineView 改为固定高度内垂直滚动（Wrap + ConstrainedBox）",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "为 _buildPlanTable 添加分页逻辑（每页5行，底部控件）",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "验证并记录回归测试",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "时间线固定高度 220px，内容超出可垂直滚动",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "计划表 0-5 行不分页，6+ 行显示分页控件",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "分页切换正确，各消息独立分页状态互不影响",
+      "done": true
+    }
+  ]
+}

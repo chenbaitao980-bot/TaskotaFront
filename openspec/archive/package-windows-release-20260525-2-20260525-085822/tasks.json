@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "检查当前工作区与依赖状态，确认不回滚用户已有变更。",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "运行 flutter pub get。",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "运行 flutter analyze --no-fatal-infos。",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "运行 flutter test。",
+      "done": true
+    },
+    {
+      "id": 5,
+      "text": "运行 flutter build windows --release。",
+      "done": true
+    },
+    {
+      "id": 6,
+      "text": "整理 smart_assistant_windows_release 目录并生成 zip 压缩包。",
+      "done": true
+    },
+    {
+      "id": 7,
+      "text": "验证压缩包包含 exe、dll 和 data 资源。",
+      "done": true
+    },
+    {
+      "id": 8,
+      "text": "新增回归用例并记录回归测试 run。",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "用户确认 Windows release 压缩包可用。",
+      "done": true
+    }
+  ]
+}

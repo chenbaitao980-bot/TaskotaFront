@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "mode": "manual",
+  "command_or_url": "",
+  "started_at": "2026-05-25T13:12:18.870939+00:00",
+  "finished_at": "2026-05-25T13:12:18.870939+00:00",
+  "exit_code": 0,
+  "stdout_tail": "manual verification recorded",
+  "stderr_tail": ""
+}

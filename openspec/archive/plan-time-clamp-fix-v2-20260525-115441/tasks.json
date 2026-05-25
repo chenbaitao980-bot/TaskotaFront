@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {"id": 1, "text": "回退_parsePlanDate的clamp逻辑", "done": true},
+    {"id": 2, "text": "_defaultPlanStart 溢出错峰分布", "done": true},
+    {"id": 3, "text": "_buildTimelineView 排序加二级键", "done": true},
+    {"id": 4, "text": "在_parsePlanDateTime中检查日期是否越界，越界回退到_defaultPlanStart", "done": true},
+    {"id": 5, "text": "运行 flutter analyze --no-fatal-infos", "done": true},
+    {"id": 6, "text": "运行 flutter test", "done": true},
+    {"id": 7, "text": "新增 _normalizePlanDates 后处理：所有行按序分配本周连续日期", "done": true},
+    {"id": 8, "text": "运行 flutter analyze --no-fatal-infos", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "用户确认输入'只在这周'后所有日期 ≤ 本周日，时间线无重复5-31", "done": true}
+  ]
+}

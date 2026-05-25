@@ -123,7 +123,11 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     _callAI(message);
   }
 
-  void _addMessage({required bool isUser, required String message, String? rawMessage}) {
+  void _addMessage({
+    required bool isUser,
+    required String message,
+    String? rawMessage,
+  }) {
     setState(() {
       _messages.add({
         'isUser': isUser,
@@ -138,7 +142,10 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   Future<void> _callAI(String userMessage) async {
     setState(() => _isTyping = true);
     try {
-      final history = _buildHistory();
+      // 话题漂移检测
+      final topicDrift = _detectTopicDrift(userMessage);
+      final history = topicDrift ? <Map<String, String>>[] : _buildHistory();
+
       final profile = _storage.getExplicitProfile();
       final implicit = _storage.getImplicitProfile();
       final userProfile = <String, dynamic>{};
@@ -150,28 +157,44 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         userMessage: userMessage,
         history: history,
         userProfile: userProfile,
+        topicSwitchDetected: topicDrift,
       );
-      // AI 以 JSON 格式返回 {"message": "...", "options": ["...", "..."]}
+      // AI 以 JSON 格式返回 {"type": "...", "message": "...", "options": ["...", "..."]}
       final rawMessage = json.encode(result);
       final aiMessage = result['message'] as String? ?? '';
-      final explicitSuggestions = (result['options'] as List<dynamic>?)
-              ?.whereType<String>()
-              .toList() ??
+      final messageType = result['type'] as String? ?? 'normal';
+      final explicitSuggestions =
+          (result['options'] as List<dynamic>?)?.whereType<String>().toList() ??
           <String>[];
       final displayMessage = _cleanDisplayMarkdown(aiMessage);
       final suggestions = _resolveSuggestions(
         explicitSuggestions,
         displayMessage,
       );
+
+      // 处理特殊类型消息
+      if (messageType == 'time_range_request') {
+        _handleTimeRangeRequest(displayMessage, suggestions);
+        return;
+      }
+      if (messageType == 'topic_switch_confirm') {
+        _handleTopicSwitchConfirm(displayMessage, suggestions);
+        return;
+      }
+
       // 存储原始 JSON 回复，供 _buildHistory 发送给 AI 维持格式连续性
-      _addMessage(isUser: false, message: displayMessage, rawMessage: rawMessage);
+      _addMessage(
+        isUser: false,
+        message: displayMessage,
+        rawMessage: rawMessage,
+      );
 
       final trimmed = displayMessage.trim();
       final isPlan = _looksLikeFinalPlan(trimmed);
       if (isPlan) {
         setState(() {
           _messages.last['action'] = 'plan_view';
-          _messages.last['planRows'] = _extractPlanRows(trimmed);
+          _messages.last['planRows'] = _extractEditablePlanRows(trimmed);
           _messages.last['planExtras'] = _extractPlanExtras(trimmed);
           if (suggestions.isNotEmpty) {
             _messages.last['suggestions'] = suggestions;
@@ -183,18 +206,84 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         });
       }
 
-      final parsed = await _aiService.parseSchedule(userMessage);
-      if (parsed != null && parsed['type'] == 'schedule') {
-        setState(() => _pendingSchedule = parsed);
-        _messages.last['action'] = 'schedule_confirm';
-        _messages.last['scheduleData'] = parsed;
-        setState(() {});
+      // 只有未检测为 plan_view 时才尝试 parseSchedule，避免被日程识别覆盖计划视图
+      if (!isPlan) {
+        final parsed = await _aiService.parseSchedule(userMessage);
+        if (parsed != null && parsed['type'] == 'schedule') {
+          setState(() => _pendingSchedule = parsed);
+          _messages.last['action'] = 'schedule_confirm';
+          _messages.last['scheduleData'] = parsed;
+          setState(() {});
+        }
       }
     } catch (e) {
       _addMessage(isUser: false, message: '抱歉，AI 服务暂时不可用，请检查网络后重试。');
     } finally {
       if (mounted) setState(() => _isTyping = false);
     }
+  }
+
+  /// 处理时间范围请求：弹出选择框让用户选择时间范围
+  void _handleTimeRangeRequest(String message, List<String> suggestions) {
+    _addMessage(
+      isUser: false,
+      message: message,
+      rawMessage: json.encode({'type': 'time_range_request', 'message': message, 'options': suggestions}),
+    );
+    if (suggestions.isNotEmpty) {
+      setState(() {
+        _messages.last['suggestions'] = suggestions;
+        _messages.last['action'] = 'time_range_request';
+      });
+    }
+  }
+
+  /// 处理话题切换确认：弹出确认对话框
+  void _handleTopicSwitchConfirm(String message, List<String> suggestions) {
+    _addMessage(
+      isUser: false,
+      message: message,
+      rawMessage: json.encode({'type': 'topic_switch_confirm', 'message': message, 'options': suggestions}),
+    );
+    if (suggestions.isNotEmpty) {
+      setState(() {
+        _messages.last['suggestions'] = suggestions;
+        _messages.last['action'] = 'topic_switch_confirm';
+      });
+    }
+  }
+
+  /// 清空上下文历史
+  void _clearContext() {
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空上下文'),
+        content: const Text('确定要清空所有对话历史吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true) {
+        setState(() {
+          _messages.clear();
+          _messages.add({
+            'isUser': false,
+            'message': '上下文已清空。我是你的 AI 日程管家，有什么可以帮你的吗？',
+            'time': DateTime.now(),
+          });
+        });
+      }
+    });
   }
 
   List<String> _resolveSuggestions(
@@ -255,8 +344,7 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
 
   bool _looksLikeFinalPlan(String message) {
     // 优先检测稳定标记 [TABLE_BEGIN]
-    if (message.contains('[TABLE_BEGIN]') &&
-        message.contains('[TABLE_END]')) {
+    if (message.contains('[TABLE_BEGIN]') && message.contains('[TABLE_END]')) {
       return true;
     }
     if (_looksLikePlanContent(message)) return true;
@@ -266,14 +354,25 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         message.contains('计划') ||
         message.contains('里程碑') ||
         message.contains('执行层') ||
-        message.contains('战术层');
+        message.contains('战术层') ||
+        message.contains('训练');
     final hasMultipleSteps =
         RegExp(
-          r'(第\s*\d+\s*[周月]|week\s*\d+)',
+          r'(第\s*\d+\s*[周月天]|week\s*\d+|day\s*\d+)',
           caseSensitive: false,
         ).allMatches(message).length >=
         2;
-    return hasPlanWords && hasMultipleSteps;
+    // 额外检测：日期+活动模式（如"周一：跑步"、"5月26日 09:00"）
+    final hasDateActivity = RegExp(
+      r'(周一|周二|周三|周四|周五|周六|周日|星期[一二三四五六日]).*\S+',
+    ).hasMatch(message) &&
+        RegExp(r'[\u4e00-\u9fff]+').allMatches(message).length >= 10;
+    // 检测时间安排模式：多条带日期/时间的条目
+    final hasTimeEntries = RegExp(
+      r'(0?\d|1\d|2[0-3])[:：][0-5]\d',
+    ).allMatches(message).length >= 2;
+    return (hasPlanWords && hasMultipleSteps) ||
+        (hasDateActivity && hasTimeEntries);
   }
 
   bool _looksLikePlanContent(String message) {
@@ -290,13 +389,13 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     final numberedRows = lines
         .where(
           (line) => RegExp(
-            r'^(\d+[\.\、\)]|第\s*\d+|week\s*\d+)',
+            r'^(\d+[\.\、\)]|第\s*\d+|week\s*\d+|day\s*\d+)',
             caseSensitive: false,
           ).hasMatch(line),
         )
         .length;
     final bulletRows = lines
-        .where((line) => line.startsWith('-') || line.startsWith('*'))
+        .where((line) => line.startsWith('-') || line.startsWith('*') || line.startsWith('•'))
         .length;
     final hasPlanWords =
         message.contains('计划') ||
@@ -304,14 +403,19 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         message.contains('任务') ||
         message.contains('流程') ||
         message.contains('里程碑') ||
+        message.contains('训练') ||
         message.toLowerCase().contains('plan') ||
-        message.toLowerCase().contains('schedule');
+        message.toLowerCase().contains('schedule') ||
+        message.toLowerCase().contains('activity');
 
-    return (tableRows >= 2 && hasPlanWords) ||
-        (numberedRows >= 3 && hasPlanWords) ||
-        (bulletRows >= 5 && hasPlanWords);
+    return (tableRows >= 1 && hasPlanWords) ||
+        (numberedRows >= 2 && hasPlanWords) ||
+        (bulletRows >= 3 && hasPlanWords) ||
+        // 检测：星期X：内容 模式（如"周一：跑步 30分钟"）
+        (RegExp(r'(周一|周二|周三|周四|周五|周六|周日|星期[一二三四五六日])[:：]').allMatches(message).length >= 2);
   }
 
+  // ignore: unused_element
   List<_PlanRow> _extractPlanRows(String message) {
     // 优先从 [TABLE_BEGIN]...[TABLE_END] 标记中解析
     final tableMatch = RegExp(
@@ -377,9 +481,167 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       if (rows.length >= 12) break;
     }
     if (rows.isEmpty) {
-      rows.add(const _PlanRow(stage: '计划', task: '查看上方完整计划', note: 'AI 输出'));
+      rows.add(_PlanRow(stage: '计划', task: '查看上方完整计划', note: 'AI 输出'));
     }
     return rows;
+  }
+
+  List<_PlanRow> _extractEditablePlanRows(String message) {
+    final tableMatch = RegExp(
+      r'\[TABLE_BEGIN\]\n(.*?)\[TABLE_END\]',
+      dotAll: true,
+    ).firstMatch(message);
+    final source = tableMatch?.group(1) ?? message;
+    final rows = <_PlanRow>[];
+    var currentStage = '计划';
+
+    for (final line in source.split('\n')) {
+      final cells = _extractPlanTableCells(line);
+      if (cells.length >= 2) {
+        if (_isPlanTableHeader(cells)) continue;
+        currentStage = cells.first;
+        rows.add(_editablePlanRowFromCells(cells, rows.length));
+        continue;
+      }
+
+      final cleaned = _cleanPlanText(line);
+      if (cleaned.isEmpty) continue;
+      if (_looksLikePlanStage(cleaned)) {
+        currentStage = cleaned.length > 28 ? cleaned.substring(0, 28) : cleaned;
+      } else if (line.trimLeft().startsWith('-') ||
+          line.trimLeft().startsWith('*') ||
+          line.trimLeft().startsWith('•')) {
+        final start = _defaultPlanStart(rows.length);
+        rows.add(
+          _PlanRow(
+            stage: currentStage,
+            task: cleaned,
+            note: cleaned,
+            start: start,
+            end: start.add(const Duration(hours: 1)),
+          ),
+        );
+      } else if (_isWeekdayActivity(cleaned)) {
+        // 处理"周一：跑步 30分钟"、"周二 09:00 游泳"等非表格日程描述
+        final start = _defaultPlanStart(rows.length);
+        rows.add(
+          _PlanRow(
+            stage: currentStage,
+            task: cleaned,
+            note: cleaned,
+            start: start,
+            end: start.add(const Duration(hours: 1)),
+          ),
+        );
+      }
+    }
+
+    if (rows.isNotEmpty) return _normalizePlanDates(rows);
+    final start = _defaultPlanStart(0);
+    return [
+      _PlanRow(
+        stage: '计划',
+        task: '查看上方完整计划',
+        note: 'AI 输出',
+        start: start,
+        end: start.add(const Duration(hours: 1)),
+      ),
+    ];
+  }
+
+  _PlanRow _editablePlanRowFromCells(List<String> cells, int index) {
+    final dateLabel = cells.isNotEmpty ? cells[0] : '计划';
+    final subject = cells.length >= 2 ? cells[1] : '任务';
+    final content = cells.length >= 3 ? cells[2] : cells.skip(1).join(' · ');
+    final start = _parsePlanDateTime(cells, index, preferEnd: false);
+    final parsedEnd = _parsePlanDateTime(cells, index, preferEnd: true);
+    final end = parsedEnd.isAfter(start)
+        ? parsedEnd
+        : start.add(const Duration(hours: 1));
+
+    return _PlanRow(
+      stage: dateLabel,
+      task: _isHeaderLike(subject) ? content : subject,
+      note: content,
+      start: start,
+      end: end,
+    );
+  }
+
+  bool _isHeaderLike(String value) {
+    final compact = value.replaceAll(' ', '');
+    return compact == '主题' ||
+        compact == '日期' ||
+        compact == '训练内容' ||
+        compact == '任务';
+  }
+
+  DateTime _defaultPlanStart(int index) {
+    final now = DateTime.now();
+    final slots = DateTime.sunday - now.weekday + 1; // 本周剩余天数+1（含今天）
+    if (index < slots) {
+      // 本周容量内：正常逐天递进
+      return DateTime(now.year, now.month, now.day, 9).add(Duration(days: index));
+    }
+    // 超出本周容量：在最后一天错峰分配（9→10→11→...）
+    final overflowHour = 9 + (index - slots + 1);
+    final lastDay = DateTime.sunday - now.weekday;
+    return DateTime(now.year, now.month, now.day + lastDay, overflowHour.clamp(9, 23));
+  }
+
+  DateTime _parsePlanDateTime(
+    List<String> cells,
+    int index, {
+    required bool preferEnd,
+  }) {
+    final fallback = _defaultPlanStart(index);
+    final text = cells.join(' ');
+    final date = _parsePlanDate(text, fallback);
+    final timeMatches = RegExp(
+      r'(\d{1,2})[:：](\d{2})',
+    ).allMatches(text).toList();
+    final timeMatch = timeMatches.isEmpty
+        ? null
+        : timeMatches[(preferEnd && timeMatches.length > 1) ? 1 : 0];
+    final hour =
+        int.tryParse(timeMatch?.group(1) ?? '') ??
+        (preferEnd ? fallback.hour + 1 : fallback.hour);
+    final minute = int.tryParse(timeMatch?.group(2) ?? '') ?? fallback.minute;
+    final result = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      hour.clamp(0, 23),
+      minute.clamp(0, 59),
+    );
+    // 如果结果超出本周，回退到 _defaultPlanStart（自带错峰分布）
+    final now = DateTime.now();
+    final daysUntilSunday = DateTime.sunday - now.weekday;
+    final thisSunday = DateTime(now.year, now.month, now.day + daysUntilSunday, 23, 59);
+    return result.isAfter(thisSunday) ? fallback : result;
+  }
+
+  DateTime _parsePlanDate(String text, DateTime fallback) {
+    final md = RegExp(r'(\d{1,2})[/-](\d{1,2})').firstMatch(text);
+    if (md != null) {
+      final month = int.tryParse(md.group(1) ?? '') ?? fallback.month;
+      final day = int.tryParse(md.group(2) ?? '') ?? fallback.day;
+      return DateTime(fallback.year, month.clamp(1, 12), day.clamp(1, 31));
+    }
+    final dayIndex = _weekdayIndex(text);
+    if (dayIndex >= 0) {
+      final base = DateTime(fallback.year, fallback.month, fallback.day);
+      return base.add(Duration(days: dayIndex));
+    }
+    return fallback;
+  }
+
+  int _weekdayIndex(String text) {
+    const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    for (var i = 0; i < weekdays.length; i++) {
+      if (text.contains(weekdays[i])) return i;
+    }
+    return -1;
   }
 
   _PlanExtras _extractPlanExtras(String message) {
@@ -412,7 +674,8 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         }
       }
 
-      final isListItem = rawLine.trimLeft().startsWith('-') ||
+      final isListItem =
+          rawLine.trimLeft().startsWith('-') ||
           rawLine.trimLeft().startsWith('*') ||
           rawLine.trimLeft().startsWith('•');
       if (!isListItem) continue;
@@ -467,6 +730,12 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
 
   bool _isPlanTableHeader(List<String> cells) {
     final joined = cells.join('');
+    if (joined.contains('日期') &&
+        joined.contains('主题') &&
+        joined.contains('训练内容')) {
+      return true;
+    }
+    if (joined.contains('开始') && joined.contains('结束')) return true;
     return joined.contains('阶段') &&
         joined.contains('任务') &&
         (joined.contains('说明') || joined.contains('目标'));
@@ -481,6 +750,12 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         text.contains('战略层') ||
         text.contains('战术层') ||
         text.contains('执行层');
+  }
+
+  /// 检测星期+活动模式：如"周一：跑步 30分钟"、"周二09：00游泳"
+  bool _isWeekdayActivity(String text) {
+    return RegExp(r'^(周[一二三四五六日]|星期[一二三四五六日])').hasMatch(text) &&
+        text.length >= 4;
   }
 
   String _cleanPlanText(String value) {
@@ -508,6 +783,125 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     _callAI(text);
   }
 
+  /// 处理时间范围选择
+  void _onTimeRangeSelected(String range) {
+    _addMessage(isUser: true, message: range);
+    // 将时间范围选择追加到历史，再次调用 AI
+    _callAI('我选择的时间范围是：$range');
+  }
+
+  /// 处理话题切换确认选择
+  void _onTopicSwitchSelected(String choice) {
+    if (choice.contains('开启新对话')) {
+      // 清空历史，保留当前用户消息
+      final userMessages = _messages.where((m) => m['isUser'] == true).toList();
+      final lastUserMessage = userMessages.isNotEmpty ? userMessages.last['message'] as String? : null;
+      setState(() {
+        _messages.clear();
+        _messages.add({
+          'isUser': false,
+          'message': '已开启新对话。我是你的 AI 日程管家，有什么可以帮你的吗？',
+          'time': DateTime.now(),
+        });
+      });
+      if (lastUserMessage != null) {
+        // 重新发送最后一条用户消息作为新对话的开始
+        Future.delayed(const Duration(milliseconds: 300), () {
+          _addMessage(isUser: true, message: lastUserMessage);
+          _callAI(lastUserMessage);
+        });
+      }
+    } else {
+      // 继续当前话题，发送用户选择给 AI
+      _addMessage(isUser: true, message: choice);
+      _callAI(choice);
+    }
+  }
+
+  /// 话题漂移检测：判断用户是否切换了话题
+  bool _detectTopicDrift(String currentMessage) {
+    // 极短消息（确认/回应）不触发话题检测
+    if (currentMessage.trim().length < 4) return false;
+    // 常见的回应/确认文字不触发话题检测
+    if (_isResponseText(currentMessage)) return false;
+
+    // 从后向前取最近 3 条用户消息
+    final recentMessages = <String>[];
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i]['isUser'] == true) {
+        recentMessages.add(_messages[i]['message'] as String);
+        if (recentMessages.length >= 3) break;
+      }
+    }
+    if (recentMessages.isEmpty) return false;
+
+    // 提取当前消息的关键词
+    final currentKeywords = _extractKeywords(currentMessage);
+    if (currentKeywords.isEmpty) return false;
+
+    // 与最近 N 条消息逐一比对关键词重叠
+    for (final recent in recentMessages) {
+      final recentKeywords = _extractKeywords(recent);
+      final overlap = currentKeywords.intersection(recentKeywords);
+      if (overlap.isNotEmpty) return false; // 有重叠 → 话题延续
+    }
+
+    // 所有最近消息都无关键词重叠 → 话题漂移
+    return true;
+  }
+
+  /// 从中文字符串中提取有意义的主题关键词
+  Set<String> _extractKeywords(String text) {
+    const stopWords = <String>{
+      '的', '了', '是', '在', '我', '你', '他', '她', '它', '们',
+      '这', '那', '什么', '怎么', '为什么', '吗', '呢', '吧', '啊',
+      '哦', '嗯', '哈', '呀', '嘛', '个', '有', '不', '就', '都',
+      '也', '很', '要', '会', '能', '去', '想', '和', '与', '或',
+      '但', '而', '所以', '因为', '如果', '虽然', '然后', '之后',
+      '可以', '没有', '已经', '还', '来', '让', '给', '对', '到',
+      '把', '被', '从', '这个', '那个',
+      '这些', '那些', '一点', '一下', '一个', '一种', '一些', '一样',
+    };
+    // 上下文时间词：在话题漂移检测中无区分价值
+    const contextWords = <String>{
+      '这周', '下周', '上周', '本周', '今天', '明天', '昨天', '后天',
+      '今天早上', '今天下午', '今天晚上', '明天早上', '明天下午', '明天晚上',
+      '这周日', '下周一', '下周二', '下周三', '下周四', '下周五', '下周六', '下周日',
+      '周一', '周二', '周三', '周四', '周五', '周六', '周日',
+      '星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日',
+      '每天', '每周', '每月', '上周一', '上周二', '上周三', '上周四', '上周五', '上周六', '上周日',
+    };
+    const allFilter = {...stopWords, ...contextWords};
+
+    // 按标点/空格分割，提取有意义的关键词
+    final tokens = text
+        .split(RegExp(r'[\s,，。.、！!？?；;：:""""（）()【】\[\]{}《》<>/\\|@#\$%^&*_—\-+=\n\r\t]+'))
+        .map((t) => t.trim())
+        .where((t) => t.length >= 2 && !allFilter.contains(t))
+        .toSet();
+    if (tokens.isNotEmpty) return tokens;
+
+    // 如果 split 后无结果（纯英文场景），降级用 2-gram
+    final chars = text.runes.toList();
+    final bigrams = <String>{};
+    for (var i = 0; i < chars.length - 1; i++) {
+      final bigram = String.fromCharCodes([chars[i], chars[i + 1]]);
+      if (!allFilter.contains(bigram)) bigrams.add(bigram);
+    }
+    return bigrams;
+  }
+
+  /// 判断是否为回应/确认类文字（不触发话题漂移）
+  bool _isResponseText(String text) {
+    final trimmed = text.trim();
+    // 简洁肯定/否定回应
+    if (const {'好的', '行', '可以', '嗯', '哦', '好', 'OK', 'ok', 'yes', 'no', '不用', '不要'}.contains(trimmed.toLowerCase())) return true;
+    // 以常见回应词开头
+    if (RegExp(r'^(没问题|调整|换个|继续|可以|不用|不要|好的|行[\s,，。]|是的|对的|明白|知道|收到|算了|放弃|不做了|先这样|就这样|先放着|以后再说|等等|稍等|等一下)').hasMatch(trimmed)) return true;
+    return false;
+  }
+
+  /// 构建发送给 AI 的对话历史
   List<Map<String, String>> _buildHistory() {
     final history = <Map<String, String>>[];
     final start = _messages.length > 10 ? _messages.length - 10 : 0;
@@ -588,6 +982,13 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 20),
+            tooltip: '清空上下文',
+            onPressed: _clearContext,
+          ),
+        ],
         surfaceTintColor: Colors.transparent,
       ),
       body: Column(
@@ -617,9 +1018,212 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         if (hasAction && msg['action'] == 'plan_view') {
           return _buildPlanCard(msg);
         }
+        if (hasAction && msg['action'] == 'time_range_request') {
+          return _buildTimeRangeRequestCard(msg);
+        }
+        if (hasAction && msg['action'] == 'topic_switch_confirm') {
+          return _buildTopicSwitchConfirmCard(msg);
+        }
 
         return _buildBubble(msg);
       },
+    );
+  }
+
+  /// 构建时间范围请求卡片
+  Widget _buildTimeRangeRequestCard(Map<String, dynamic> msg) {
+    final text = msg['message'] as String;
+    final suggestions = msg['suggestions'] as List<String>?;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              size: 16,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.bgCard,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: AppTheme.cardShadowLight,
+                border: Border.all(color: AppTheme.borderSubtle, width: 0.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.schedule_rounded,
+                          size: 16,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '时间范围选择',
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    text,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 14,
+                      height: 1.6,
+                    ),
+                  ),
+                  if (suggestions != null && suggestions.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildSuggestionChips(suggestions, leftPadding: 0),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建话题切换确认卡片
+  Widget _buildTopicSwitchConfirmCard(Map<String, dynamic> msg) {
+    final text = msg['message'] as String;
+    final suggestions = msg['suggestions'] as List<String>?;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: AppTheme.warning.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.swap_horiz_rounded,
+              size: 16,
+              color: AppTheme.warning,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.bgCard,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: AppTheme.cardShadowLight,
+                border: Border.all(color: AppTheme.warning.withValues(alpha: 0.3), width: 0.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.warning.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: AppTheme.warning,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '话题切换确认',
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    text,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 14,
+                      height: 1.6,
+                    ),
+                  ),
+                  if (suggestions != null && suggestions.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: suggestions.map((s) {
+                        final isNewChat = s.contains('开启新对话');
+                        return ActionChip(
+                          label: Text(
+                            s,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isNewChat ? AppTheme.error : AppTheme.primaryColor,
+                            ),
+                          ),
+                          onPressed: () => _onTopicSwitchSelected(s),
+                          backgroundColor: AppTheme.bgCard,
+                          side: BorderSide(
+                            color: isNewChat 
+                                ? AppTheme.error.withValues(alpha: 0.3)
+                                : AppTheme.primaryColor.withValues(alpha: 0.3),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -728,7 +1332,18 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
                 color: AppTheme.primaryColor,
               ),
             ),
-            onPressed: () => _suggestionClicked(s),
+            onPressed: () {
+              // 检查当前消息是否是时间范围请求或话题切换确认
+              final lastMsg = _messages.isNotEmpty ? _messages.last : null;
+              final action = lastMsg?['action'] as String?;
+              if (action == 'time_range_request') {
+                _onTimeRangeSelected(s);
+              } else if (action == 'topic_switch_confirm') {
+                _onTopicSwitchSelected(s);
+              } else {
+                _suggestionClicked(s);
+              }
+            },
             backgroundColor: AppTheme.bgCard,
             side: BorderSide(
               color: AppTheme.primaryColor.withValues(alpha: 0.3),
@@ -861,9 +1476,11 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   Widget _buildPlanCard(Map<String, dynamic> msg) {
     final text = msg['message'] as String;
     final rows = (msg['planRows'] as List<_PlanRow>?) ?? const <_PlanRow>[];
-    final extras = msg['planExtras'] as _PlanExtras? ??
+    final extras =
+        msg['planExtras'] as _PlanExtras? ??
         const _PlanExtras(materials: [], keyPoints: [], progress: 0);
     final suggestions = msg['suggestions'] as List<String>?;
+    final planTablePage = (msg['planTablePage'] as int?) ?? 0;
     return GestureDetector(
       onSecondaryTapDown: (details) => _showPlanContextMenu(details, rows),
       child: Padding(
@@ -932,10 +1549,14 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _buildPlanTable(rows),
+                    _buildPlanTable(rows, planTablePage, (newPage) {
+                      setState(() {
+                        msg['planTablePage'] = newPage;
+                      });
+                    }),
                     const SizedBox(height: 18),
                     const Text(
-                      '思维导图',
+                      '时间线',
                       style: TextStyle(
                         color: AppTheme.textPrimary,
                         fontSize: 16,
@@ -968,6 +1589,8 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 14),
+                    _buildWBSMindMap(rows),
                     const SizedBox(height: 14),
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,
@@ -1132,19 +1755,311 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildPlanTable(List<_PlanRow> rows) {
+  Widget _buildPlanTable(
+    List<_PlanRow> rows,
+    int page,
+    ValueChanged<int> onPageChanged,
+  ) {
+    const pageSize = 5;
+    final totalPages = (rows.length + pageSize - 1) ~/ pageSize;
+    final page0 = page.clamp(0, totalPages > 0 ? totalPages - 1 : 0);
+    final start = page0 * pageSize;
+    final end = (start + pageSize).clamp(0, rows.length);
+    final displayRows = rows.sublist(start, end);
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: AppTheme.borderSubtle),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _planTableRow('日期', '主题', '训练内容', isHeader: true),
-          for (final row in rows) _planTableRow(row.stage, row.task, row.note),
+          _planTableRow('时间', '主题', '训练内容', isHeader: true),
+          for (var i = 0; i < displayRows.length; i++)
+            _editablePlanTableRow(displayRows[i], start + i),
+          if (totalPages > 1)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, size: 20),
+                    onPressed:
+                        page0 > 0 ? () => onPageChanged(page0 - 1) : null,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: '上一页',
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${page0 + 1} / $totalPages',
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, size: 20),
+                    onPressed:
+                        page0 < totalPages - 1
+                            ? () => onPageChanged(page0 + 1)
+                            : null,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: '下一页',
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Widget _editablePlanTableRow(_PlanRow row, int index) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppTheme.borderSubtle, width: 0.5),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: _planTimeRow(row),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: TextFormField(
+                key: ValueKey('plan-subject-$index-${row.subject}'),
+                initialValue: row.subject,
+                minLines: 1,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                ),
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+                onChanged: (value) => row.subject = value.trim(),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: TextFormField(
+                key: ValueKey('plan-content-$index-${row.content}'),
+                initialValue: row.content,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                ),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+                onChanged: (value) => row.content = value.trim(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ignore: unused_element
+  Widget _planTimeButton({
+    required String label,
+    required DateTime value,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppTheme.bgInput,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          '$label ${_formatPlanDateTime(value)}',
+          style: const TextStyle(
+            color: AppTheme.primaryColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 开始/结束时间合并到同一行展示
+  Widget _planTimeRow(_PlanRow row) {
+    final startStr = _formatPlanDateTime(row.start);
+    final endStr = row.start.day == row.end.day && row.start.month == row.end.month
+        ? '${row.end.hour.toString().padLeft(2, '0')}:${row.end.minute.toString().padLeft(2, '0')}'
+        : _formatPlanDateTime(row.end);
+    return InkWell(
+      onTap: () async {
+        // 点击时间合并行，先弹出开始时间编辑，然后结束时间编辑
+        await _editPlanRowDateTime(row, true);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppTheme.bgInput,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: startStr,
+                style: const TextStyle(
+                  color: AppTheme.primaryColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const TextSpan(
+                text: ' ~ ',
+                style: TextStyle(
+                  color: AppTheme.textHint,
+                  fontSize: 11,
+                ),
+              ),
+              TextSpan(
+                text: endStr,
+                style: const TextStyle(
+                  color: AppTheme.primaryColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editPlanRowDateTime(_PlanRow row, bool isStart) async {
+    final source = isStart ? row.start : row.end;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: source,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(source),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (time == null || !mounted) return;
+    setState(() {
+      final next = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+      if (isStart) {
+        final delta = row.end.difference(row.start);
+        row.start = next;
+        row.end = next.add(delta.isNegative ? const Duration(hours: 1) : delta);
+      } else {
+        row.end = next;
+        if (!row.end.isAfter(row.start)) {
+          row.end = row.start.add(const Duration(hours: 1));
+        }
+      }
+      row.dateLabel = _formatPlanDate(row.start);
+    });
+  }
+
+  /// 后处理：将计划行的日期归一化为本周内连续日期
+  List<_PlanRow> _normalizePlanDates(List<_PlanRow> rows) {
+    if (rows.isEmpty) return rows;
+    final now = DateTime.now();
+    final daysUntilSunday = DateTime.sunday - now.weekday;
+    final thisSunday = DateTime(now.year, now.month, now.day + daysUntilSunday, 23, 59);
+
+    for (var i = 0; i < rows.length; i++) {
+      final assignedDay = now.day + i;
+      final assignedDate = DateTime(now.year, now.month, assignedDay);
+
+      if (!assignedDate.isAfter(thisSunday)) {
+        // 本周内：保留原始时间，只改日期
+        rows[i].start = DateTime(
+          assignedDate.year, assignedDate.month, assignedDate.day,
+          rows[i].start.hour, rows[i].start.minute,
+        );
+        rows[i].end = DateTime(
+          assignedDate.year, assignedDate.month, assignedDate.day,
+          rows[i].end.hour, rows[i].end.minute,
+        );
+      } else {
+        // 超出本周：放在本周日，按行错峰（9→10→11→...）
+        final overflowHour = 9 + (i - (daysUntilSunday + 1) + 1);
+        rows[i].start = DateTime(
+          thisSunday.year, thisSunday.month, thisSunday.day,
+          overflowHour.clamp(9, 23), 0,
+        );
+        rows[i].end = rows[i].start.add(const Duration(hours: 1));
+      }
+    }
+    return rows;
+  }
+
+  String _formatPlanDateTime(DateTime value) {
+    return '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')} '
+        '${value.hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatPlanDate(DateTime value) {
+    return '${value.month.toString().padLeft(2, '0')}-'
+        '${value.day.toString().padLeft(2, '0')}';
+  }
+
+  /// 将超出本周日 23:59 的日期截断到本周日 23:59
+  // ignore: unused_element
+  DateTime _clampToThisWeek(DateTime date) {
+    final now = DateTime.now();
+    final daysUntilSunday = DateTime.sunday - now.weekday; // sunday=7, weekday mon=1 → 6
+    final lastDay = DateTime(now.year, now.month, now.day + daysUntilSunday, 23, 59);
+    return date.isAfter(lastDay) ? lastDay : date;
   }
 
   Widget _planTableRow(
@@ -1196,62 +2111,19 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   }
 
   Widget _buildPlanFlow(List<_PlanRow> rows) {
-    return _buildScreenshotPlanFlow(rows);
-
-    /*
-    final grouped = <String, List<_PlanRow>>{};
-    for (final row in rows.take(10)) {
-      grouped.putIfAbsent(row.stage, () => <_PlanRow>[]).add(row);
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          _mindNode(
-            title: '目标计划',
-            subtitle: '${rows.length} 个节点',
-            icon: Icons.flag_rounded,
-            isRoot: true,
-          ),
-          _mindConnector(width: 28),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: grouped.entries.take(6).map((entry) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _mindNode(
-                      title: entry.key,
-                      subtitle: '阶段',
-                      icon: Icons.account_tree_rounded,
-                    ),
-                    _mindConnector(width: 22),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: entry.value.take(3).map((row) {
-                        return _mindTaskNode(row.task);
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-    */
+    return _buildTimelineView(rows);
   }
 
-  Widget _buildScreenshotPlanFlow(List<_PlanRow> rows) {
-    final nodes = rows.take(7).toList();
-    final colors = const [
+  Widget _buildTimelineView(List<_PlanRow> rows) {
+    // 按 start 升序排列，同天时按原始索引排序
+    final sorted = List<_PlanRow>.from(rows);
+    final indices = {for (var i = 0; i < rows.length; i++) rows[i]: i};
+    sorted.sort((a, b) {
+      final cmp = a.start.compareTo(b.start);
+      return cmp != 0 ? cmp : (indices[a] ?? 0).compareTo(indices[b] ?? 0);
+    });
+
+    const colors = [
       Color(0xFFE9E7FF),
       Color(0xFFDDF5EC),
       Color(0xFFE3F1FF),
@@ -1260,7 +2132,7 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       Color(0xFFEAF6DD),
       Color(0xFFFFECE4),
     ];
-    final borders = const [
+    const borders = [
       Color(0xFF9B8CFF),
       Color(0xFF59B98E),
       Color(0xFF5D9CE8),
@@ -1270,43 +2142,44 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       Color(0xFFFF8B6B),
     ];
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < nodes.length; i++) ...[
-            _flowStepNode(
-              row: nodes[i],
-              background: colors[i % colors.length],
-              border: borders[i % borders.length],
-            ),
-            if (i < nodes.length - 1)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 24,
-                  color: AppTheme.textHint,
+    // 固定最大高度，超出垂直滚动（"弯弯绕绕"效果）
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 220),
+      child: Scrollbar(
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < sorted.length; i++)
+                _compactTimelineCard(
+                  row: sorted[i],
+                  background: colors[i % colors.length],
+                  border: borders[i % borders.length],
                 ),
-              ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _flowStepNode({
+  Widget _compactTimelineCard({
     required _PlanRow row,
     required Color background,
     required Color border,
   }) {
+    final timeStr = '${row.start.month.toString().padLeft(2, '0')}-'
+        '${row.start.day.toString().padLeft(2, '0')}\n'
+        '${row.start.hour.toString().padLeft(2, '0')}:'
+        '${row.start.minute.toString().padLeft(2, '0')}';
     return Container(
-      width: 252,
-      constraints: const BoxConstraints(minHeight: 78),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      width: 160,
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: background,
+        color: background.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: border),
       ),
@@ -1315,27 +2188,26 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
-            row.stage,
+            timeStr,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            row.subject,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppTheme.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
               height: 1.25,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            row.task,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 13,
-              height: 1.35,
             ),
           ),
         ],
@@ -1463,30 +2335,44 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   }
 
   List<_PlanTaskDraft> _buildAssignmentDrafts(List<_PlanRow> rows) {
-    final base = DateTime.now();
-    final baseStart = DateTime(base.year, base.month, base.day, 9);
     final drafts = <_PlanTaskDraft>[];
     var lastParentIndex = -1;
-    for (var i = 0; i < rows.length && i < 12; i++) {
+    for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
-      final start = _inferPlanStart(row, i, baseStart);
+      final start = row.start;
+      final end = row.end.isAfter(row.start)
+          ? row.end
+          : row.start.add(const Duration(hours: 1));
       // 根据 stage 判断层级：战略层/战术层为父任务，执行层为子任务
       final isChild = row.stage.contains('执行层');
       if (!isChild) {
         lastParentIndex = drafts.length; // 当前任务将成为新父任务
       }
-      drafts.add(_PlanTaskDraft(
-        title: row.task,
-        description: '${row.stage} · ${row.note}',
-        start: start,
-        end: start.add(const Duration(hours: 1)),
-        priority: 'P2',
-        parentDraftIndex: isChild && lastParentIndex >= 0 ? lastParentIndex : -1,
-      ));
+      drafts.add(
+        _PlanTaskDraft(
+          title: _assignmentTitleFor(row),
+          description: row.content,
+          start: start,
+          end: end,
+          priority: 'P2',
+          parentDraftIndex: isChild && lastParentIndex >= 0
+              ? lastParentIndex
+              : -1,
+        ),
+      );
     }
     return drafts;
   }
 
+  String _assignmentTitleFor(_PlanRow row) {
+    final subject = row.subject.trim();
+    if (subject.isNotEmpty && !_isHeaderLike(subject)) return subject;
+    final content = row.content.trim();
+    if (content.isNotEmpty && !_isHeaderLike(content)) return content;
+    return '计划任务';
+  }
+
+  // ignore: unused_element
   DateTime _inferPlanStart(_PlanRow row, int index, DateTime fallbackStart) {
     final text = '${row.stage} ${row.task} ${row.note}';
     final weekMatch = RegExp(r'第\s*(\d+)\s*周').firstMatch(text);
@@ -1717,6 +2603,113 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       ),
     );
   }
+
+  /// 构建 WBS 任务分解思维导图：按 stage 分组，展示树形结构
+  Widget _buildWBSMindMap(List<_PlanRow> rows) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final grouped = <String, List<_PlanRow>>{};
+    for (final row in rows) {
+      grouped.putIfAbsent(row.stage.trim(), () => []).add(row);
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(Icons.account_tree_rounded, size: 14, color: AppTheme.primaryColor),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                '任务分解',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...grouped.entries.map((entry) {
+            return Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${entry.key}（${entry.value.length} 项）',
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ...entry.value.map((row) => Padding(
+                    padding: const EdgeInsets.only(left: 20, top: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 5),
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.textHint,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            row.subject,
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
 }
 
 class _TypingDot extends StatefulWidget {
@@ -1771,11 +2764,27 @@ class _TypingDotState extends State<_TypingDot>
 }
 
 class _PlanRow {
-  final String stage;
-  final String task;
-  final String note;
+  String dateLabel;
+  String subject;
+  String content;
+  DateTime start;
+  DateTime end;
 
-  const _PlanRow({required this.stage, required this.task, required this.note});
+  _PlanRow({
+    required String stage,
+    required String task,
+    required String note,
+    DateTime? start,
+    DateTime? end,
+  }) : dateLabel = stage,
+       subject = task,
+       content = note,
+       start = start ?? DateTime.now(),
+       end = end ?? (start ?? DateTime.now()).add(const Duration(hours: 1));
+
+  String get stage => dateLabel;
+  String get task => subject;
+  String get note => content;
 }
 
 class _PlanExtras {
@@ -1802,6 +2811,7 @@ class _PlanTaskDraft {
   DateTime end;
   String priority;
   bool enabled = true;
+
   /// -1 = top-level (parent task), >=0 = index of the parent draft in the list
   final int parentDraftIndex;
 

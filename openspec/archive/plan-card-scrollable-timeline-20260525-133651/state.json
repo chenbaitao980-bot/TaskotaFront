@@ -1,0 +1,59 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T13:09:36.245690+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T13:10:07.284246+00:00",
+      "reason": "四件套已就绪：proposal/design/spec/tasks 均已完成"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T13:10:17.773334+00:00",
+      "reason": "用户已确认方案"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T13:10:21.189995+00:00",
+      "reason": "开始实施：时间线改滚动 + 计划表分页"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T13:12:40.834362+00:00",
+      "reason": "3项实施任务全部完成，静态分析通过"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T13:12:46.480650+00:00",
+      "reason": "实施完成，等待用户验证"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T13:36:43.066675+00:00",
+      "reason": "用户确认代码无误，验证项全部完成"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T13:36:51.744363+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false
+}

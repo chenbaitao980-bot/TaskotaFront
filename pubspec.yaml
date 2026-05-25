@@ -1,7 +1,7 @@
 name: smart_assistant
 description: "AI智能日程管家 - 帮你拆解目标、消除不确定性、修正人生路径的AI秘书管家"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.11.5

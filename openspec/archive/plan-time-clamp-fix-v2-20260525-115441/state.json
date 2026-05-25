@@ -1,0 +1,95 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T10:53:09.028945+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T10:53:39.898051+00:00",
+      "reason": "四件套已就绪，单文件3处修复"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T10:54:16.649382+00:00",
+      "reason": "用户确认执行"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T10:54:21.453801+00:00",
+      "reason": "开始实施3处修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T10:55:30.042036+00:00",
+      "reason": "3处修复+验证全部完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T10:55:34.631612+00:00",
+      "reason": "等待用户验证时间约束和时间线正确"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-25T11:07:18.178575+00:00",
+      "reason": "clamp逻辑有缺陷：_parsePlanDate把所有未来日期压到5-31 00:00，需改为逐行回退到_defaultPlanStart"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T11:08:34.794632+00:00",
+      "reason": "第2轮修复：越界检测+错峰回退，analyze零错误"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T11:08:39.964015+00:00",
+      "reason": "等待验证：计划表与时间线不再重复5-31"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-25T11:13:45.415869+00:00",
+      "reason": "问题根源更深：AI生成本身就有跳跃日期(5-25→5-27→5-29→5-31)，回退值与AI日期冲突。需要后处理归一化分配"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T11:14:55.562715+00:00",
+      "reason": "第3轮修复：新增_normalizePlanDates后处理，所有行按序分配本周连续日期"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T11:15:00.740603+00:00",
+      "reason": "等待验证：计划表和时间线均为本周连续日期，无跳跃无重复"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T11:54:05.975245+00:00",
+      "reason": "用户确认时间约束修复通过"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T11:54:41.230991+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false
+}

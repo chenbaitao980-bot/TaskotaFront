@@ -1,5 +1,7 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../../core/theme/app_theme.dart';
@@ -32,6 +34,9 @@ class _CalendarPageState extends State<CalendarPage> {
   bool _didAutoScrollWeek = false;
   double _hourHeight = 56;
   static const double _timeColumnWidth = 48;
+  static const double _minHourHeight = 32;
+  static const double _maxHourHeight = 120;
+  static const double _zoomStep = 8;
 
   @override
   void initState() {
@@ -450,7 +455,64 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   void _setHourHeight(double height) {
-    setState(() => _hourHeight = height);
+    final nextHeight = height.clamp(_minHourHeight, _maxHourHeight).toDouble();
+    if (nextHeight == _hourHeight) return;
+
+    final position = _weekScrollController.hasClients
+        ? _weekScrollController.position
+        : null;
+    final viewportCenterHour = position == null
+        ? null
+        : (position.pixels + position.viewportDimension / 2) / _hourHeight;
+
+    setState(() => _hourHeight = nextHeight);
+
+    if (viewportCenterHour == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_weekScrollController.hasClients) return;
+      final nextPosition = _weekScrollController.position;
+      final nextOffset =
+          viewportCenterHour * _hourHeight - nextPosition.viewportDimension / 2;
+      _weekScrollController.jumpTo(
+        nextOffset.clamp(0.0, nextPosition.maxScrollExtent),
+      );
+    });
+  }
+
+  bool get _isCtrlPressed {
+    final keys = HardwareKeyboard.instance.logicalKeysPressed;
+    return keys.contains(LogicalKeyboardKey.controlLeft) ||
+        keys.contains(LogicalKeyboardKey.controlRight);
+  }
+
+  void _handleTimelinePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_isCtrlPressed) return;
+    final delta = event.scrollDelta.dy < 0 ? -_zoomStep : _zoomStep;
+    _setHourHeight(_hourHeight + delta);
+  }
+
+  Future<void> _updateTaskStatus(
+    TaskBreakdown task,
+    bool isCompleted,
+  ) async {
+    try {
+      await _ensureStorageReady();
+      await _storage.updateTask(
+        task.copyWith(
+          status: isCompleted ? 'completed' : 'in_progress',
+          progress: isCompleted
+              ? 100
+              : (task.progress >= 100 ? 0 : task.progress),
+        ),
+      );
+      _loadEvents();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Update task failed: $e')));
+      }
+    }
   }
 
   void _showTaskContextMenu(TaskBreakdown task) {
@@ -569,12 +631,12 @@ class _CalendarPageState extends State<CalendarPage> {
           IconButton(
             icon: const Icon(Icons.zoom_out, size: 22),
             tooltip: '缩小时间线',
-            onPressed: () => _setHourHeight((_hourHeight - 8).clamp(32, 120)),
+            onPressed: () => _setHourHeight(_hourHeight - _zoomStep),
           ),
           IconButton(
             icon: const Icon(Icons.zoom_in, size: 22),
             tooltip: '放大时间线',
-            onPressed: () => _setHourHeight((_hourHeight + 8).clamp(32, 120)),
+            onPressed: () => _setHourHeight(_hourHeight + _zoomStep),
           ),
           const SizedBox(width: 8),
           IconButton(
@@ -680,49 +742,52 @@ class _CalendarPageState extends State<CalendarPage> {
                 children: [
                   _buildMultiDayLane(days, dayWidth),
                   Expanded(
-                    child: SingleChildScrollView(
-                      controller: _weekScrollController,
-                      child: SizedBox(
-                        height: totalHeight,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildTimeColumn(totalHeight),
-                            SizedBox(
-                              width: dayWidth * 7,
-                              height: totalHeight,
-                              child: Stack(
-                                children: [
-                                  for (
-                                    var dayIndex = 0;
-                                    dayIndex < days.length;
-                                    dayIndex++
-                                  )
-                                    Positioned(
-                                      left: dayIndex * dayWidth,
-                                      top: 0,
-                                      width: dayWidth,
-                                      height: totalHeight,
-                                      child: _buildDayDropColumn(
+                    child: Listener(
+                      onPointerSignal: _handleTimelinePointerSignal,
+                      child: SingleChildScrollView(
+                        controller: _weekScrollController,
+                        child: SizedBox(
+                          height: totalHeight,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTimeColumn(totalHeight),
+                              SizedBox(
+                                width: dayWidth * 7,
+                                height: totalHeight,
+                                child: Stack(
+                                  children: [
+                                    for (
+                                      var dayIndex = 0;
+                                      dayIndex < days.length;
+                                      dayIndex++
+                                    )
+                                      Positioned(
+                                        left: dayIndex * dayWidth,
+                                        top: 0,
+                                        width: dayWidth,
+                                        height: totalHeight,
+                                        child: _buildDayDropColumn(
+                                          days[dayIndex],
+                                          dayWidth,
+                                        ),
+                                      ),
+                                    for (
+                                      var dayIndex = 0;
+                                      dayIndex < days.length;
+                                      dayIndex++
+                                    )
+                                      ..._buildEventBlocksForDay(
                                         days[dayIndex],
+                                        dayIndex,
                                         dayWidth,
                                       ),
-                                    ),
-                                  for (
-                                    var dayIndex = 0;
-                                    dayIndex < days.length;
-                                    dayIndex++
-                                  )
-                                    ..._buildEventBlocksForDay(
-                                      days[dayIndex],
-                                      dayIndex,
-                                      dayWidth,
-                                    ),
-                                  _buildCurrentTimeIndicator(days, dayWidth),
-                                ],
+                                    _buildCurrentTimeIndicator(days, dayWidth),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1043,10 +1108,16 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _buildTaskBlock(TaskBreakdown task, DateTime start, DateTime end) {
-    final color = _priorityColor(task.priority);
+    final isCompleted = task.status == 'completed';
+    final color = isCompleted
+        ? Colors.grey.shade500
+        : _priorityColor(task.priority);
+    final textColor = isCompleted
+        ? Colors.white.withValues(alpha: 0.72)
+        : Colors.white;
     return Material(
-      color: color.withValues(alpha: 0.88),
-      elevation: 2,
+      color: color.withValues(alpha: isCompleted ? 0.62 : 0.88),
+      elevation: isCompleted ? 0 : 2,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: () => _openTaskDetail(task),
@@ -1056,12 +1127,25 @@ class _CalendarPageState extends State<CalendarPage> {
           padding: const EdgeInsets.all(6),
           child: Row(
             children: [
-              const Icon(
-                Icons.account_tree_rounded,
-                color: Colors.white,
-                size: 14,
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: Checkbox(
+                  value: isCompleted,
+                  onChanged: (checked) =>
+                      _updateTaskStatus(task, checked == true),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  side: const BorderSide(color: Colors.white, width: 1.5),
+                  checkColor: Colors.grey,
+                  fillColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1075,6 +1159,12 @@ class _CalendarPageState extends State<CalendarPage> {
                         color: Colors.white,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
+                      ).copyWith(
+                        color: textColor,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        decorationColor: textColor,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -1082,7 +1172,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       '${_timeLabel(start)} - ${_timeLabel(end)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                      style: TextStyle(color: textColor, fontSize: 10),
                     ),
                   ],
                 ),
@@ -1163,10 +1253,16 @@ class _CalendarPageState extends State<CalendarPage> {
     DateTime end,
     DateTime segmentStart,
   ) {
-    final color = _priorityColor(event.priority as String);
+    final isCompleted = event.status == 'completed';
+    final color = isCompleted
+        ? Colors.grey.shade500
+        : _priorityColor(event.priority as String);
+    final textColor = isCompleted
+        ? Colors.white.withValues(alpha: 0.72)
+        : Colors.white;
     final block = Material(
-      color: color.withValues(alpha: 0.9),
-      elevation: 2,
+      color: color.withValues(alpha: isCompleted ? 0.62 : 0.9),
+      elevation: isCompleted ? 0 : 2,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: () => _editSchedule(event),
@@ -1191,6 +1287,13 @@ class _CalendarPageState extends State<CalendarPage> {
                   },
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  side: const BorderSide(color: Colors.white, width: 1.5),
+                  checkColor: Colors.grey,
+                  fillColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.18),
+                  ),
                 ),
               ),
               const SizedBox(width: 4),
@@ -1207,6 +1310,12 @@ class _CalendarPageState extends State<CalendarPage> {
                         color: Colors.white,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
+                      ).copyWith(
+                        color: textColor,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        decorationColor: textColor,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -1214,7 +1323,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       '${_timeLabel(start)} - ${_timeLabel(end)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                      style: TextStyle(color: textColor, fontSize: 10),
                     ),
                   ],
                 ),

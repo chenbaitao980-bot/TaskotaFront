@@ -1,0 +1,59 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T07:58:31.094811+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T07:58:54.084938+00:00",
+      "reason": "打包四件套已就绪"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T07:59:01.571235+00:00",
+      "reason": "用户要求按规范打包"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T07:59:13.088631+00:00",
+      "reason": "开始执行 Windows 全量构建和打包"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T08:03:34.983512+00:00",
+      "reason": "Windows Release 构建、复制、压缩和解压验证已完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T08:03:54.018348+00:00",
+      "reason": "等待用户验证 ZIP 包可解压并启动"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T08:07:33.933992+00:00",
+      "reason": "用户确认刚刚打包OK"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T08:08:00.324597+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false
+}
