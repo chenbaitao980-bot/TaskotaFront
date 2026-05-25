@@ -1,0 +1,64 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T15:20:36.199092+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T15:20:41.047312+00:00",
+      "reason": "打包四件套已生成，规范、范围和验收标准明确。"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T15:22:10.382571+00:00",
+      "reason": "用户确认打包，并要求打包成功后直接归档"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T15:22:22.555225+00:00",
+      "reason": "开始执行 Windows release 规范打包流程"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T15:28:31.890795+00:00",
+      "reason": "Windows release 规范打包、压缩包生成和结构验证已完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T15:28:55.319440+00:00",
+      "reason": "打包产物已生成，进入用户验证节点"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T15:29:01.590570+00:00",
+      "reason": "用户已提前确认打包成功后直接归档；ZIP 产物和结构验证均通过"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T15:29:15.261942+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\package-windows-release-20260525-3\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-25T15:28:37.342055+00:00"
+  }
+}

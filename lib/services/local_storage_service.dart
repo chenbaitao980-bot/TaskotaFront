@@ -129,6 +129,7 @@ class LocalStorageService {
     String? status,
     String? parentTaskId,
     bool rootOnly = false,
+    bool? excludeParent,
     DateTime? startDate,
     DateTime? endDate,
   }) {
@@ -148,6 +149,13 @@ class LocalStorageService {
       tasks = tasks
           .where((t) => t.parentTaskId == null && t.parentScheduleId == null)
           .toList();
+    }
+    if (excludeParent != null) {
+      if (excludeParent) {
+        tasks = tasks.where((t) => !t.isParent).toList();
+      } else {
+        tasks = tasks.where((t) => t.isParent).toList();
+      }
     }
     if (startDate != null || endDate != null) {
       final rangeStart = startDate ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -204,6 +212,10 @@ class LocalStorageService {
     final tasks = getTasks();
     tasks.add(task);
     await _saveTasks(tasks);
+    // 自动刷新父任务的 isParent
+    if (task.parentTaskId != null) {
+      await refreshParentFlag(task.parentTaskId!);
+    }
     return task;
   }
 
@@ -211,8 +223,16 @@ class LocalStorageService {
     final tasks = getTasks();
     final index = tasks.indexWhere((t) => t.id == updated.id);
     if (index == -1) throw Exception('Task not found');
+    final oldParentId = tasks[index].parentTaskId;
     tasks[index] = updated.copyWith(updatedAt: DateTime.now());
     await _saveTasks(tasks);
+    // parentTaskId 变化时刷新两端 isParent
+    if (oldParentId != updated.parentTaskId) {
+      if (oldParentId != null) await refreshParentFlag(oldParentId);
+      if (updated.parentTaskId != null) {
+        await refreshParentFlag(updated.parentTaskId!);
+      }
+    }
     return tasks[index];
   }
 
@@ -220,13 +240,127 @@ class LocalStorageService {
     return getTasks().any((task) => task.parentTaskId == id);
   }
 
+  // 获取某任务的所有后代任务（递归）
+  List<TaskBreakdown> getAllDescendantTasks(String taskId) {
+    final allTasks = getTasks();
+    final result = <TaskBreakdown>[];
+
+    void collect(String parentId) {
+      final children = allTasks.where((t) => t.parentTaskId == parentId).toList();
+      for (final child in children) {
+        result.add(child);
+        collect(child.id);
+      }
+    }
+
+    collect(taskId);
+    return result;
+  }
+
+  // 计算任务进度（基于后代任务完成状态）
+  int calculateTaskProgress(String taskId) {
+    final descendants = getAllDescendantTasks(taskId);
+    if (descendants.isEmpty) {
+      // 叶子节点：返回自身 progress
+      final task = getTasks().where((t) => t.id == taskId).firstOrNull;
+      return task?.progress ?? 0;
+    }
+    // 有后代：按完成后代比例计算
+    final completedCount = descendants.where((t) => t.status == 'completed').length;
+    return ((completedCount / descendants.length) * 100).round();
+  }
+
+  /// 当子任务完成时，检查父任务是否应自动完成（递归向上传播）
+  Future<void> checkAndAutoCompleteParent(String taskId) async {
+    final allTasks = getTasks();
+    final task = allTasks.where((t) => t.id == taskId).firstOrNull;
+    if (task == null || task.parentTaskId == null) return;
+
+    final parentId = task.parentTaskId!;
+    final parent = allTasks.where((t) => t.id == parentId).firstOrNull;
+    if (parent == null) return;
+
+    // 获取所有同级子任务
+    final siblings = allTasks.where((t) => t.parentTaskId == parentId).toList();
+    final allCompleted = siblings.every((t) => t.status == 'completed');
+
+    if (allCompleted) {
+      // 父任务所有子任务都完成 → 自动完成父任务
+      final updated = parent.copyWith(
+        status: 'completed',
+        progress: 100,
+      );
+      await updateTask(updated);
+      // 递归向上传播
+      await checkAndAutoCompleteParent(parentId);
+    }
+  }
+
+  /// 当子任务从 completed 改为其他状态时，将父任务回退
+  Future<void> revertParentOnChildIncomplete(String taskId) async {
+    final allTasks = getTasks();
+    final task = allTasks.where((t) => t.id == taskId).firstOrNull;
+    if (task == null || task.parentTaskId == null) return;
+
+    final parentId = task.parentTaskId!;
+    final parent = allTasks.where((t) => t.id == parentId).firstOrNull;
+    if (parent == null) return;
+
+    // 如果父任务是自动完成的，回退到进行中
+    if (parent.status == 'completed') {
+      final progress = calculateTaskProgress(parentId);
+      final updated = parent.copyWith(
+        status: progress > 0 ? 'in_progress' : 'pending',
+        progress: progress,
+      );
+      await updateTask(updated);
+      // 递归向上传播
+      await revertParentOnChildIncomplete(parentId);
+    }
+  }
+
+  /// 刷新任务的 isParent：有子任务 → true，否则 false
+  Future<void> refreshParentFlag(String taskId) async {
+    final allTasks = getTasks();
+    final task = allTasks.where((t) => t.id == taskId).firstOrNull;
+    if (task == null) return;
+    final hasChildren = allTasks.any((t) => t.parentTaskId == taskId);
+    if (task.isParent != hasChildren) {
+      final updated = task.copyWith(isParent: hasChildren);
+      await updateTask(updated);
+    }
+  }
+
+  /// 检测任务时间冲突：与已有 Schedule 或其他非父任务 TaskBreakdown 重叠
+  bool detectTaskTimeConflict(DateTime start, DateTime end,
+      {String? excludeId}) {
+    // 1. 检测 Schedule 冲突
+    if (detectTimeConflict(start, end, excludeId: excludeId)) return true;
+    // 2. 检测 TaskBreakdown 冲突（排除父任务）
+    final tasks = getTasks(excludeParent: true);
+    for (final task in tasks) {
+      if (excludeId != null && task.id == excludeId) continue;
+      final tStart = task.startDate;
+      final tEnd = task.endDate;
+      if (tStart == null || tEnd == null) continue;
+      if (tStart.isBefore(end) && tEnd.isAfter(start)) return true;
+    }
+    return false;
+  }
+
   Future<void> deleteTask(String id) async {
     final tasks = getTasks();
     if (tasks.any((t) => t.parentTaskId == id)) {
       throw StateError('Task has child tasks');
     }
+    final deleted = tasks.where((t) => t.id == id).firstOrNull;
+    final parentId = deleted?.parentTaskId;
     tasks.removeWhere((t) => t.id == id);
     await _saveTasks(tasks);
+    // 删除子任务后刷新父任务的 isParent
+    if (parentId != null) {
+      await refreshParentFlag(parentId);
+    }
   }
 
   Future<void> _saveTasks(List<TaskBreakdown> tasks) async {

@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-05-25T14:42:38.586359+00:00",
+  "scope": "all",
+  "result": {
+    "status": "error",
+    "reason": "'NoneType' object has no attribute 'strip'",
+    "command": [
+      "gitnexus",
+      "detect-changes",
+      "--scope",
+      "all",
+      "--repo",
+      "smart-assistant"
+    ]
+  }
+}

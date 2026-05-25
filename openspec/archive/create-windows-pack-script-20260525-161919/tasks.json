@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "创建打包bat脚本",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "运行脚本检查输出目录是否包含正确版本号的exe和DLL",
+      "done": true
+    }
+  ]
+}

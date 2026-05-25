@@ -34,6 +34,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   late DateTime _endDate;
   late String _priority;
   late bool _focusRequired;
+  late bool _isParent;
+  String? _parentTaskId;
+  String? _parentTaskName;
   bool _isEditing = false;
   final LocalStorageService _storage = LocalStorageService();
 
@@ -52,14 +55,27 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       _endDate = t.endDate ?? _defaultEndDate(_startDate);
       _priority = t.priority;
       _focusRequired = t.focusRequired;
+      _isParent = t.isParent;
     } else {
       _titleController.text = widget.initialTitle ?? '';
       _startDate = widget.initialStartDate ?? DateTime.now();
       _endDate = _defaultEndDate(_startDate, widget.initialEndDate);
       _priority = 'P2';
       _focusRequired = false;
+      _isParent = false;
     }
-    _storage.init();
+    // 初始化父任务信息
+    if (_isEditing && widget.existingTask!.parentTaskId != null) {
+      _parentTaskId = widget.existingTask!.parentTaskId;
+    } else if (widget.parentTask != null) {
+      _parentTaskId = widget.parentTask!.id;
+    }
+    _storage.init().then((_) {
+      if (_parentTaskId != null) {
+        final p = _storage.getTasks().where((t) => t.id == _parentTaskId).firstOrNull;
+        if (mounted) setState(() => _parentTaskName = p?.title);
+      }
+    });
   }
 
   @override
@@ -67,6 +83,57 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  void _selectParentTask() async {
+    final allTasks = _storage.getTasks(excludeParent: true);
+    final selected = await showDialog<Object?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择父任务'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: allTasks.isEmpty
+              ? const Center(child: Text('没有可选的任务'))
+              : ListView.builder(
+                  itemCount: allTasks.length,
+                  itemBuilder: (context, index) {
+                    final t = allTasks[index];
+                    return ListTile(
+                      title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(t.status == 'completed' ? '已完成' : '待办'),
+                      selected: t.id == _parentTaskId,
+                      onTap: () => Navigator.pop(context, t),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          if (_parentTaskId != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'clear'),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+              child: const Text('清除父任务'),
+            ),
+        ],
+      ),
+    );
+    if (selected is String && selected == 'clear') {
+      setState(() {
+        _parentTaskId = null;
+        _parentTaskName = null;
+      });
+    } else if (selected is TaskBreakdown) {
+      setState(() {
+        _parentTaskId = selected.id;
+        _parentTaskName = selected.title;
+      });
+    }
   }
 
   String _getUserId() {
@@ -148,6 +215,36 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       return;
     }
 
+    // 非父任务：检测时间冲突
+    if (!_isParent) {
+      final conflict = _storage.detectTaskTimeConflict(
+        _startDate,
+        _endDate,
+        excludeId: widget.existingTask?.id,
+      );
+      if (conflict) {
+        if (!mounted) return;
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('时间冲突'),
+            content: const Text('该时间段与已有日程或其他任务重叠，是否仍然保存？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('仍然保存'),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      }
+    }
+
     if (_isEditing) {
       final updated = widget.existingTask!.copyWith(
         title: title,
@@ -158,6 +255,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         endDate: _endDate,
         priority: _priority,
         focusRequired: _focusRequired,
+        isParent: _isParent,
+        parentTaskId: _parentTaskId,
       );
       await _storage.updateTask(updated);
     } else {
@@ -167,14 +266,15 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         description: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
-        level: widget.parentTask == null && widget.parentScheduleId == null
+        level: _isParent
             ? 'task'
-            : 'subtask',
+            : (_parentTaskId != null || widget.parentScheduleId != null
+                  ? 'subtask'
+                  : 'task'),
         startDate: _startDate,
         endDate: _endDate,
         priority: _priority,
-        parentGoalId: widget.parentTask?.parentGoalId,
-        parentTaskId: widget.parentTask?.id,
+        parentTaskId: _parentTaskId,
         parentScheduleId: widget.parentScheduleId,
       );
     }
@@ -228,6 +328,60 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               decoration: const InputDecoration(
                 labelText: '描述',
                 hintText: '添加任务描述（可选）',
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Parent Task （滴答清单风格）
+            Text('所属父任务', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                color: AppTheme.bgCard,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: AppTheme.cardShadow,
+              ),
+              child: ListTile(
+                leading: Icon(
+                  _parentTaskId != null
+                      ? Icons.account_tree_outlined
+                      : Icons.link_off,
+                  color: AppTheme.primaryColor,
+                  size: 22,
+                ),
+                title: Text(
+                  _parentTaskName ?? '无父任务',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _parentTaskId != null
+                        ? AppTheme.primaryColor
+                        : AppTheme.textSecondary,
+                    fontWeight: _parentTaskId != null
+                        ? FontWeight.w500
+                        : FontWeight.normal,
+                  ),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_parentTaskId != null)
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _parentTaskId = null;
+                            _parentTaskName = null;
+                          });
+                        },
+                        child: Icon(Icons.close, size: 18, color: AppTheme.textHint),
+                      ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.chevron_right, size: 20, color: AppTheme.textHint),
+                  ],
+                ),
+                onTap: _selectParentTask,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
             const SizedBox(height: 28),
@@ -299,6 +453,34 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 _buildPriorityChip('P2', '普通', AppTheme.priorityP2),
                 _buildPriorityChip('P3', '低', AppTheme.priorityP3),
               ],
+            ),
+            const SizedBox(height: 28),
+
+            // 任务类型
+            Text('任务类型', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: AppTheme.bgCard,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: AppTheme.cardShadow,
+              ),
+              child: SwitchListTile(
+                title: const Text(
+                  '标记为父任务（容器）',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '父任务不出现在日历时间线上',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                ),
+                value: _isParent,
+                onChanged: (value) => setState(() => _isParent = value),
+                activeThumbColor: AppTheme.primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
             ),
             const SizedBox(height: 28),
 

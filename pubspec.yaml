@@ -1,7 +1,7 @@
 name: smart_assistant
 description: "AI智能日程管家 - 帮你拆解目标、消除不确定性、修正人生路径的AI秘书管家"
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ^3.11.5
@@ -49,6 +49,13 @@ dependencies:
   uuid: ^4.5.0
   logger: ^2.5.0
 
+  # 本地数据库
+  drift: ^2.24.0
+  sqlite3: ^2.9.0
+  sqlite3_flutter_libs: ^0.5.28
+  path_provider: ^2.1.5
+  path: ^1.9.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,6 +63,7 @@ dev_dependencies:
   build_runner: ^2.4.15
   json_serializable: ^6.9.0
   freezed: ^2.5.7
+  drift_dev: ^2.24.0
 
 flutter:
   uses-material-design: true

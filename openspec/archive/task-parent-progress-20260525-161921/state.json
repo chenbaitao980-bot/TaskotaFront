@@ -1,0 +1,59 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T15:35:29.345203+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T15:38:32.196976+00:00",
+      "reason": "四件套已就绪，需求范围和验收标准已明确"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T15:40:03.963392+00:00",
+      "reason": "用户已确认实施"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T15:40:10.147604+00:00",
+      "reason": "开始实施"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T15:43:02.292584+00:00",
+      "reason": "实现完成：父任务展示、跳转、进度计算"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T15:43:08.894064+00:00",
+      "reason": "等待用户验证"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T16:19:15.632353+00:00",
+      "reason": "用户确认功能正常，回归测试通过"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T16:19:21.346222+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false
+}

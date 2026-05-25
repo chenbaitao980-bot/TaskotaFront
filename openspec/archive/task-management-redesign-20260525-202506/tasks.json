@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {"id": 1, "text": "添加 drift 依赖到 pubspec.yaml", "done": true},
+    {"id": 2, "text": "创建 AppDatabase（drift Database，含 projects/tasks/checklist_items 三张表）", "done": true},
+    {"id": 3, "text": "创建 ProjectRepository（CRUD）", "done": true},
+    {"id": 4, "text": "创建 TaskRepository（CRUD + 筛选/排序）", "done": true},
+    {"id": 5, "text": "创建 ChecklistRepository（CRUD）", "done": true},
+    {"id": 6, "text": "创建新版 TaskBloc（blocs/task_new/）", "done": true},
+    {"id": 7, "text": "创建 TasksPage + ProjectSidebar（左侧 Drawer）", "done": true},
+    {"id": 8, "text": "创建 TaskListView + TaskCard（含左滑完成/删除）", "done": true},
+    {"id": 9, "text": "创建 TaskCreateSheet + TaskEditPage", "done": true},
+    {"id": 10, "text": "创建 TaskDetailPage + ChecklistSection + TaskInfoSection", "done": true},
+    {"id": 11, "text": "修改 HomePage 底部导航 4→5 项，加入「任务」Tab", "done": true},
+    {"id": 12, "text": "在 main.dart 中初始化 drift 数据库和注入新 TaskBloc", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "项目创建/编辑/删除全流程测试", "done": true},
+    {"id": 2, "text": "任务创建/编辑/删除/完成全流程测试", "done": true},
+    {"id": 3, "text": "检查项添加/编辑/删除/勾选全流程测试", "done": true},
+    {"id": 4, "text": "底部导航任务Tab正常显示和切换", "done": true},
+    {"id": 5, "text": "旧系统正常运行（日历、AI聊天、旧任务页面）", "done": true},
+    {"id": 6, "text": "drift 数据库读写正常，数据持久化可靠", "done": true}
+  ]
+}

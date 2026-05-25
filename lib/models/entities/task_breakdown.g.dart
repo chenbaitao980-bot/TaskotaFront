@@ -26,6 +26,7 @@ _$TaskBreakdownImpl _$$TaskBreakdownImplFromJson(Map<String, dynamic> json) =>
       progress: (json['progress'] as num?)?.toInt() ?? 0,
       priority: json['priority'] as String? ?? 'P2',
       focusRequired: json['focusRequired'] as bool? ?? false,
+      isParent: json['isParent'] as bool? ?? false,
       dependencies: (json['dependencies'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
@@ -49,6 +50,7 @@ Map<String, dynamic> _$$TaskBreakdownImplToJson(_$TaskBreakdownImpl instance) =>
       'progress': instance.progress,
       'priority': instance.priority,
       'focusRequired': instance.focusRequired,
+      'isParent': instance.isParent,
       'dependencies': instance.dependencies,
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),

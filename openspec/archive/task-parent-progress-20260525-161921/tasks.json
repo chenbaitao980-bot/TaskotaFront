@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "任务详情页增加父任务展示区域",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "父任务点击跳转逻辑",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "父任务进度计算算法（支持多级嵌套）",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "进度UI展示更新",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "子任务详情页显示父任务名称且可点击跳转",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "父任务详情页显示正确进度百分比",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "多级嵌套任务进度计算正确",
+      "done": true
+    }
+  ]
+}

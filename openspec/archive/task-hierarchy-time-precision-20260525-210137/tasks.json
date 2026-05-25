@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {"id": 1, "text": "Tasks 表新增 parentId 列, schema v1→v2 迁移", "done": true},
+    {"id": 2, "text": "Repository 新增 getSubTasks / getDescendants / moveTask / reorderSubTasks", "done": true},
+    {"id": 3, "text": "BLoC 新增树操作事件(LoadSubTree/AddSubTask/MoveSubTask/ToggleSubTask)和状态", "done": true},
+    {"id": 4, "text": "创建任务 BottomSheet 添加 TimePicker", "done": true},
+    {"id": 5, "text": "编辑任务页面添加 TimePicker", "done": true},
+    {"id": 6, "text": "任务卡片和详情页时间格式改为含时分", "done": true},
+    {"id": 7, "text": "创建 SubtaskTreeSection 组件（树形展开/折叠/内联添加）", "done": true},
+    {"id": 8, "text": "详情页嵌入子任务树区域", "done": true},
+    {"id": 9, "text": "实现拖拽移动（LongPressDraggable + DragTarget）", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "创建/编辑任务可设置日期和时间", "done": true},
+    {"id": 2, "text": "任务卡片/详情页显示完整时间格式", "done": true},
+    {"id": 3, "text": "添加多层递归子任务，树正确展开/折叠", "done": true},
+    {"id": 4, "text": "拖拽移动子任务到其他父节点", "done": true},
+    {"id": 5, "text": "子任务/检查项勾选互不影响", "done": true}
+  ]
+}

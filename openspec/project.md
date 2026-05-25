@@ -6,6 +6,10 @@ SmartAssistant
 ## 技术栈
 Flutter
 
+## GitNexus
+- GitNexus 别名：`smart_assistant`
+- 约束：GitNexus query/impact/detect-changes SHALL 优先绑定当前项目图谱。
+
 ## 全局约束
 - 编码约束：TBD
 - 提交约束：不主动 git commit / push，等待用户明确指令

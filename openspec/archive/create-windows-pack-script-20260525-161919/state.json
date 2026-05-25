@@ -1,0 +1,64 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T16:05:38.396747+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T16:06:06.495302+00:00",
+      "reason": "四件套已填充完成"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T16:06:21.463537+00:00",
+      "reason": "用户已确认，开始实施"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T16:06:24.997227+00:00",
+      "reason": "开始实施"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T16:06:52.441910+00:00",
+      "reason": "build_windows.bat 已创建完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T16:07:01.657551+00:00",
+      "reason": "脚本已创建，请用户验证"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T16:19:14.403729+00:00",
+      "reason": "用户确认构建成功，回归测试通过"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T16:19:20.017522+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\create-windows-pack-script\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-25T16:06:57.710670+00:00"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-25T14:33:08.315060+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-25T14:33:15.394927+00:00",
+      "reason": "四件套已生成，需求范围和验收标准已明确，GitNexus 手动影响分析为 LOW。"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-25T14:34:31.903354+00:00",
+      "reason": "用户已确认实施"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-25T14:34:35.321647+00:00",
+      "reason": "开始实施用户确认的日历交互修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-25T14:42:36.076384+00:00",
+      "reason": "实现完成：任务/子任务和多日项支持直接勾选，完成态统一置灰，周视图支持 Ctrl+滚轮缩放；flutter analyze 已执行，仅剩既有无关 info。"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-25T14:42:55.708580+00:00",
+      "reason": "实施已完成，等待用户在应用中验证交互效果"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-25T15:32:31.703630+00:00",
+      "reason": "用户验证通过，功能正常"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-25T15:33:18.317841+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\calendar-task-complete-and-zoom\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-25T14:42:38.586359+00:00"
+  }
+}

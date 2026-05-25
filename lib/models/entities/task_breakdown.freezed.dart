@@ -35,6 +35,7 @@ mixin _$TaskBreakdown {
   int get progress => throw _privateConstructorUsedError;
   String get priority => throw _privateConstructorUsedError;
   bool get focusRequired => throw _privateConstructorUsedError;
+  bool get isParent => throw _privateConstructorUsedError;
   List<String>? get dependencies => throw _privateConstructorUsedError;
   DateTime get createdAt => throw _privateConstructorUsedError;
   DateTime get updatedAt => throw _privateConstructorUsedError;
@@ -71,6 +72,7 @@ abstract class $TaskBreakdownCopyWith<$Res> {
     int progress,
     String priority,
     bool focusRequired,
+    bool isParent,
     List<String>? dependencies,
     DateTime createdAt,
     DateTime updatedAt,
@@ -106,6 +108,7 @@ class _$TaskBreakdownCopyWithImpl<$Res, $Val extends TaskBreakdown>
     Object? progress = null,
     Object? priority = null,
     Object? focusRequired = null,
+    Object? isParent = null,
     Object? dependencies = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
@@ -168,6 +171,10 @@ class _$TaskBreakdownCopyWithImpl<$Res, $Val extends TaskBreakdown>
                 ? _value.focusRequired
                 : focusRequired // ignore: cast_nullable_to_non_nullable
                       as bool,
+            isParent: null == isParent
+                ? _value.isParent
+                : isParent // ignore: cast_nullable_to_non_nullable
+                      as bool,
             dependencies: freezed == dependencies
                 ? _value.dependencies
                 : dependencies // ignore: cast_nullable_to_non_nullable
@@ -210,6 +217,7 @@ abstract class _$$TaskBreakdownImplCopyWith<$Res>
     int progress,
     String priority,
     bool focusRequired,
+    bool isParent,
     List<String>? dependencies,
     DateTime createdAt,
     DateTime updatedAt,
@@ -244,6 +252,7 @@ class __$$TaskBreakdownImplCopyWithImpl<$Res>
     Object? progress = null,
     Object? priority = null,
     Object? focusRequired = null,
+    Object? isParent = null,
     Object? dependencies = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
@@ -306,6 +315,10 @@ class __$$TaskBreakdownImplCopyWithImpl<$Res>
             ? _value.focusRequired
             : focusRequired // ignore: cast_nullable_to_non_nullable
                   as bool,
+        isParent: null == isParent
+            ? _value.isParent
+            : isParent // ignore: cast_nullable_to_non_nullable
+                  as bool,
         dependencies: freezed == dependencies
             ? _value._dependencies
             : dependencies // ignore: cast_nullable_to_non_nullable
@@ -341,6 +354,7 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
     this.progress = 0,
     this.priority = 'P2',
     this.focusRequired = false,
+    this.isParent = false,
     final List<String>? dependencies,
     required this.createdAt,
     required this.updatedAt,
@@ -381,6 +395,9 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
   @override
   @JsonKey()
   final bool focusRequired;
+  @override
+  @JsonKey()
+  final bool isParent;
   final List<String>? _dependencies;
   @override
   List<String>? get dependencies {
@@ -398,7 +415,7 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
 
   @override
   String toString() {
-    return 'TaskBreakdown(id: $id, userId: $userId, parentGoalId: $parentGoalId, parentTaskId: $parentTaskId, parentScheduleId: $parentScheduleId, title: $title, description: $description, level: $level, startDate: $startDate, endDate: $endDate, status: $status, progress: $progress, priority: $priority, focusRequired: $focusRequired, dependencies: $dependencies, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'TaskBreakdown(id: $id, userId: $userId, parentGoalId: $parentGoalId, parentTaskId: $parentTaskId, parentScheduleId: $parentScheduleId, title: $title, description: $description, level: $level, startDate: $startDate, endDate: $endDate, status: $status, progress: $progress, priority: $priority, focusRequired: $focusRequired, isParent: $isParent, dependencies: $dependencies, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 
   @override
@@ -428,6 +445,8 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
                 other.priority == priority) &&
             (identical(other.focusRequired, focusRequired) ||
                 other.focusRequired == focusRequired) &&
+            (identical(other.isParent, isParent) ||
+                other.isParent == isParent) &&
             const DeepCollectionEquality().equals(
               other._dependencies,
               _dependencies,
@@ -456,6 +475,7 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
     progress,
     priority,
     focusRequired,
+    isParent,
     const DeepCollectionEquality().hash(_dependencies),
     createdAt,
     updatedAt,
@@ -491,6 +511,7 @@ abstract class _TaskBreakdown implements TaskBreakdown {
     final int progress,
     final String priority,
     final bool focusRequired,
+    final bool isParent,
     final List<String>? dependencies,
     required final DateTime createdAt,
     required final DateTime updatedAt,
@@ -527,6 +548,8 @@ abstract class _TaskBreakdown implements TaskBreakdown {
   String get priority;
   @override
   bool get focusRequired;
+  @override
+  bool get isParent;
   @override
   List<String>? get dependencies;
   @override

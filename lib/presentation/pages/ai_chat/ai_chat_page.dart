@@ -142,84 +142,105 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   Future<void> _callAI(String userMessage) async {
     setState(() => _isTyping = true);
     try {
-      // 话题漂移检测
-      final topicDrift = _detectTopicDrift(userMessage);
-      final history = topicDrift ? <Map<String, String>>[] : _buildHistory();
+      // 先判断是否是直接日程（如"明天下午3点开会"）
+      final parsedSchedule = await _aiService.parseSchedule(userMessage);
+      final isDirectSchedule =
+          parsedSchedule != null && parsedSchedule['type'] == 'schedule';
 
-      final profile = _storage.getExplicitProfile();
-      final implicit = _storage.getImplicitProfile();
-      final userProfile = <String, dynamic>{};
-      if (profile != null) userProfile.addAll(profile);
-      if (implicit != null) userProfile.addAll(implicit);
-      userProfile['completionRate'] = implicit?['avgTaskCompletionRate'] ?? 0.0;
-
-      final result = await _aiService.chat(
-        userMessage: userMessage,
-        history: history,
-        userProfile: userProfile,
-        topicSwitchDetected: topicDrift,
-      );
-      // AI 以 JSON 格式返回 {"type": "...", "message": "...", "options": ["...", "..."]}
-      final rawMessage = json.encode(result);
-      final aiMessage = result['message'] as String? ?? '';
-      final messageType = result['type'] as String? ?? 'normal';
-      final explicitSuggestions =
-          (result['options'] as List<dynamic>?)?.whereType<String>().toList() ??
-          <String>[];
-      final displayMessage = _cleanDisplayMarkdown(aiMessage);
-      final suggestions = _resolveSuggestions(
-        explicitSuggestions,
-        displayMessage,
-      );
-
-      // 处理特殊类型消息
-      if (messageType == 'time_range_request') {
-        _handleTimeRangeRequest(displayMessage, suggestions);
-        return;
-      }
-      if (messageType == 'topic_switch_confirm') {
-        _handleTopicSwitchConfirm(displayMessage, suggestions);
-        return;
-      }
-
-      // 存储原始 JSON 回复，供 _buildHistory 发送给 AI 维持格式连续性
-      _addMessage(
-        isUser: false,
-        message: displayMessage,
-        rawMessage: rawMessage,
-      );
-
-      final trimmed = displayMessage.trim();
-      final isPlan = _looksLikeFinalPlan(trimmed);
-      if (isPlan) {
+      if (isDirectSchedule) {
+        // 直接日程
+        setState(() => _pendingSchedule = parsedSchedule);
+        _addMessage(
+          isUser: false,
+          message: '识别到日程：${parsedSchedule!['title']}',
+          rawMessage: json.encode(parsedSchedule),
+        );
         setState(() {
-          _messages.last['action'] = 'plan_view';
-          _messages.last['planRows'] = _extractEditablePlanRows(trimmed);
-          _messages.last['planExtras'] = _extractPlanExtras(trimmed);
-          if (suggestions.isNotEmpty) {
-            _messages.last['suggestions'] = suggestions;
-          }
-        });
-      } else if (suggestions.isNotEmpty) {
-        setState(() {
-          _messages.last['suggestions'] = suggestions;
-        });
-      }
-
-      // 只有未检测为 plan_view 时才尝试 parseSchedule，避免被日程识别覆盖计划视图
-      if (!isPlan) {
-        final parsed = await _aiService.parseSchedule(userMessage);
-        if (parsed != null && parsed['type'] == 'schedule') {
-          setState(() => _pendingSchedule = parsed);
           _messages.last['action'] = 'schedule_confirm';
-          _messages.last['scheduleData'] = parsed;
-          setState(() {});
-        }
+          _messages.last['scheduleData'] = parsedSchedule;
+        });
+        return;
       }
+
+      // 非直接日程 → 走引导式对话（AI 会返回 time_range_request 让用户选时间）
+      await _handleNormalChat(userMessage);
     } catch (e) {
       _addMessage(isUser: false, message: '抱歉，AI 服务暂时不可用，请检查网络后重试。');
     } finally {
       if (mounted) setState(() => _isTyping = false);
+    }
+  }
+
+  /// 新流程：有明确时间范围的规划请求
+  /// 先查已有日程 → 计算空闲时段 → 带约束的规划
+  /// 引导式对话
+  Future<void> _handleNormalChat(String userMessage) async {
+    // 话题漂移检测
+    final topicDrift = _detectTopicDrift(userMessage);
+    final history = topicDrift ? <Map<String, String>>[] : _buildHistory();
+
+    final profile = _storage.getExplicitProfile();
+    final implicit = _storage.getImplicitProfile();
+    final userProfile = <String, dynamic>{};
+    if (profile != null) userProfile.addAll(profile);
+    if (implicit != null) userProfile.addAll(implicit);
+    userProfile['completionRate'] = implicit?['avgTaskCompletionRate'] ?? 0.0;
+
+    final result = await _aiService.chat(
+      userMessage: userMessage,
+      history: history,
+      userProfile: userProfile,
+      topicSwitchDetected: topicDrift,
+    );
+    // AI 以 JSON 格式返回 {"type": "...", "message": "...", "options": ["...", "..."]}
+    final rawMessage = json.encode(result);
+    final aiMessage = result['message'] as String? ?? '';
+    final messageType = result['type'] as String? ?? 'normal';
+    final explicitSuggestions =
+        (result['options'] as List<dynamic>?)?.whereType<String>().toList() ??
+        <String>[];
+    final displayMessage = _cleanDisplayMarkdown(aiMessage);
+    final suggestions = _resolveSuggestions(explicitSuggestions, displayMessage);
+
+    // 处理特殊类型消息
+    if (messageType == 'time_range_request') {
+      _handleTimeRangeRequest(displayMessage, suggestions);
+      return;
+    }
+    if (messageType == 'topic_switch_confirm') {
+      _handleTopicSwitchConfirm(displayMessage, suggestions);
+      return;
+    }
+
+    // 存储原始 JSON 回复
+    _addMessage(isUser: false, message: displayMessage, rawMessage: rawMessage);
+
+    final trimmed = displayMessage.trim();
+    final isPlan = _looksLikeFinalPlan(trimmed);
+    if (isPlan) {
+      setState(() {
+        _messages.last['action'] = 'plan_view';
+        _messages.last['planRows'] = _extractEditablePlanRows(trimmed);
+        _messages.last['planExtras'] = _extractPlanExtras(trimmed);
+        if (suggestions.isNotEmpty) {
+          _messages.last['suggestions'] = suggestions;
+        }
+      });
+    } else if (suggestions.isNotEmpty) {
+      setState(() {
+        _messages.last['suggestions'] = suggestions;
+      });
+    }
+
+    // 只有未检测为 plan_view 时才尝试 parseSchedule
+    if (!isPlan) {
+      final parsed = await _aiService.parseSchedule(userMessage);
+      if (parsed != null && parsed['type'] == 'schedule') {
+        setState(() => _pendingSchedule = parsed);
+        _messages.last['action'] = 'schedule_confirm';
+        _messages.last['scheduleData'] = parsed;
+        setState(() {});
+      }
     }
   }
 
@@ -236,6 +257,10 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         _messages.last['action'] = 'time_range_request';
       });
     }
+    // 等当前帧渲染完成后弹出日期选择器
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openTimeRangePicker();
+    });
   }
 
   /// 处理话题切换确认：弹出确认对话框
@@ -783,13 +808,6 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
     _callAI(text);
   }
 
-  /// 处理时间范围选择
-  void _onTimeRangeSelected(String range) {
-    _addMessage(isUser: true, message: range);
-    // 将时间范围选择追加到历史，再次调用 AI
-    _callAI('我选择的时间范围是：$range');
-  }
-
   /// 处理话题切换确认选择
   void _onTopicSwitchSelected(String choice) {
     if (choice.contains('开启新对话')) {
@@ -1033,7 +1051,6 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   /// 构建时间范围请求卡片
   Widget _buildTimeRangeRequestCard(Map<String, dynamic> msg) {
     final text = msg['message'] as String;
-    final suggestions = msg['suggestions'] as List<String>?;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -1102,10 +1119,19 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
                       height: 1.6,
                     ),
                   ),
-                  if (suggestions != null && suggestions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _buildSuggestionChips(suggestions, leftPadding: 0),
-                  ],
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => _openTimeRangePicker(),
+                    icon: const Icon(Icons.date_range, size: 16),
+                    label: const Text('选择日期范围'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                      side: const BorderSide(color: AppTheme.primaryColor),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1113,6 +1139,28 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  Future<void> _openTimeRangePicker() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: now.subtract(const Duration(days: 7)),
+      lastDate: now.add(const Duration(days: 365)),
+      initialDateRange: DateTimeRange(
+        start: now,
+        end: now.add(const Duration(days: 7)),
+      ),
+      helpText: '选择目标完成的时间范围',
+      cancelText: '取消',
+      confirmText: '确认',
+    );
+    if (picked != null) {
+      final rangeStr = '${picked.start.year}-${picked.start.month.toString().padLeft(2, '0')}-${picked.start.day.toString().padLeft(2, '0')} 到 '
+          '${picked.end.year}-${picked.end.month.toString().padLeft(2, '0')}-${picked.end.day.toString().padLeft(2, '0')}';
+      _addMessage(isUser: true, message: rangeStr);
+      _callAI('我选择的时间范围是：$rangeStr');
+    }
   }
 
   /// 构建话题切换确认卡片
@@ -1337,7 +1385,7 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
               final lastMsg = _messages.isNotEmpty ? _messages.last : null;
               final action = lastMsg?['action'] as String?;
               if (action == 'time_range_request') {
-                _onTimeRangeSelected(s);
+                _openTimeRangePicker();
               } else if (action == 'topic_switch_confirm') {
                 _onTopicSwitchSelected(s);
               } else {
@@ -2405,12 +2453,19 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
   Future<void> _saveAssignedTasks(List<_PlanTaskDraft> drafts) async {
     await _storage.init();
     var saved = 0;
-    // 先保存所有任务，同时记录已创建任务的 ID 映射
-    final taskIdMap = <int, String>{}; // draft index -> created task id
+    final conflicts = <String>[];
+    final taskIdMap = <int, String>{};
     for (var i = 0; i < drafts.length; i++) {
       final draft = drafts[i];
       if (!draft.enabled) continue;
       if (!draft.end.isAfter(draft.start)) continue;
+
+      // 二次冲突校验：检查该时间段是否已被占用
+      if (_storage.detectTimeConflict(draft.start, draft.end)) {
+        conflicts.add('"${draft.title}" (${_formatPlanDateTime(draft.start)} ~ ${_formatPlanDateTime(draft.end)})');
+        continue;
+      }
+
       final parentTaskId = draft.parentDraftIndex >= 0
           ? taskIdMap[draft.parentDraftIndex]
           : null;
@@ -2432,9 +2487,15 @@ class _AiChatPageState extends State<AiChatPage> with TickerProviderStateMixin {
       saved++;
     }
     if (!mounted) return;
+
+    // 显示结果，包括冲突提示
+    String msg = '已分配 $saved 个任务';
+    if (conflicts.isNotEmpty) {
+      msg += '\n以下 ${conflicts.length} 个任务因时间冲突已跳过：\n${conflicts.join('\n')}';
+    }
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('已分配 $saved 个任务')));
+    ).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Widget _buildTypingIndicator() {

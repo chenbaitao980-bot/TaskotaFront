@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "signature": {
+    "openspec\\specs\\build-packaging\\spec.md": 1779687384.3696485,
+    "openspec\\specs\\project-baseline\\spec.md": 1779696327.906225,
+    "openspec\\specs\\smart-butler\\spec.md": 1779530718.3428078,
+    "openspec\\bugfixspecs\\auth\\register-click-no-response.md": 1779529051.5967536,
+    "openspec\\bugfixspecs\\smart-butler\\ai-suggestion-mismatch.md": 1779623757.1638181,
+    "openspec\\bugfixspecs\\smart-butler\\bug-003.md": 1779623766.8149405
+  },
+  "specs": [
+    {
+      "name": "build-packaging",
+      "path": "E:\\claude\\project2\\smart_assistant\\openspec\\specs\\build-packaging\\spec.md",
+      "purpose": "",
+      "requirements": [],
+      "search_text": "build-packaging\n\n# Spec: build-packaging\n\n## 概述\nSmartAssistant Windows 发布包的构建与打包规范。\n\n## 构建命令\n```powershell\n# 前置：设置环境变量（沙箱环境缺失）\n$env:ProgramFiles = \"C:\\Program Files\"\n${env:ProgramFiles(x86)} = \"C:\\Program Files (x86)\"\n\n# 完整构建\nflutter build windows --release\n```\n\n## 已知问题：cmake INSTALL 步骤失败\n\n### 现象\n`flutter build windows --release` 在沙箱环境中编译通过（生成 `build/windows/app.so` 和 `build/windows/x64/runner/Release/smart_assistant.exe`），但 cmake INSTALL 步骤报错：\n\n```\nerror MSB3073: 命令\"setlocal ... cmake.exe -DBUILD_TYPE=Release -P cmake_install.cmake\"已退出，代码为 1\n```\n\n### 根因\n沙箱/纯 CLI 环境缺少 Windows 桌面环境的部分环境变量，`cmake_install.cmake` 中的 `setlocal` 命令无法正常执行。\n\n### 影响\nINSTALL 步骤负责拷贝以下文件到 `Release` 目录：\n- `build/flutter_assets/` → `Release/data/flutter_assets/`\n- `build/windows/app.so` → `Release/data/app.so`\n\nINSTALL 失败后 Release 目录**缺少 app.so（AOT 编译的 Dart 代码）和 flutter_assets**，导致打包产物无法运行新代码。\n\n### 手动修复步骤\n```powershell\n# 创建目标目录\nmkdir -p build/windows/x64/runner/Release/data/flutter_assets\n\n# 拷贝 flutter_assets\ncp -r build/flutter_assets/* build/windows/x64/runner/Release/data/flutter_assets/\n\n# 拷贝 app.so（AOT 编译的 Dart 代码，核心）\ncp build/windows/app.so build/windows/x64/runner/Release/data/app.so\n```\n\n### 产物验证\n最终 `Release` 目录结构应为：\n```\nRelease/\n├── smart_assistant.exe          # C++ runner (90KB)\n├── app_links_plugin.dll         # 插件 DLL\n├── flutter_windows.dll          # Flutter 引擎 (20MB)\n├── speech_to_text_windows_plugin.dll\n├── url_launcher_windows_plugin.dll\n└── data/\n    ├── icudtl.dat               # ICU 数据 (862KB)\n    ├── app.so                   # AOT 编译 Dart 代码 (8MB) ← 最容易遗漏\n    └── flutter_assets/\n        ├── AssetManifest.bin\n        ├── FontManifest.json\n        ├── NOTICES.Z\n        └── fonts/\n```\n\n### 打包命令\n```powershell\ncd build/windows/x64/runner/Release\nzip -r ../../../../../../smart_assistant_windows_release.zip . -x \"*.pdb\"\n```\n\n### 版本管理\n每次打包前递增 `pubspec.yaml` 中的 `version` 字段（如 `1.0.0+1` → `1.0.0+2`），避免覆盖安装时无法区分版本。\n\n## 回归测试\n每次打包后应在真机上验证：\n1. 应用能正常启动\n2. 当前 change 的功能已包含在产物中\n"
+    },
+    {
+      "name": "project-baseline",
+      "path": "E:\\claude\\project2\\smart_assistant\\openspec\\specs\\project-baseline\\spec.md",
+      "purpose": "定义项目初始化后的全局开发约束、目录约束、编码约束和变更流程约束。",
+      "requirements": [
+        {
+          "title": "OpenSpec 变更管控",
+          "description": "所有代码变更 SHALL 先创建或复用 change，并完成 proposal.md、design.md、specs/<cap>/spec.md、tasks.md。",
+          "scenarios": []
+        },
+        {
+          "title": "GitNexus 影响面分析",
+          "description": "",
+          "scenarios": [
+            {
+              "title": "用户请求代码修改",
+              "when": "用户请求修复、新增、重构、优化或修改项目文件",
+              "then": "AI SHALL 先完成 OpenSpec 四件套 | 等待用户确认后再实施"
+            }
+          ]
+        },
+        {
+          "title": "初始化先于实现",
+          "description": "",
+          "scenarios": [
+            {
+              "title": "修改已有 symbol",
+              "when": "改动涉及已有函数、类、接口、模块",
+              "then": "AI SHALL 先执行 `gitnexus impact <target> -r <alias> --depth <n>` | 只读取 impact 命中的必要文件"
+            }
+          ]
+        },
+        {
+          "title": "回归测试归档门禁",
+          "description": "",
+          "scenarios": [
+            {
+              "title": "新建项目或 AI 初始化项目",
+              "when": "用户请求初始化项目、新建项目或生成项目模板",
+              "then": "AI SHALL 先执行 Bootstrap | 初始化 OpenSpec 基线 | 初始化 GitNexus 索引 | 再创建初始化 change"
+            },
+            {
+              "title": "归档 OpenSpec 变更",
+              "when": "用户要求归档 change",
+              "then": "AI SHALL 先读取本 change 绑定的回归测试用例 | 调用批量测试接口执行这些测试 | 记录测试入参、关键出参、断言结果 | 只有接口调用成功且返回参数符合期望时才允许归档 | 如果测试入参或期望出参不清楚，AI SHALL 暂停咨询用户"
+            }
+          ]
+        }
+      ],
+      "search_text": "project-baseline\n定义项目初始化后的全局开发约束、目录约束、编码约束和变更流程约束。\n# Project Baseline Spec\n\n## Purpose\n定义项目初始化后的全局开发约束、目录约束、编码约束和变更流程约束。\n\n## Requirements\n\n### Requirement: OpenSpec 变更管控\n所有代码变更 SHALL 先创建或复用 change，并完成 proposal.md、design.md、specs/<cap>/spec.md、tasks.md。\n\n#### Scenario: 用户请求代码修改\n- WHEN 用户请求修复、新增、重构、优化或修改项目文件\n- THEN AI SHALL 先完成 OpenSpec 四件套\n- AND 等待用户确认后再实施\n\n### Requirement: GitNexus 影响面分析\n编辑已有函数、类、接口、模块前 SHALL 使用 GitNexus 进行影响面分析。\n\n#### Scenario: 修改已有 symbol\n- WHEN 改动涉及已有函数、类、接口、模块\n- THEN AI SHALL 先执行 `gitnexus impact <target> -r <alias> --depth <n>`\n- AND 只读取 impact 命中的必要文件\n\n### Requirement: 初始化先于实现\n项目初始化时 SHALL 先建立 OpenSpec 基线和 GitNexus 索引，再生成业务代码。\n\n#### Scenario: 新建项目或 AI 初始化项目\n- WHEN 用户请求初始化项目、新建项目或生成项目模板\n- THEN AI SHALL 先执行 Bootstrap\n- AND 初始化 OpenSpec 基线\n- AND 初始化 GitNexus 索引\n- AND 再创建初始化 change\n\n### Requirement: 回归测试归档门禁\n每个 change SHALL 维护对应回归测试用例，归档前 SHALL 调用批量测试接口执行本 change 相关测试。\n\n#### Scenario: 归档 OpenSpec 变更\n- WHEN 用户要求归档 change\n- THEN AI SHALL 先读取本 change 绑定的回归测试用例\n- AND 调用批量测试接口执行这些测试\n- AND 记录测试入参、关键出参、断言结果\n- AND 只有接口调用成功且返回参数符合期望时才允许归档\n- AND 如果测试入参或期望出参不清楚，AI SHALL 暂停咨询用户\n"
+    },
+    {
+      "name": "smart-butler",
+      "path": "E:\\claude\\project2\\smart_assistant\\openspec\\specs\\smart-butler\\spec.md",
+      "purpose": "定义 AI 智能日程管家 MVP 的核心业务能力和用户交互流程。",
+      "requirements": [
+        {
+          "title": "语音/文字录入日程",
+          "description": "",
+          "scenarios": []
+        },
+        {
+          "title": "日历视图",
+          "description": "",
+          "scenarios": [
+            {
+              "title": "文字录入日程",
+              "when": "用户在输入框输入日程描述（如\"明天下午3点开会\"）",
+              "then": "系统调用 LLM 解析为结构化日程 | 后续流程同语音录入"
+            }
+          ]
+        },
+        {
+          "title": "AI任务拆解",
+          "description": "",
+          "scenarios": [
+            {
+              "title": "标记日程完成状态",
+              "when": "用户在日程列表或日历视图中点击日程旁的复选框",
+              "then": "勾选 SHALL 将日程状态设为已完成 | 取消勾选 SHALL 将日程状态设为进行中 | 状态变更 SHALL 立即持久化到本地存储"
+            }
+          ]
+        },
+        {
+          "title": "云端同步",
+          "description": "",
+          "scenarios": [
+            {
+              "title": "目标拆解",
+              "when": "用户输入目标描述（如\"今年拿下日语N1\"）",
+              "then": "AI 先询问必要信息（当前水平、可用时间等） | AI 输出三层拆解：战略层（季度里程碑）→ 战术层（月任务）→ 执行层（周任务） | 用户可确认并批量写入日程"
+            }
+          ]
+        },
+        {
+          "title": "用户注册与登录",
+          "description": "",
+          "scenarios": [
+            {
+              "title": "数据同步",
+              "when": "用户在任一设备上修改数据",
+              "then": "数据通过 Supabase 同步到云端 | 其他设备通过 Realtime 或轮询获取更新"
+            }
+          ]
+        }
+      ],
+      "search_text": "smart-butler\n定义 AI 智能日程管家 MVP 的核心业务能力和用户交互流程。\n# Smart Butler Spec\n\n## Purpose\n定义 AI 智能日程管家 MVP 的核心业务能力和用户交互流程。\n\n## Requirements\n\n### Requirement: 语音/文字录入日程\n用户 SHALL 能通过语音或文字输入创建日程，系统使用原生 ASR 进行语音识别，调用 LLM 解析自然语言为结构化日程数据。\n\n#### Scenario: 语音录入日程\n- WHEN 用户点击语音录入按钮并说话\n- THEN 系统调用 speech_to_text 获取语音文本\n- AND 调用 DeepSeek API 解析文本为结构化日程（标题、时间、优先级）\n- AND 展示解析结果给用户确认\n- AND 用户确认后写入本地存储和 Supabase\n\n#### Scenario: 文字录入日程\n- WHEN 用户在输入框输入日程描述（如\"明天下午3点开会\"）\n- THEN 系统调用 LLM 解析为结构化日程\n- AND 后续流程同语音录入\n\n### Requirement: 日历视图\n用户 SHALL 能在周视图和月视图中可视化查看所有日程，并支持在日历上直接新建、编辑、删除日程。\n\n#### Scenario: 查看周视图\n- WHEN 用户切换到日历Tab\n- THEN 默认展示周视图\n- AND 显示该周每天的时间格子\n- AND 日程以时间块形式展示\n- AND 自动滚动到当前时间位置\n\n#### Scenario: 切换到月视图\n- WHEN 用户点击月视图切换按钮\n- THEN 日历切换为月视图\n- AND 有日程的日期显示圆点标记\n- AND 点击日期展示当日日程列表\n\n#### Scenario: 日历上新建日程\n- WHEN 用户长按某个日期/时间格\n- THEN 弹出新建日程对话框\n- AND 填写后保存到本地和云端\n\n#### Scenario: 编辑/删除日程\n- WHEN 用户点击已有日程\n- THEN 弹出日程详情/编辑页\n- AND 支持修改标题、时间、优先级、描述\n- AND 支持删除日程（确认后）\n\n#### Scenario: 标记日程完成状态\n- WHEN 用户在日程列表或日历视图中点击日程旁的复选框\n- THEN 勾选 SHALL 将日程状态设为已完成\n- AND 取消勾选 SHALL 将日程状态设为进行中\n- AND 状态变更 SHALL 立即持久化到本地存储\n\n### Requirement: AI任务拆解\n用户 SHALL 能输入大目标，AI 将其递归拆解为 目标→月→周 三层结构化任务。\n\n#### Scenario: 目标拆解\n- WHEN 用户输入目标描述（如\"今年拿下日语N1\"）\n- THEN AI 先询问必要信息（当前水平、可用时间等）\n- AND AI 输出三层拆解：战略层（季度里程碑）→ 战术层（月任务）→ 执行层（周任务）\n- AND 用户可确认并批量写入日程\n\n### Requirement: 云端同步\n系统 SHALL 使用 Supabase 作为云端后端，实现日程和任务数据的跨设备同步。\n\n#### Scenario: 数据同步\n- WHEN 用户在任一设备上修改数据\n- THEN 数据通过 Supabase 同步到云端\n- AND 其他设备通过 Realtime 或轮询获取更新\n\n### Requirement: 用户注册与登录\n用户 SHALL 能通过邮箱和密码注册账号并登录，使用 Supabase Auth 进行身份认证。\n\n#### Scenario: 用户注册\n- WHEN 用户输入邮箱和密码并点击注册\n- THEN 系统调用 Supabase Auth 创建账号\n- AND 自动创建用户画像记录\n- AND 跳转到首页\n\n#### Scenario: 用户登录\n- WHEN 用户输入正确凭据并点击登录\n- THEN 系统验证身份\n- AND 加载用户数据\n- AND 跳转到首页\n\n#### Scenario: 未登录访问\n- WHEN 未登录用户打开应用\n- THEN 展示登录页面\n- AND 阻止访问其他功能页面\n\n### Requirement: Windows 桌面打包\n每次代码变更后打包 SHALL 执行全量构建，确保无增量编译缓存残留。\n\n#### Scenario: 交付 Windows 桌面版\n- WHEN 用户要求打包 Windows 桌面版应用\n- THEN AI SHALL 先执行 `flutter clean` 清理增量编译缓存\n- AND 执行 `flutter build windows --release` 全量构建\n- AND 复制产物到 release 目录\n- AND 打包为 ZIP 分发包交付\n"
+    }
+  ],
+  "changes": [],
+  "bugfixes": [
+    {
+      "path": "E:\\claude\\project2\\smart_assistant\\openspec\\bugfixspecs\\auth\\register-click-no-response.md",
+      "root_cause": "多层复合 bug，逐轮暴露：\n1. `RegisterPage` 缺少 `BlocListener<AuthBloc, AuthState>`，注册成功触发了 auth state 变化但没有监听器响应\n2. Supabase 注册分支错误 dispatch `LoggedIn` 事件，`AuthBloc` 将其映射到 `signInWithPassword`（登录 API），新用户未注册就被当作登录\n3. 本地 `_isLoading` 标志在 dispatch bloc 事件后立即重置，而 Supabase 异步请求仍在进行；错误消息展示的是原生 `e.toString()` 字符串",
+      "forbidden": [
+        "不要在 RegisterPage 中复用 `LoggedIn` 事件处理 Supabase 注册",
+        "不要在按钮 `onPressed` 中使用本地 `_isLoading` 作为加载指示器，必须跟随 `AuthBloc.state is AuthLoading`",
+        "不要直接向用户展示 `e.toString()` 或 `AuthApiException` 原始文本",
+        "不要在只收到一个层面反馈后就关闭诊断，必须检查同一 auth flow 的所有入口"
+      ],
+      "search_text": "register-click-no-response.md\n# register-click-no-response: 注册按钮点击无响应\n\n## 适用范围\n- Capability: auth\n- 关联 change: fix-register-navigation\n- 关联文件/函数: `lib/presentation/pages/auth/register_page.dart` / `_register()`, `lib/presentation/blocs/auth/auth_bloc.dart`, `lib/presentation/blocs/auth/auth_event.dart`, `lib/presentation/pages/auth/login_page.dart` / `_login()`\n\n## 用户可见现象\n- 第1次：点击注册按钮后没有任何可见反应，注册成功但不跳转首页\n- 第2次：点击注册后 Supabase 报错 `Invalid login credentials`（注册分支错误调用了登录 API）\n- 第3次：注册错误信息显示为英文原始异常文本、注册成功无提示、按钮加载指示器不一致\n\n## 根本原因\n多层复合 bug，逐轮暴露：\n1. `RegisterPage` 缺少 `BlocListener<AuthBloc, AuthState>`，注册成功触发了 auth state 变化但没有监听器响应\n2. Supabase 注册分支错误 dispatch `LoggedIn` 事件，`AuthBloc` 将其映射到 `signInWithPassword`（登录 API），新用户未注册就被当作登录\n3. 本地 `_isLoading` 标志在 dispatch bloc 事件后立即重置，而 Supabase 异步请求仍在进行；错误消息展示的是原生 `e.toString()` 字符串\n\n## 为什么会反复修不好\n- **缺层问题**：每一轮修复只解决了用户反馈的可见现象，没有全链路检查 auth flow 的 `写入 → 事件 → 状态 → UI 响应` 完整数据生命周期\n- **登录/注册不对称**：Login 和 Register 页面各自维护独立的交互模式，同一套 auth 状态却由两套不同的监听逻辑处理\n- **Supabase 模式 vs 本地模式分叉**：两条代码路径的行为不一致，修复本地模式不影响 Supabase 模式\n\n## 正确修复模型\n- 注册和登录两个入口应该共享同一套 auth 状态响应模板：`Authenticated/LocalAuthenticated → 导航首页`、`AuthError → 中文 SnackBar`、`AuthLoading → 按钮禁用+spinner`\n- Supabase 注册必须走 `signUp()` 而非 `signInWithPassword()`\n- 错误消息统一由 `AuthBloc` 归一化为中文，不应暴露原始 API 异常文本\n- 加载状态必须跟随 `AuthBloc` 的 `AuthLoading` 状态，不能用本地标志\n\n## 禁止做法\n- 不要在 RegisterPage 中复用 `LoggedIn` 事件处理 Supabase 注册\n- 不要在按钮 `onPressed` 中使用本地 `_isLoading` 作为加载指示器，必须跟随 `AuthBloc.state is AuthLoading`\n- 不要直接向用户展示 `e.toString()` 或 `AuthApiException` 原始文本\n- 不要在只收到一个层面反馈后就关闭诊断，必须检查同一 auth flow 的所有入口\n\n## 防复发检查项\n- [ ] 所有 auth 操作入口（login/register/logout）都使用相同的状态响应模式\n- [ ] Supabase 注册分支 dispatch 的是专用注册事件，不是登录事件\n- [ ] 加载指示器绑定 `AuthBloc.state is AuthLoading`\n- [ ] 错误消息全部中文化，在 `AuthBloc` 中统一归一化\n- [ ] 注册成功后有可见的反馈提示\n\n## 最小验证集\n```bash\n# 1. 本地注册：输入邮箱+密码→注册→应直接跳转首页（非停留在注册页）\n# 2. Supabase 注册：输入未注册邮箱+密码→注册→应创建账号并跳转首页\n# 3. 错误处理：无效输入→应显示中文错误提示，非英文异常文本\n# 4. 加载状态：点击注册按钮→按钮应显示 spinner 直到 auth 完成\n\nflutter test\nflutter build windows --release\n```\n\n## 相关历史\n| change | bugfix_count | 归档时间 |\n|---|---:|---|\n| fix-register-navigation | 3 | 2026-05-23 |\n"
+    },
+    {
+      "path": "E:\\claude\\project2\\smart_assistant\\openspec\\bugfixspecs\\smart-butler\\ai-suggestion-mismatch.md",
+      "root_cause": "",
+      "forbidden": [],
+      "search_text": "ai-suggestion-mismatch.md\n# ai-suggestion-mismatch: AI suggestion chips match the current question\n\n## Scope\n- Capability: smart-butler\n- Related change: claude-ui-and-progressive-ai, fix-ai-options-fallback\n- Related files/symbols: `lib/presentation/pages/ai_chat/ai_chat_page.dart` / `_generateSuggestions`, `lib/services/ai_service.dart` / `_systemPrompt`\n\n## User-visible symptom\nAI follow-up questions rendered the wrong quick-reply chips when a message contained overlapping keywords, such as a goal question that also mentioned time expectations.\n\n## Root cause\nSuggestion generation used broad substring checks and checked generic time/level words before the actual intent of the current question was disambiguated. The keyword matching approach is fundamentally unreliable because natural language questions can mention multiple dimensions.\n\n## Why it repeated\n- Fix 1 (claude-ui-and-progressive-ai, bugfix_count=1): Changed keyword order but kept the same broad matching model.\n- Fix 2 (claude-ui-and-progressive-ai, bugfix_count=2): Added more keywords but still used contains checks.\n- Fix 3 (fix-ai-options-fallback, bugfix_count=3): Root cause confirmed — keyword matching is fundamentally unreliable and cannot be fixed by tuning keyword order or count. **Completely replaced with AI-generated [OPTIONS:] structured output.**\n\n## Correct fix model\n**完全放弃关键词匹配方案。** 所有选项必须来自 AI 在回复末尾输出的 `[OPTIONS:]` 结构化标记。UI 端只解析 `[OPTIONS:]` 标记渲染选项卡，不做任何关键词猜测。\n\nAI system prompt 中加入了明确的 `[OPTIONS:]` 必须规则和示例，确保每轮提问都输出正确格式。\n\n## 历史经验（仅供复盘参考）\n\n> **⚠️ 重要：此 BugFixSpec 仅作为过去的 bug 修复经验参考。**\n> 如果再次触发同一类 bug，说明过去的修复策略失败，需要重新分析根因并调整修复方案，而不是简单套用以下经验。\n\n| 轮次 | change | 修复策略 | 结果 |\n|---|---|---|---|\n| 1 | claude-ui-and-progressive-ai | 调整关键词匹配顺序 | ❌ 复发 |\n| 2 | claude-ui-and-progressive-ai | 增加更多关键词 | ❌ 复发 |\n| 3 | fix-ai-options-fallback | 完全放弃关键词匹配，改用 AI 生成 [OPTIONS:] | 当前策略 |\n\n### 经验总结\n- 客户端关键词 contains 匹配不可靠，无法通过调参数解决\n- 依赖 AI 生成结构化 `[OPTIONS:]` 比客户端猜测更可靠\n- 若此 bug 再次出现，建议重新评估 AI 侧的 `[OPTIONS:]` 生成质量，而非回到客户端匹配方案\n\n## Recurrence checks\n- [x] _generateSuggestions 方法已完全移除\n- [x] _callAI 建议逻辑简化为仅解析 [OPTIONS:] 标记\n- [x] system prompt 加入明确的 [OPTIONS:] 规则和示例\n\n## Minimal verification set\n```powershell\nflutter analyze --no-fatal-infos\n```\n\n## Related history\n| change | bugfix_count | archive_time |\n|---|---:|---|\n| claude-ui-and-progressive-ai | 2 | 2026-05-24 |\n| fix-ai-options-fallback | 3 | (ongoing) |\n"
+    },
+    {
+      "path": "E:\\claude\\project2\\smart_assistant\\openspec\\bugfixspecs\\smart-butler\\bug-003.md",
+      "root_cause": "`_generateSuggestions` 关键词匹配方案使用固定顺序的 `contains` 检查，AI 回复同时包含多维度关键词（如\"希望\"+\"每天\"）时匹配到错误分支",
+      "forbidden": [],
+      "search_text": "bug-003.md\n# bug-003: AI 拆分对话选项卡错乱\n\n## 适用范围\n- Capability: smart-butler\n- 关联 change: fix-ai-options-fallback\n- 关联文件/函数: `ai_chat_page.dart/_generateSuggestions`, `ai_service.dart/_systemPrompt`\n\n## 用户可见现象\nAI 拆分对话时，第三轮问题（\"希望达到什么效果\"）显示的选项卡是时间选项（每天30分钟等）而非目标选项\n\n## 根本原因\n`_generateSuggestions` 关键词匹配方案使用固定顺序的 `contains` 检查，AI 回复同时包含多维度关键词（如\"希望\"+\"每天\"）时匹配到错误分支\n\n## 为什么会反复修不好\n连续 3 次修复均使用关键词匹配方案的不同变体（调整顺序→增加关键词→微调），证明该方案根本不可靠\n\n## 当前修复策略\n完全移除客户端关键词匹配回退，所有选项必须来自 AI 输出的 `[OPTIONS:]` 结构化标记\n\n> ⚠️ 此策略为当前最佳猜测。若再次触发同类 bug，说明此策略也失败，需重新分析根因并设计新方案。\n\n## 复盘经验（供参考）\n- 客户端关键词 contains 匹配不可靠，不建议作为长期方案\n- AI 侧 `[OPTIONS:]` 生成质量是选项正确性的关键\n- 若复发，优先排查 AI 是否未正确输出 `[OPTIONS:]`，而非猜测关键词\n\n## 最小验证集\n```bash\nflutter analyze --no-fatal-infos\n```\n\n## 相关历史\n| change | bugfix_count | 归档时间 |\n|---|---:|---|\n| fix-ai-options-fallback | 1 | 2026-05-24 19:53 |\n"
+    }
+  ]
+}

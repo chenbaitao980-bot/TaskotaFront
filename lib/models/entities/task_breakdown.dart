@@ -20,6 +20,7 @@ class TaskBreakdown with _$TaskBreakdown {
     @Default(0) int progress,
     @Default('P2') String priority,
     @Default(false) bool focusRequired,
+    @Default(false) bool isParent,
     List<String>? dependencies,
     required DateTime createdAt,
     required DateTime updatedAt,

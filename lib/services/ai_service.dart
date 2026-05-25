@@ -75,34 +75,20 @@ class AIService {
 ## 规划对话流程（仅内部遵循）
 
 1. 先简单确认你理解用户的目标（一句话即可）
-2. **时间范围判定**：判断用户输入是否有明确时间范围
-   - **有明确时间**（如"明天"、"下周"、"这周末"、"X月X日"）：直接按规划流程走
-   - **无明确时间**（如"我想学做饭"、"练好踢足球"）：返回 `{"type": "time_range_request", ...}` 让用户选择时间范围
+2. **时间范围判定**：凡是用户提出目标/愿望/活动（非直接日程），**一律**返回 `type: "time_range_request"`，不要自己推断时间
 3. 内心判断：当前水平、可用时间、截止日期、其他约束、偏好安排中哪些信息缺失
 4. 从缺失信息中选最重要的一条，只问这一个问题，提供 options
 5. 用户回答后，再问下一个问题，以此类推
 6. 信息收集足够后，输出完整计划（Markdown 表格 + 缩进列表）
 7. 最后问用户确认，提供 options
 
-## 时间范围请求规则（**新增**）
+## 时间范围请求规则（硬性要求）
 
-当用户提出目标/愿望但没有明确时间范围时，必须返回 `type: "time_range_request"`：
+用户提出任何目标/愿望时，**第一步必须**返回 `{"type": "time_range_request", "message": "你想在多长时间内完成这个目标呢？", "options": []}`。系统会在前端弹出日期选择器让用户手动选择，选择后会把时间范围告诉你。
 
-```json
-{
-    "type": "time_range_request",
-    "message": "你想在多长时间内完成这个目标呢？",
-    "options": ["1天内", "1周内", "1个月内", "3个月内"]
-}
-```
-
-### 判定标准
-- **无需请求**：用户输入包含"明天、今天、后天、下周、这周末、X月X日、X号"等明确时间词
-- **需要请求**：用户输入只有目标描述，没有时间信息（如"我想学做饭"、"我要减肥"）
-
-### 用户选择时间范围后的行为
-- 用户选择后，将时间范围信息纳入上下文，继续规划流程
-- 根据用户选择的时间范围生成对应的计划（1天内=单日计划，1周内=周计划， etc.）
+### 规则
+- **用户说任何目标**（如"我想学做饭"、"明天后天去玩游戏"、"这周去踢球"）：一律返回 time_range_request
+- **例外**：直接日程（"明天下午3点开会"、"今晚8点吃饭"）→ 输出日程 JSON 让系统识别，不由你来决定时间
 
 ## 话题切换检测与确认（**修改**）
 
@@ -142,14 +128,6 @@ class AIService {
 如果用户输入的是一个目标/愿望（如"想学日语"、"练好踢足球"、"学会弹吉他"等），按上述规划流程走。
 如果是"这周踢足球"、"周末弹吉他"这类模糊安排，按目标规划走，不要直接当日程处理。
 如果有歧义，优先按目标规划处理，并用自然语言向用户确认。
-
-## 日期时间约束（**硬性要求，必须遵守**）
-
-- 当前日期：2026年5月25日（周一），本周日为5月31日。
-- 如果用户指定了"这周"、"本周"、"这一周"等约束，所有计划日期必须在当前周内，不超过本周日。
-- 如果用户指定了"早上"、"上午"（6:00-12:00）、"下午"（12:00-18:00）、"晚上"（18:00-24:00），对应的时间安排必须在该范围内。
-- 生成日期时，从当前日期（5月25日周一）开始，不要使用未来超出用户指定范围的日期。
-- 如果用户说"每天"，从今天开始每天安排；用户说"只在这周"，则全部安排在本周日（5月31日）之前。
 
 始终用中文回复。保持对话自然流畅，像真人助手一样。
 
@@ -305,6 +283,156 @@ $profileText''',
       return json.decode(match.group(0)!) as Map<String, dynamic>;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// 独立时间解析接口：从用户输入中提取结构化时间范围
+  /// 只做一件事——时间理解，不掺杂其他规划逻辑
+  Future<Map<String, dynamic>> parseTimeRange(String userMessage) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    final weekdayLabel = weekdays[now.weekday - 1];
+    final tomorrow = today.add(const Duration(days: 1));
+    final dayAfter = today.add(const Duration(days: 2));
+
+    final prompt = '''你是时间解析器。你的唯一任务是从用户输入中提取时间范围。
+
+当前日期：${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}（$weekdayLabel）
+
+硬性映射规则（严格遵守，这些是绝对真理）：
+- "今天" = ${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}
+- "明天" = ${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}
+- "后天" = ${dayAfter.year}-${dayAfter.month.toString().padLeft(2, '0')}-${dayAfter.day.toString().padLeft(2, '0')}
+- "这周日" = 2026-05-31（本周日）
+- "早上" = 06:00-12:00，"上午" = 06:00-12:00
+- "下午" = 12:00-18:00
+- "晚上" = 18:00-24:00
+
+常见输入解析示例：
+- "明天去玩游戏" → startDate=2026-05-26, endDate=2026-05-26
+- "后天去踢球" → startDate=2026-05-27, endDate=2026-05-27
+- "明天后天去玩游戏" → startDate=2026-05-26, endDate=2026-05-27（两天）
+- "明天下午3点开会" → startDate=2026-05-26, endDate=2026-05-26, timeOfDay=afternoon
+- "今晚吃饭" → startDate=2026-05-25, endDate=2026-05-25, timeOfDay=evening
+- "这周末去爬山" → startDate=2026-05-30, endDate=2026-05-31
+- "我想学做饭" → type=no_time（无明确时间词）
+
+只输出严格 JSON，格式如下：
+- 有明确时间范围：{"type": "time_range", "startDate": "2026-05-26", "endDate": "2026-05-27", "timeOfDay": "all_day|morning|afternoon|evening", "confidence": "high"}
+- 只有单日：{"type": "time_range", "startDate": "2026-05-26", "endDate": "2026-05-26", "timeOfDay": "all_day", "confidence": "high"}
+- 无明确时间：{"type": "no_time", "confidence": "low"}
+
+timeOfDay 说明：
+- "all_day"：全天或未指定时段
+- "morning"：早上/上午
+- "afternoon"：下午
+- "evening"：晚上
+
+注意：用户说"每天"并不代表明确的时间范围，返回 no_time。''';
+
+    final messages = [
+      {'role': 'system', 'content': prompt},
+      {'role': 'user', 'content': '用户说：$userMessage'},
+    ];
+
+    try {
+      final response = await _dio.post(
+        '',
+        data: {
+          'model': 'deepseek-chat',
+          'messages': messages,
+          'temperature': 0.1,
+          'max_tokens': 512,
+          'response_format': {'type': 'json_object'},
+        },
+      );
+      final content =
+          response.data['choices'][0]['message']['content'] as String;
+      return json.decode(content) as Map<String, dynamic>;
+    } catch (e) {
+      return {'type': 'no_time', 'confidence': 'low', 'error': e.toString()};
+    }
+  }
+
+  /// 带空闲时段约束的规划接口
+  /// freeSlots: [{"date": "2026-05-26", "start": "09:00", "end": "12:00"}, ...]
+  Future<Map<String, dynamic>> planWithContext({
+    required String goal,
+    required List<Map<String, String>> freeSlots,
+    Map<String, dynamic>? userProfile,
+    List<Map<String, String>> history = const [],
+  }) async {
+    final slotsText = freeSlots.isNotEmpty
+        ? freeSlots.map((s) => '  ${s['date']} ${s['start']}-${s['end']}').join('\n')
+        : '  未指定（由 AI 自行安排在合理时间）';
+
+    final profileText = userProfile != null && userProfile.isNotEmpty
+        ? _formatProfile(userProfile)
+        : '暂无用户画像';
+
+    final prompt = '''
+你是任务规划专家。你的任务是将用户的目标拆解为可执行的计划。
+
+## 输入信息
+- 用户目标：$goal
+- 用户画像：
+$profileText
+
+## 时间约束
+以下是用户可以用的空闲时间段（已排除已有日程），请在这些时间段内安排任务：
+$slotsText
+
+## 输出格式
+必须是 JSON，包含 type、message、options 三个字段。
+
+### type 字段
+- "normal"：普通回复
+- "plan"：最终计划输出
+- "question"：需要更多信息
+
+### 输出计划时的格式要求（type="plan"）
+1. message 中包含 Markdown 表格、缩进列表
+2. 如果有父子层级关系，用缩进表示：
+   - 父任务：以"第"开头（第1周、第一阶段...）
+   - 子任务：在父任务下面缩进，以"-"开头
+3. 计划表列名使用：日期、主题、训练内容、开始时间、结束时间
+4. 开始/结束时间必须精确到分钟
+
+## 硬性规则
+- 不得安排在空闲时段之外的时间
+- 遵循父→子任务的递归设计思路：先定义阶段/模块（父任务），再定义具体活动（子任务）
+- 日期不超过用户指定的范围
+- 保持对话自然
+
+始终用中文回复。''';
+
+    final messages = <Map<String, String>>[
+      {'role': 'system', 'content': prompt},
+      ...history,
+      {'role': 'user', 'content': goal},
+    ];
+
+    try {
+      final response = await _dio.post(
+        '',
+        data: {
+          'model': 'deepseek-chat',
+          'messages': messages,
+          'temperature': 0.3,
+          'max_tokens': 2048,
+          'response_format': {'type': 'json_object'},
+        },
+      );
+      final content =
+          response.data['choices'][0]['message']['content'] as String;
+      return json.decode(content) as Map<String, dynamic>;
+    } catch (e) {
+      return {
+        'type': 'normal',
+        'message': '规划服务暂时不可用，请稍后重试。',
+        'options': <String>[],
+      };
     }
   }
 }

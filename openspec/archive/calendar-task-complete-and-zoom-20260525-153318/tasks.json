@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "为日历任务块增加完成复选框并更新本地任务状态",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "已完成日程和任务在周视图中置灰显示",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "为周视图时间轴增加 Ctrl+鼠标滚轮缩放并保持滚动位置语义",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "补充或执行针对日历页面的静态检查/回归验证",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "在周视图勾选任务/子任务后立刻置灰且可取消完成",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "已完成日程显示为灰色弱化",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "按住 Ctrl 前滚能看到更多时间段，后滚能放大时间段",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "flutter analyze 已执行；仅剩既有无关 BuildContext info",
+      "done": true
+    }
+  ]
+}

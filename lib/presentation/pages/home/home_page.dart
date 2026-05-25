@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../models/entities/task_breakdown.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../widgets/create_schedule_dialog.dart';
 import '../calendar/calendar_page.dart';
@@ -12,6 +13,7 @@ import '../profile/profile_page.dart';
 import '../onboarding/onboarding_page.dart';
 import '../task/create_task_page.dart';
 import '../task/task_list_page.dart';
+import '../tasks/tasks_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -54,13 +56,14 @@ class _HomePageState extends State<HomePage> {
         storage: _storage,
         pendingCount: _pendingCount,
         completedCount: _completedCount,
-        onNavigateToChat: () => setState(() => _currentIndex = 2),
+        onNavigateToChat: () => setState(() => _currentIndex = 3),
         onCreateSchedule: _createSchedule,
         onRefresh: _loadStats,
         onOpenTaskStatus: _openTaskStatus,
         onEditSchedule: _editSchedule,
         onDeleteSchedule: _deleteSchedule,
       ),
+      const TasksPage(),
       CalendarPage(refreshToken: _calendarRefreshToken),
       const AiChatPage(),
       const ProfilePage(),
@@ -84,7 +87,7 @@ class _HomePageState extends State<HomePage> {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = todayStart.add(const Duration(days: 1));
-    final tasks = _storage.getTasks();
+    final tasks = _storage.getTasks(excludeParent: true);
     final todaySchedules = _storage.getSchedules(
       startDate: todayStart,
       endDate: todayEnd,
@@ -346,18 +349,24 @@ class _HomePageState extends State<HomePage> {
             _navItem(0, Icons.home_rounded, Icons.home_rounded, '首页'),
             _navItem(
               1,
+              Icons.checklist_outlined,
+              Icons.checklist_rounded,
+              '任务',
+            ),
+            _navItem(
+              2,
               Icons.calendar_month_outlined,
               Icons.calendar_month,
               '日历',
             ),
             _navItem(
-              2,
+              3,
               Icons.chat_bubble_outline_rounded,
               Icons.chat_bubble_rounded,
               'AI助手',
             ),
             _navItem(
-              3,
+              4,
               Icons.person_outline_rounded,
               Icons.person_rounded,
               '我的',
@@ -611,6 +620,29 @@ class _HomeContent extends StatelessWidget {
       endDate: todayEnd,
     );
 
+    // 获取今日任务并按父任务分组
+    final allTasks = storage.getTasks();
+    final todayTasks = storage.getTasks(
+      startDate: todayStart,
+      endDate: todayEnd,
+      excludeParent: true,
+    );
+    final groups = <String, List<TaskBreakdown>>{};
+    final parentNames = <String, String>{};
+    for (final t in todayTasks) {
+      if (t.parentTaskId != null) {
+        groups.putIfAbsent(t.parentTaskId!, () => []);
+        groups[t.parentTaskId!]!.add(t);
+        if (!parentNames.containsKey(t.parentTaskId!)) {
+          final p = allTasks.where((x) => x.id == t.parentTaskId).firstOrNull;
+          parentNames[t.parentTaskId!] = p?.title ?? '未知';
+        }
+      }
+    }
+    // 无父任务的任务归到"其他"组
+    final ungroupedTasks =
+        todayTasks.where((t) => t.parentTaskId == null).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -630,7 +662,7 @@ class _HomeContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        if (schedules.isEmpty)
+        if (schedules.isEmpty && todayTasks.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 32),
@@ -670,29 +702,179 @@ class _HomeContent extends StatelessWidget {
               ],
             ),
           )
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: schedules.length,
-            itemBuilder: (context, index) {
-              final s = schedules[index];
-              return _ScheduleCard(
+        else ...[
+          // 日程列表
+          ...schedules.map((s) => _ScheduleCard(
                 schedule: s,
                 onToggle: (checked) {
-                  final newStatus = checked == true
-                      ? 'completed'
-                      : 'in_progress';
+                  final newStatus =
+                      checked == true ? 'completed' : 'in_progress';
                   storage.updateSchedule(s.copyWith(status: newStatus));
                   onRefresh();
                 },
                 onEdit: () => onEditSchedule(s),
                 onDelete: () => onDeleteSchedule(s),
-              );
-            },
-          ),
+              )),
+          const SizedBox(height: 16),
+          // 今日任务分组
+          if (todayTasks.isNotEmpty) ...[
+            Text('今日任务',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    )),
+            const SizedBox(height: 8),
+            // 分组任务
+            for (final entry in groups.entries)
+              _buildTaskGroup(context, entry.key, entry.value,
+                  parentNames[entry.key] ?? ''),
+            // 无父任务的任务
+            ...ungroupedTasks.map((t) => _buildTaskItem(context, t)),
+          ],
+        ],
       ],
     );
+  }
+
+  Widget _buildTaskGroup(BuildContext context, String parentId,
+      List<TaskBreakdown> children, String parentName) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.06),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+              border: const Border(
+                left: BorderSide(color: AppTheme.primaryColor, width: 3),
+              ),
+            ),
+            child: Text(
+              '📁 $parentName',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+          ...children.map((t) => InkWell(
+                onTap: () => onOpenTaskStatus(t.status, t.title),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: t.status == 'completed'
+                              ? AppTheme.success
+                              : AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: t.status == 'completed'
+                                ? AppTheme.textHint
+                                : AppTheme.textPrimary,
+                            decoration: t.status == 'completed'
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                      ),
+                      if (t.startDate != null)
+                        Text(
+                          '${t.startDate!.hour.toString().padLeft(2, '0')}:${t.startDate!.minute.toString().padLeft(2, '0')}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textHint,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskItem(BuildContext context, TaskBreakdown task) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      child: InkWell(
+        onTap: () => onOpenTaskStatus(task.status, task.title),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: _priorityColor(task.priority),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                task.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            if (task.startDate != null)
+              Text(
+                '${task.startDate!.hour.toString().padLeft(2, '0')}:${task.startDate!.minute.toString().padLeft(2, '0')}',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _priorityColor(String p) {
+    switch (p) {
+      case 'P0':
+        return AppTheme.priorityP0;
+      case 'P1':
+        return AppTheme.priorityP1;
+      case 'P2':
+        return AppTheme.priorityP2;
+      default:
+        return AppTheme.priorityP3;
+    }
   }
 }
 

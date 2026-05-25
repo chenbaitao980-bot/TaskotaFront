@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-05-25T20:05:53.018797+00:00",
+  "scope": "all",
+  "result": {
+    "status": "error",
+    "exit_code": 1,
+    "command": [
+      "gitnexus",
+      "detect-changes",
+      "--scope",
+      "all",
+      "--repo",
+      "smart_assistant"
+    ],
+    "stdout": "",
+    "stderr": "file:///C:/Users/Administrator/.workbuddy/binaries/node/versions/22.12.0/node_modules/gitnexus/dist/mcp/local/local-backend.js:327\n            throw new Error(`Repository \"${repoParam}\" not found. Available: ${labels.join(', ')}`);\n                  ^\n\nError: Repository \"smart_assistant\" not found. Available: pdf, mahjong-learning, jiuzhou-oa, smart-assistant, complex-project-workflow\n    at LocalBackend.resolveRepo (file:///C:/Users/Administrator/.workbuddy/binaries/node/versions/22.12.0/node_modules/gitnexus/dist/mcp/local/local-backend.js:327:19)\n    at async LocalBackend.callTool (file:///C:/Users/Administrator/.workbuddy/binaries/node/versions/22.12.0/node_modules/gitnexus/dist/mcp/local/local-backend.js:568:22)\n    at async detectChangesCommand (file:///C:/Users/Administrator/.workbuddy/binaries/node/versions/22.12.0/node_modules/gitnexus/dist/cli/tool.js:163:20)\n    at async Command.<anonymous> (file:///C:/Users/Administrator/.workbuddy/binaries/node/versions/22.12.0/node_modules/gitnexus/dist/cli/lazy-action.js:16:9)\n\nNode.js v22.12.0"
+  }
+}

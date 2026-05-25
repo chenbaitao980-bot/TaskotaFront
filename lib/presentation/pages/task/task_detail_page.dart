@@ -17,6 +17,7 @@ class TaskDetailPage extends StatefulWidget {
 class _TaskDetailPageState extends State<TaskDetailPage> {
   final LocalStorageService _storage = LocalStorageService();
   TaskBreakdown? _task;
+  TaskBreakdown? _parentTask;
   List<TaskBreakdown> _children = [];
   bool _loaded = false;
 
@@ -30,8 +31,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     await _storage.init();
     final tasks = _storage.getTasks();
     final task = tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    TaskBreakdown? parent;
+    if (task?.parentTaskId != null) {
+      parent = tasks.where((t) => t.id == task!.parentTaskId).firstOrNull;
+    }
     setState(() {
       _task = task;
+      _parentTask = parent;
       _children = task == null ? [] : _storage.getTasks(parentTaskId: task.id);
       _loaded = true;
     });
@@ -61,6 +67,19 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       MaterialPageRoute(builder: (_) => TaskDetailPage(taskId: child.id)),
     );
     await _loadTask();
+  }
+
+  Future<void> _openParent() async {
+    if (_parentTask == null) return;
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => TaskDetailPage(taskId: _parentTask!.id)),
+    );
+    await _loadTask();
+  }
+
+  void _backToCalendar() {
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   Future<void> _deleteTask() async {
@@ -103,6 +122,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   Future<void> _updateStatus(String status) async {
     if (_task == null) return;
+    final previousStatus = _task!.status;
     final updated = _task!.copyWith(
       status: status,
       progress: status == 'completed'
@@ -110,6 +130,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           : (status == 'pending' ? 0 : _task!.progress),
     );
     await _storage.updateTask(updated);
+
+    // 自动完成/回退父任务
+    if (status == 'completed') {
+      await _storage.checkAndAutoCompleteParent(widget.taskId);
+    } else if (previousStatus == 'completed') {
+      await _storage.revertParentOnChildIncomplete(widget.taskId);
+    }
+
     _loadTask();
     if (mounted) {
       ScaffoldMessenger.of(
@@ -138,6 +166,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       appBar: AppBar(
         title: const Text('任务详情'),
         actions: [
+          TextButton.icon(
+            onPressed: _backToCalendar,
+            icon: const Icon(Icons.calendar_today, size: 16),
+            label: const Text('返回日历', style: TextStyle(fontSize: 13)),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.primaryColor),
+          ),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'delete') {
@@ -210,6 +244,87 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ],
             const SizedBox(height: 28),
 
+            // Hierarchy （滴答清单风格树形结构）
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.bgCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.borderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '层级结构',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Parent task breadcrumb
+                  if (_parentTask != null)
+                    InkWell(
+                      onTap: _openParent,
+                      child: Row(
+                        children: [
+                          Icon(Icons.subdirectory_arrow_right,
+                              size: 18, color: AppTheme.primaryColor),
+                          const SizedBox(width: 6),
+                          Icon(Icons.folder_outlined,
+                              size: 16, color: AppTheme.primaryColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            _parentTask!.title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppTheme.primaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (_parentTask != null)
+                    const SizedBox(height: 6),
+                  // Current task
+                  Row(
+                    children: [
+                      if (_parentTask != null)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 28),
+                          child: Icon(Icons.arrow_downward,
+                              size: 14, color: AppTheme.textHint),
+                        ),
+                      if (_parentTask != null)
+                        const SizedBox(width: 6),
+                      Icon(Icons.circle,
+                          size: 10, color: AppTheme.primaryColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
             // Info Card
             Container(
               padding: const EdgeInsets.all(16),
@@ -250,7 +365,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
-                value: task.progress / 100,
+                value: (_storage.calculateTaskProgress(task.id)) / 100,
                 backgroundColor: AppTheme.bgInput,
                 valueColor: const AlwaysStoppedAnimation<Color>(
                   AppTheme.primaryColor,
@@ -260,7 +375,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             const SizedBox(height: 6),
             Text(
-              '${task.progress}% 完成',
+              '${_storage.calculateTaskProgress(task.id)}% 完成',
               style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
                 color: AppTheme.textSecondary,
                 fontSize: 13,
@@ -268,66 +383,125 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             const SizedBox(height: 28),
 
-            Text('子任务', style: Theme.of(context).textTheme.titleLarge),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('子任务',
+                    style: Theme.of(context).textTheme.titleLarge),
+                Text('${_children.length}项',
+                    style: const TextStyle(
+                        fontSize: 13, color: AppTheme.textHint)),
+              ],
+            ),
             const SizedBox(height: 12),
             if (_children.isEmpty)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 decoration: BoxDecoration(
                   color: AppTheme.bgCard,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppTheme.borderSubtle),
                 ),
-                child: const Text(
-                  '暂无子任务',
-                  style: TextStyle(color: AppTheme.textSecondary),
+                child: Column(
+                  children: [
+                    Icon(Icons.account_tree_outlined,
+                        size: 28, color: AppTheme.textHint),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '暂无子任务',
+                      style: TextStyle(color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: _createSubtask,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('添加子任务'),
+                    ),
+                  ],
                 ),
               )
             else
-              ..._children.map((child) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    tileColor: AppTheme.bgCard,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              Column(
+                children: [
+                  ..._children.map((child) {
+                    final isChildCompleted = child.status == 'completed';
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.bgCard,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.borderSubtle),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        leading: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: Checkbox(
+                            value: isChildCompleted,
+                            onChanged: (checked) async {
+                              final newStatus = checked == true
+                                  ? 'completed'
+                                  : 'pending';
+                              await _storage.updateTask(
+                                child.copyWith(status: newStatus,
+                                    progress: newStatus == 'completed'
+                                        ? 100
+                                        : 0),
+                              );
+                              _loadTask();
+                            },
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        title: Text(
+                          child.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            decoration: isChildCompleted
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: isChildCompleted
+                                ? AppTheme.textHint
+                                : AppTheme.textPrimary,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${_statusLabel(child.status)} · ${_dateRangeLabel(child.startDate, child.endDate)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: Icon(Icons.chevron_right,
+                            size: 18, color: AppTheme.textHint),
+                        onTap: () => _openChild(child),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      onPressed: _createSubtask,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('添加子任务'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryColor,
+                        side: const BorderSide(color: AppTheme.primaryColor),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
                     ),
-                    leading: Icon(
-                      Icons.account_tree_outlined,
-                      color: _statusColor(child.status),
-                    ),
-                    title: Text(
-                      child.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '${_statusLabel(child.status)} · ${_dateRangeLabel(child.startDate, child.endDate)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () => _openChild(child),
                   ),
-                );
-              }),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: _createSubtask,
-                icon: const Icon(Icons.add_task_rounded, size: 18),
-                label: const Text('添加子任务'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primaryColor,
-                  side: const BorderSide(color: AppTheme.primaryColor),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
+                ],
               ),
-            ),
             const SizedBox(height: 28),
 
             // Status actions

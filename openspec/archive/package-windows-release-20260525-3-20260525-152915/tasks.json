@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "确认当前打包规范和工作区范围，基于当前代码打包",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "递增 pubspec.yaml 版本号",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "运行 flutter pub get、flutter analyze --no-fatal-infos 和 flutter test",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "执行 flutter clean 后运行 flutter build windows --release",
+      "done": true
+    },
+    {
+      "id": 5,
+      "text": "整理 smart_assistant_windows_release 目录并生成 smart_assistant_windows_release.zip",
+      "done": true
+    },
+    {
+      "id": 6,
+      "text": "解压验证 ZIP 结构并记录回归 run",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "smart_assistant_windows_release.zip 存在且大小合理",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "解压后包含 smart_assistant.exe 和 flutter_windows.dll",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "解压后包含 app_links_plugin.dll、speech_to_text_windows_plugin.dll、url_launcher_windows_plugin.dll",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "解压后包含 data/app.so 和 data/flutter_assets",
+      "done": true
+    },
+    {
+      "id": 5,
+      "text": "用户已确认打包成功后可直接归档",
+      "done": true
+    }
+  ]
+}

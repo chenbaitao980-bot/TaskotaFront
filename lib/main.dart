@@ -6,10 +6,15 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'core/constants/app_constants.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'data/database/app_database.dart';
+import 'data/repositories/project_repository.dart';
+import 'data/repositories/task_repository.dart';
+import 'data/repositories/checklist_repository.dart';
 import 'presentation/blocs/ai_chat/ai_chat_bloc.dart';
 import 'presentation/blocs/auth/auth_bloc.dart';
 import 'presentation/blocs/schedule/schedule_bloc.dart';
 import 'presentation/blocs/task/task_bloc.dart';
+import 'presentation/blocs/task_new/task_bloc.dart' as task_new;
 import 'presentation/pages/auth/login_page.dart';
 import 'presentation/pages/home/home_page.dart';
 import 'services/notification_service.dart';
@@ -25,11 +30,32 @@ void main() async {
 
   await NotificationService().init();
 
-  runApp(const MyApp());
+  final database = AppDatabase();
+  final projectRepository = ProjectRepository(database);
+  final taskRepository = TaskRepository(database);
+  final checklistRepository = ChecklistRepository(database);
+
+  runApp(MyApp(
+    database: database,
+    projectRepository: projectRepository,
+    taskRepository: taskRepository,
+    checklistRepository: checklistRepository,
+  ));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final AppDatabase database;
+  final ProjectRepository projectRepository;
+  final TaskRepository taskRepository;
+  final ChecklistRepository checklistRepository;
+
+  const MyApp({
+    super.key,
+    required this.database,
+    required this.projectRepository,
+    required this.taskRepository,
+    required this.checklistRepository,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +83,13 @@ class MyApp extends StatelessWidget {
             ),
             BlocProvider(
               create: (context) => AiChatBloc(),
+            ),
+            BlocProvider(
+              create: (context) => task_new.TaskNewBloc(
+                projectRepository: projectRepository,
+                taskRepository: taskRepository,
+                checklistRepository: checklistRepository,
+              ),
             ),
           ],
           child: MaterialApp(

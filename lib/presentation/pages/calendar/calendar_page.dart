@@ -83,8 +83,21 @@ class _CalendarPageState extends State<CalendarPage> {
         ? rangeStart.add(const Duration(days: 7))
         : DateTime(_focusedDay.year, _focusedDay.month + 1, 0, 23, 59, 59);
     _events = _storage.getSchedules(startDate: rangeStart, endDate: rangeEnd);
-    _rangeTasks = _storage.getTasks(startDate: rangeStart, endDate: rangeEnd);
+    _rangeTasks = _storage.getTasks(
+      startDate: rangeStart,
+      endDate: rangeEnd,
+      excludeParent: true,
+    );
     if (mounted) setState(() {});
+  }
+
+  /// 获取子任务的父任务名称
+  String _parentLabel(TaskBreakdown task) {
+    if (task.parentTaskId == null) return '';
+    final allTasks = _storage.getTasks();
+    final parent = allTasks.where((t) => t.id == task.parentTaskId).firstOrNull;
+    if (parent == null) return '';
+    return '📁 ${parent.title}';
   }
 
   void _scrollWeekToCurrentTime() {
@@ -491,10 +504,7 @@ class _CalendarPageState extends State<CalendarPage> {
     _setHourHeight(_hourHeight + delta);
   }
 
-  Future<void> _updateTaskStatus(
-    TaskBreakdown task,
-    bool isCompleted,
-  ) async {
+  Future<void> _updateTaskStatus(TaskBreakdown task, bool isCompleted) async {
     try {
       await _ensureStorageReady();
       await _storage.updateTask(
@@ -511,6 +521,22 @@ class _CalendarPageState extends State<CalendarPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Update task failed: $e')));
+      }
+    }
+  }
+
+  Future<void> _updateScheduleStatus(dynamic schedule, bool isCompleted) async {
+    try {
+      await _ensureStorageReady();
+      await _storage.updateSchedule(
+        schedule.copyWith(status: isCompleted ? 'completed' : 'in_progress'),
+      );
+      _loadEvents();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('更新时间失败：$e')));
       }
     }
   }
@@ -536,9 +562,9 @@ class _CalendarPageState extends State<CalendarPage> {
                 _loadEvents();
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('删除失败：$e')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('删除失败：$e')));
                 }
               }
             },
@@ -555,7 +581,11 @@ class _CalendarPageState extends State<CalendarPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(schedule.title as String, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          schedule.title as String,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         content: const Text('确定要删除这个日程吗？'),
         actions: [
           TextButton(
@@ -571,9 +601,9 @@ class _CalendarPageState extends State<CalendarPage> {
                 _loadEvents();
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('删除失败：$e')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('删除失败：$e')));
                 }
               }
             },
@@ -838,16 +868,26 @@ class _CalendarPageState extends State<CalendarPage> {
           title: event.title as String,
           start: event.startTime as DateTime,
           end: event.endTime as DateTime,
-          color: _priorityColor(event.priority as String),
+          color: event.status == 'completed'
+              ? Colors.grey.shade500
+              : _priorityColor(event.priority as String),
+          isCompleted: event.status == 'completed',
           onTap: () => _editSchedule(event),
+          onToggle: (checked) => _updateScheduleStatus(event, checked),
         ),
       for (final task in _rangeTasks.where(_isMultiDayTask))
         _MultiDayItem(
-          title: task.title,
+          title: task.parentTaskId != null
+              ? '${_parentLabel(task)} → ${task.title}'
+              : task.title,
           start: task.startDate!,
           end: task.endDate!.add(const Duration(days: 1)),
-          color: _priorityColor(task.priority),
+          color: task.status == 'completed'
+              ? Colors.grey.shade500
+              : _priorityColor(task.priority),
+          isCompleted: task.status == 'completed',
           onTap: () => _openTaskDetail(task),
+          onToggle: (checked) => _updateTaskStatus(task, checked),
         ),
     ];
     if (items.isEmpty) return const SizedBox.shrink();
@@ -908,7 +948,7 @@ class _CalendarPageState extends State<CalendarPage> {
       width: dayWidth * spanDays - 8,
       height: laneHeight - 8,
       child: Material(
-        color: item.color.withValues(alpha: 0.9),
+        color: item.color.withValues(alpha: item.isCompleted ? 0.62 : 0.9),
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: item.onTap,
@@ -917,22 +957,43 @@ class _CalendarPageState extends State<CalendarPage> {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
               children: [
-                const Icon(
-                  Icons.view_week_rounded,
-                  color: Colors.white,
-                  size: 14,
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: Checkbox(
+                    value: item.isCompleted,
+                    onChanged: (checked) => item.onToggle(checked == true),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    side: const BorderSide(color: Colors.white, width: 1.5),
+                    checkColor: Colors.grey,
+                    fillColor: WidgetStateProperty.resolveWith(
+                      (states) => states.contains(WidgetState.selected)
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.18),
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style:
+                        const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ).copyWith(
+                          color: item.isCompleted
+                              ? Colors.white.withValues(alpha: 0.72)
+                              : Colors.white,
+                          decoration: item.isCompleted
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
+                          decorationColor: Colors.white.withValues(alpha: 0.72),
+                        ),
                   ),
                 ),
               ],
@@ -1115,6 +1176,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final textColor = isCompleted
         ? Colors.white.withValues(alpha: 0.72)
         : Colors.white;
+    final parentLabel = task.parentTaskId != null ? _parentLabel(task) : '';
     return Material(
       color: color.withValues(alpha: isCompleted ? 0.62 : 0.88),
       elevation: isCompleted ? 0 : 2,
@@ -1151,21 +1213,33 @@ class _CalendarPageState extends State<CalendarPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (parentLabel.isNotEmpty)
+                      Text(
+                        parentLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textColor.withValues(alpha: 0.75),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     Text(
                       task.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ).copyWith(
-                        color: textColor,
-                        decoration: isCompleted
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                        decorationColor: textColor,
-                      ),
+                      style:
+                          const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ).copyWith(
+                            color: textColor,
+                            decoration: isCompleted
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
+                            decorationColor: textColor,
+                          ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1277,14 +1351,8 @@ class _CalendarPageState extends State<CalendarPage> {
                 height: 20,
                 child: Checkbox(
                   value: event.status == 'completed',
-                  onChanged: (checked) {
-                    final newStatus = checked == true
-                        ? 'completed'
-                        : 'in_progress';
-                    event.copyWith(status: newStatus);
-                    _storage.updateSchedule(event.copyWith(status: newStatus));
-                    _loadEvents();
-                  },
+                  onChanged: (checked) =>
+                      _updateScheduleStatus(event, checked == true),
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   side: const BorderSide(color: Colors.white, width: 1.5),
@@ -1306,17 +1374,18 @@ class _CalendarPageState extends State<CalendarPage> {
                       event.title as String,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ).copyWith(
-                        color: textColor,
-                        decoration: isCompleted
-                            ? TextDecoration.lineThrough
-                            : TextDecoration.none,
-                        decorationColor: textColor,
-                      ),
+                      style:
+                          const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ).copyWith(
+                            color: textColor,
+                            decoration: isCompleted
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
+                            decorationColor: textColor,
+                          ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1424,26 +1493,38 @@ class _CalendarPageState extends State<CalendarPage> {
               itemCount: dayEvents.length,
               itemBuilder: (context, index) {
                 final event = dayEvents[index];
+                final isCompleted = event.status == 'completed';
                 return Card(
+                  color: isCompleted
+                      ? Colors.grey.shade100
+                      : Theme.of(context).cardColor,
                   margin: const EdgeInsets.symmetric(vertical: 4),
                   child: ListTile(
                     leading: Checkbox(
-                      value: event.status == 'completed',
-                      onChanged: (checked) {
-                        final newStatus = checked == true
-                            ? 'completed'
-                            : 'in_progress';
-                        _storage.updateSchedule(
-                          event.copyWith(status: newStatus),
-                        );
-                        _loadEvents();
-                      },
+                      value: isCompleted,
+                      onChanged: (checked) =>
+                          _updateScheduleStatus(event, checked == true),
                     ),
-                    title: Text(event.title as String),
+                    title: Text(
+                      event.title as String,
+                      style: TextStyle(
+                        color: isCompleted
+                            ? AppTheme.textSecondary
+                            : AppTheme.textPrimary,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
                     subtitle: Text(
                       '${(event.startTime as DateTime).hour}:${(event.startTime as DateTime).minute.toString().padLeft(2, '0')} - '
                       '${(event.endTime as DateTime).hour}:${(event.endTime as DateTime).minute.toString().padLeft(2, '0')}  '
                       '${_priorityLabel(event.priority as String)}',
+                      style: TextStyle(
+                        color: isCompleted
+                            ? AppTheme.textHint
+                            : AppTheme.textSecondary,
+                      ),
                     ),
                     trailing: PopupMenuButton<String>(
                       onSelected: (action) {
@@ -1534,13 +1615,17 @@ class _MultiDayItem {
   final DateTime start;
   final DateTime end;
   final Color color;
+  final bool isCompleted;
   final VoidCallback onTap;
+  final ValueChanged<bool> onToggle;
 
   const _MultiDayItem({
     required this.title,
     required this.start,
     required this.end,
     required this.color,
+    required this.isCompleted,
     required this.onTap,
+    required this.onToggle,
   });
 }
