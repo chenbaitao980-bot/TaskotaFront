@@ -498,7 +498,21 @@ class _HomeContentState extends State<_HomeContent> {
       return a.title.compareTo(b.title);
     });
 
-    _timelineTasks = timelineItems;
+    // Deduplicate: keep only the last occurrence per taskId (DB version overrides storage)
+    final seen = <String>{};
+    final deduped = <_TimelineTask>[];
+    for (final item in timelineItems.reversed) {
+      if (seen.add(item.taskId)) {
+        deduped.add(item);
+      }
+    }
+    deduped.sort((a, b) {
+      final cmp = a.date.compareTo(b.date);
+      if (cmp != 0) return cmp;
+      return a.title.compareTo(b.title);
+    });
+
+    _timelineTasks = deduped;
     _applyProjectFilter();
     _loading = false;
 
@@ -1260,34 +1274,49 @@ class _HomeContentState extends State<_HomeContent> {
           final task = tasks[i];
           final isSelected = task.id == _selectedTaskId;
           return Padding(
-            padding: const EdgeInsets.only(bottom: 3),
-            child: GestureDetector(
-              onTap: () => _selectTask(task),
-              onSecondaryTap: () => _showDeleteContextMenu(context, task),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: isSelected ? 14 : 10,
-                height: isSelected ? 14 : 10,
-                decoration: BoxDecoration(
-                  color: task.isCompleted
-                      ? AppTheme.textHint.withValues(alpha: 0.4)
-                      : _priorityColor(task.priority),
-                  shape: BoxShape.circle,
-                  border: isSelected
-                      ? Border.all(
-                          color: AppTheme.primaryColor, width: 2)
-                      : null,
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: AppTheme.primaryColor
-                                .withValues(alpha: 0.4),
-                            blurRadius: 4,
-                          ),
-                        ]
-                      : null,
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () => _selectTask(task),
+                  onSecondaryTap: () => _showDeleteContextMenu(context, task),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: isSelected ? 14 : 10,
+                    height: isSelected ? 14 : 10,
+                    decoration: BoxDecoration(
+                      color: task.isCompleted
+                          ? AppTheme.textHint.withValues(alpha: 0.4)
+                          : _priorityColor(task.priority),
+                      shape: BoxShape.circle,
+                      border: isSelected
+                          ? Border.all(color: AppTheme.primaryColor, width: 2)
+                          : null,
+                      boxShadow: isSelected
+                          ? [BoxShadow(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.4),
+                              blurRadius: 4,
+                            )]
+                          : null,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 2),
+                SizedBox(
+                  width: 40,
+                  child: Text(
+                    task.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 8,
+                      color: AppTheme.textHint,
+                    ),
+                  ),
+                ),
+              ],
             ),
           );
         }),
@@ -1899,7 +1928,8 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   Future<void> _confirmDeleteTask(_TimelineTask task) async {
-    if (task.source != 'db' || widget.taskRepository == null) return;
+    // Return early only if both sources are unavailable
+    if (task.source == 'db' && widget.taskRepository == null) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1916,7 +1946,11 @@ class _HomeContentState extends State<_HomeContent> {
       ),
     );
     if (confirm == true && mounted) {
-      await widget.taskRepository!.delete(task.taskId);
+      if (task.source == 'db' && widget.taskRepository != null) {
+        await widget.taskRepository!.delete(task.taskId);
+      } else if (task.source == 'storage') {
+        widget.storage.deleteTask(task.taskId);
+      }
       if (_selectedTaskId == task.id) {
         _selectedTaskId = null;
         _selectedTask = null;

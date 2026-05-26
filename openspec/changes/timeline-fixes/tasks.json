@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "排查时间轴多余红点来源",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "修复已完成任务删除无反应",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "红点下加标题备注",
+      "done": false
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "flutter analyze通过",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "功能手动验证",
+      "done": false
+    }
+  ]
+}
