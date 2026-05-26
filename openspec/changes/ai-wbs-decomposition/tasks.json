@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "调研确定WBS分解架构",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "重构TaskDecompositionService",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "更新AiDecomposeSection",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "验证",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "分解日语N1任务输出正确",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "分解复杂开发任务输出正确",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "flutter analyze通过",
+      "done": true
+    }
+  ]
+}

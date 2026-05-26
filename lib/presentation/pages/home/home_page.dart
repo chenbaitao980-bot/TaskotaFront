@@ -19,6 +19,7 @@ import '../onboarding/onboarding_page.dart';
 import '../profile/profile_page.dart';
 import '../task/create_task_page.dart';
 import '../task/task_list_page.dart';
+import '../tasks/task_detail/task_detail_page.dart';
 import '../tasks/tasks_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -404,9 +405,11 @@ class _HomeContentState extends State<_HomeContent> {
   bool _loading = false;
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
+  String? _filterProjectId;
 
   // Combined timeline data
   List<_TimelineTask> _timelineTasks = [];
+  List<_TimelineTask> _filteredTasks = [];
   Map<String, Project> _projectCache = {};
   final Map<String, List<ChecklistItem>> _checklistCache = {};
   final Map<String, List<Task>> _subtaskCache = {};
@@ -494,6 +497,7 @@ class _HomeContentState extends State<_HomeContent> {
     });
 
     _timelineTasks = timelineItems;
+    _applyProjectFilter();
     _loading = false;
 
     // Preserve previous selection if task still exists
@@ -521,6 +525,16 @@ class _HomeContentState extends State<_HomeContent> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToNearestTask();
     });
+  }
+
+  void _applyProjectFilter() {
+    if (_filterProjectId == null) {
+      _filteredTasks = List.from(_timelineTasks);
+    } else {
+      _filteredTasks = _timelineTasks
+          .where((t) => t.projectId == _filterProjectId)
+          .toList();
+    }
   }
 
   void _scrollToTask(_TimelineTask task) {
@@ -553,7 +567,7 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   void _scrollToNearestTask() {
-    if (!_timelineController.hasClients || _timelineTasks.isEmpty) return;
+    if (!_timelineController.hasClients || _filteredTasks.isEmpty) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -564,7 +578,7 @@ class _HomeContentState extends State<_HomeContent> {
       _timelineController.jumpTo(max(0.0, target - midScreen + _hourWidth / 2));
 
       // Select nearest task for today if any
-      final todayTasks = _timelineTasks.where((t) =>
+      final todayTasks = _filteredTasks.where((t) =>
           _isSameDayDate(t.date, today) && !t.isCompleted).toList();
       if (todayTasks.isNotEmpty) {
         _selectTask(todayTasks.first);
@@ -577,7 +591,7 @@ class _HomeContentState extends State<_HomeContent> {
     // Find nearest task (closest to now, preferring future tasks)
     _TimelineTask? nearest;
     Duration minDiff = const Duration(days: 365 * 10);
-    for (final task in _timelineTasks) {
+    for (final task in _filteredTasks) {
       if (task.isCompleted) continue;
       final diff = task.date.difference(now).abs();
       if (diff < minDiff) {
@@ -585,8 +599,8 @@ class _HomeContentState extends State<_HomeContent> {
         nearest = task;
       }
     }
-    if (nearest == null && _timelineTasks.isNotEmpty) {
-      nearest = _timelineTasks.first;
+    if (nearest == null && _filteredTasks.isNotEmpty) {
+      nearest = _filteredTasks.first;
     }
     if (nearest == null) {
       // No tasks — scroll to today
@@ -611,7 +625,28 @@ class _HomeContentState extends State<_HomeContent> {
       _selectedTaskId = task.id;
       _selectedTask = task;
     });
-    _scrollToTask(task);
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final taskDay = DateTime(task.date.year, task.date.month, task.date.day);
+    final isToday = taskDay == today;
+
+    // 自动切换时间轴模式
+    if (!isToday && _timelineMode == 'hour') {
+      // 非当天任务：切换到天视图并滚动到对应天
+      setState(() => _timelineMode = 'day');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToTask(task);
+      });
+    } else if (isToday && _timelineMode == 'day') {
+      // 当天任务：切换回小时视图
+      setState(() => _timelineMode = 'hour');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToTask(task);
+      });
+    } else {
+      _scrollToTask(task);
+    }
   }
 
   Color _priorityColor(String priority) {
@@ -706,7 +741,9 @@ class _HomeContentState extends State<_HomeContent> {
                     children: [
                       const SizedBox(height: 12),
                       _buildGreeting(),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
+                      _buildProjectFilter(),
+                      const SizedBox(height: 12),
                       _buildTimeline(),
                       const SizedBox(height: 16),
                       if (_selectedTask != null) _buildTaskDetail(),
@@ -743,12 +780,81 @@ class _HomeContentState extends State<_HomeContent> {
         ),
         const SizedBox(height: 4),
         Text(
-          _timelineTasks.isNotEmpty
-              ? '时间轴上有 ${_timelineTasks.length} 个任务节点'
-              : '今天没有任务安排',
+          _filteredTasks.isNotEmpty
+              ? (_filterProjectId != null
+                  ? '筛选出 ${_filteredTasks.length} 个任务'
+                  : '时间轴上有 ${_filteredTasks.length} 个任务节点')
+              : '没有匹配的任务',
           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
       ],
+    );
+  }
+
+  Widget _buildProjectFilter() {
+    final projects = _projectCache.values.toList();
+    if (projects.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.folder_outlined, size: 16, color: AppTheme.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: _filterProjectId,
+                isDense: true,
+                hint: const Text('全部项目', style: TextStyle(fontSize: 13)),
+                items: [
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('全部项目', style: TextStyle(fontSize: 13)),
+                  ),
+                  ...projects.map((p) => DropdownMenuItem(
+                    value: p.id,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8, height: 8,
+                          decoration: BoxDecoration(
+                            color: Color(int.parse(p.color.replaceFirst('#', '0xFF'))),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(p.name, style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                  )),
+                ],
+                onChanged: (id) {
+                  setState(() {
+                    _filterProjectId = id;
+                    _applyProjectFilter();
+                  });
+                },
+              ),
+            ),
+          ),
+          if (_filterProjectId != null)
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _filterProjectId = null;
+                  _applyProjectFilter();
+                });
+              },
+              child: const Icon(Icons.close, size: 16, color: AppTheme.textHint),
+            ),
+        ],
+      ),
     );
   }
 
@@ -946,7 +1052,7 @@ class _HomeContentState extends State<_HomeContent> {
 
   Widget _buildDayColumn(DateTime dayDate, bool isToday, int dayIndex) {
     // Find tasks for this day
-    final dayTasks = _timelineTasks.where((t) {
+    final dayTasks = _filteredTasks.where((t) {
       return t.date.year == dayDate.year &&
           t.date.month == dayDate.month &&
           t.date.day == dayDate.day;
@@ -1028,7 +1134,7 @@ class _HomeContentState extends State<_HomeContent> {
     final hourDateTime = DateTime(today.year, today.month, today.day, hour);
 
     // Find tasks for this hour
-    final hourTasks = _timelineTasks.where((t) {
+    final hourTasks = _filteredTasks.where((t) {
       return _isSameDayDate(t.date, today) && t.date.hour == hour;
     }).toList();
 
@@ -1119,6 +1225,7 @@ class _HomeContentState extends State<_HomeContent> {
             padding: const EdgeInsets.only(bottom: 3),
             child: GestureDetector(
               onTap: () => _selectTask(task),
+              onSecondaryTap: () => _showDeleteContextMenu(context, task),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: isSelected ? 14 : 10,
@@ -1202,6 +1309,30 @@ class _HomeContentState extends State<_HomeContent> {
                 // Title
                 Row(
                   children: [
+                    // 完成复选框
+                    GestureDetector(
+                      onTap: () => _toggleTaskCompletion(task),
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: task.isCompleted
+                              ? AppTheme.success
+                              : Colors.transparent,
+                          border: Border.all(
+                            color: task.isCompleted
+                                ? AppTheme.success
+                                : AppTheme.textHint,
+                            width: 2,
+                          ),
+                        ),
+                        child: task.isCompleted
+                            ? const Icon(Icons.check, size: 14, color: Colors.white)
+                            : null,
+                      ),
+                    ),
                     Expanded(
                       child: Text(
                         task.title,
@@ -1236,6 +1367,23 @@ class _HomeContentState extends State<_HomeContent> {
                           ),
                         ),
                       ),
+                    // 编辑按钮
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      color: AppTheme.textHint,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => _navigateToEdit(task),
+                    ),
+                    const SizedBox(width: 4),
+                    // 删除按钮
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      color: AppTheme.error,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => _confirmDeleteTask(task),
+                    ),
                   ],
                 ),
                 // Date
@@ -1396,64 +1544,99 @@ class _HomeContentState extends State<_HomeContent> {
         const SizedBox(height: 6),
         ...subtasks.map((st) {
           final tlTask = _timelineTasks.where((t) => t.taskId == st.id).firstOrNull;
-          return GestureDetector(
-            onTap: () {
-              if (tlTask != null) {
-                _selectTask(tlTask);
-              } else {
-                final now = DateTime.now();
-                final date = st.startDate != null
-                    ? DateTime.fromMillisecondsSinceEpoch(st.startDate!)
-                    : (st.dueDate != null
-                        ? DateTime.fromMillisecondsSinceEpoch(st.dueDate!)
-                        : now);
-                _selectTask(_TimelineTask(
-                  id: st.id,
-                  title: st.title,
-                  description: '',
-                  date: date,
-                  isCompleted: st.status == 2,
-                  priority: st.priority.toString(),
-                  source: 'db',
-                  projectId: st.projectId,
-                  taskId: st.id,
-                  parentId: st.parentId,
-                ));
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                children: [
-                  const SizedBox(width: 16),
-                  Icon(
-                    st.status == 2
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 14,
-                    color: st.status == 2
-                        ? AppTheme.success
-                        : AppTheme.textHint,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      st.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: st.status == 2
-                            ? AppTheme.textHint
-                            : AppTheme.textPrimary,
-                        decoration: st.status == 2
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                const SizedBox(width: 16),
+                // 完成切换（只更新数据库，不触发任何setState/导航）
+                GestureDetector(
+                  onTap: () {
+                    widget.taskRepository?.toggleStatus(st.id);
+                    // 直接更新本地缓存来更新图标，避免触发setState级联刷新
+                    final cached = _subtaskCache[taskId];
+                    if (cached != null) {
+                      final idx = cached.indexOf(st);
+                      if (idx >= 0) {
+                        final updated = List<Task>.from(cached);
+                        final newStatus = st.status == 2 ? 0 : 2;
+                        updated[idx] = Task(
+                          id: st.id,
+                          projectId: st.projectId,
+                          parentId: st.parentId,
+                          title: st.title,
+                          description: st.description,
+                          priority: st.priority,
+                          status: newStatus,
+                          startDate: st.startDate,
+                          dueDate: st.dueDate,
+                          isAllDay: st.isAllDay,
+                          completedTime: newStatus == 2 ? DateTime.now().millisecondsSinceEpoch : st.completedTime,
+                          sortOrder: st.sortOrder,
+                          createdAt: st.createdAt,
+                          updatedAt: DateTime.now().millisecondsSinceEpoch,
+                        );
+                        _subtaskCache[taskId] = updated;
+                        setState(() {});
+                      }
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      st.status == 2
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      size: 18,
+                      color: st.status == 2
+                          ? AppTheme.success
+                          : AppTheme.textHint,
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 6),
+                // 标题 — 点击导航到该子任务
+                GestureDetector(
+                  onTap: () {
+                    if (tlTask != null) {
+                      _selectTask(tlTask);
+                    } else {
+                      final now = DateTime.now();
+                      final date = st.startDate != null
+                          ? DateTime.fromMillisecondsSinceEpoch(st.startDate!)
+                          : (st.dueDate != null
+                              ? DateTime.fromMillisecondsSinceEpoch(st.dueDate!)
+                              : now);
+                      _selectTask(_TimelineTask(
+                        id: st.id,
+                        title: st.title,
+                        description: '',
+                        date: date,
+                        isCompleted: st.status == 2,
+                        priority: st.priority.toString(),
+                        source: 'db',
+                        projectId: st.projectId,
+                        taskId: st.id,
+                        parentId: st.parentId,
+                      ));
+                    }
+                  },
+                  child: Text(
+                    st.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: st.status == 2
+                          ? AppTheme.textHint
+                          : AppTheme.textPrimary,
+                      decoration: st.status == 2
+                          ? TextDecoration.lineThrough
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
             ),
           );
         }),
@@ -1565,6 +1748,118 @@ class _HomeContentState extends State<_HomeContent> {
     return '${date.month}月${date.day}日 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
+  void _navigateToEdit(_TimelineTask task) {
+    if (task.source == 'db') {
+      final repo = widget.taskRepository;
+      if (repo == null) return;
+      repo.get(task.taskId).then((dbTask) {
+        if (dbTask != null && mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BlocProvider.value(
+                value: context.read<TaskNewBloc>(),
+                child: TaskDetailPage(task: dbTask),
+              ),
+            ),
+          );
+        }
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂不支持编辑此类型任务')),
+      );
+    }
+  }
+
+  void _toggleTaskCompletion(_TimelineTask task) async {
+    if (task.source != 'db' || widget.taskRepository == null) return;
+    // 直接操作数据库，不触发 BLoC 避免级联 reload
+    await widget.taskRepository!.toggleStatus(task.taskId);
+    // 更新本地缓存
+    final idx = _timelineTasks.indexOf(task);
+    if (idx >= 0) {
+      _timelineTasks[idx] = _TimelineTask(
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        date: task.date,
+        isCompleted: !task.isCompleted,
+        priority: task.priority,
+        source: task.source,
+        projectId: task.projectId,
+        taskId: task.taskId,
+        parentId: task.parentId,
+      );
+      _applyProjectFilter();
+      if (_selectedTaskId == task.id) _selectedTask = _timelineTasks[idx];
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _confirmDeleteTask(_TimelineTask task) async {
+    if (task.source != 'db' || widget.taskRepository == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除任务'),
+        content: Text('确定要删除"${task.title}"吗？\n其所有子任务也会被删除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      await widget.taskRepository!.delete(task.taskId);
+      if (_selectedTaskId == task.id) {
+        _selectedTaskId = null;
+        _selectedTask = null;
+      }
+      _loadData();
+    }
+  }
+
+  /// 显示删除上下文菜单（时间轴右键用）
+  void _showDeleteContextMenu(BuildContext context, _TimelineTask task) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(task.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppTheme.error),
+              title: const Text('删除任务', style: TextStyle(color: AppTheme.error)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeleteTask(task);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('编辑任务'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _navigateToEdit(task);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ──────────────────────────────────────────────
   // Four-Quadrant Chart
   // ──────────────────────────────────────────────
@@ -1580,7 +1875,7 @@ class _HomeContentState extends State<_HomeContent> {
     final q4 = <_TimelineTask>[]; // Not Urgent & Not Important
     final overdue = <_TimelineTask>[]; // Overdue (any quadrant)
 
-    for (final task in _timelineTasks) {
+    for (final task in _filteredTasks) {
       if (task.isCompleted) continue;
       final isUrgent = task.date.difference(now).inDays <= 3 &&
           task.date.isAfter(now.subtract(const Duration(days: 1)));

@@ -5,49 +5,49 @@
     {
       "id": 1,
       "text": "归档当前变更",
-      "done": false
+      "done": true
     },
     {
       "id": 2,
       "text": "首页任务详情加编辑按钮",
-      "done": false
+      "done": true
     },
     {
       "id": 3,
       "text": "任务详情支持勾选完成",
-      "done": false
+      "done": true
     },
     {
       "id": 4,
       "text": "首页项目筛选",
-      "done": false
+      "done": true
     },
     {
       "id": 5,
       "text": "任务详情附件上传模块",
-      "done": false
+      "done": true
     },
     {
       "id": 6,
       "text": "AI拆分子任务模块",
-      "done": false
+      "done": true
     },
     {
       "id": 7,
       "text": "验证",
-      "done": false
+      "done": true
     }
   ],
   "verification_items": [
     {
       "id": 1,
       "text": "flutter analyze通过",
-      "done": false
+      "done": true
     },
     {
       "id": 2,
       "text": "功能手动验证",
-      "done": false
+      "done": true
     }
   ]
 }

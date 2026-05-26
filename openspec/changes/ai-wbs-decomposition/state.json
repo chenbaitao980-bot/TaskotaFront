@@ -1,0 +1,88 @@
+{
+  "status": "user_verification_pending",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T19:36:00.063829+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T19:36:26.931307+00:00",
+      "reason": "四件套就绪，调研完成"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T19:37:18.395917+00:00",
+      "reason": "用户已确认方案"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T19:37:21.668657+00:00",
+      "reason": "开始实施WBS重构"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T19:38:12.085074+00:00",
+      "reason": "WBS分解服务已经重构完成，三阶段prompt链+智能fallback"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T19:38:20.530863+00:00",
+      "reason": "WBS分解重构完成，flutter analyze通过"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-26T19:47:02.689252+00:00",
+      "reason": "返工修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T19:47:03.181338+00:00",
+      "reason": "修复完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T19:47:12.358349+00:00",
+      "reason": "三个修复完成：防缓存、去重、移除深度研究"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-26T19:54:07.859149+00:00",
+      "reason": "返工修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T19:54:08.357207+00:00",
+      "reason": "修复完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T19:54:15.154863+00:00",
+      "reason": "修复：模糊去重+空结果正确提示"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": false,
+  "archivable": false,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\ai-wbs-decomposition\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T19:54:10.749211+00:00"
+  }
+}

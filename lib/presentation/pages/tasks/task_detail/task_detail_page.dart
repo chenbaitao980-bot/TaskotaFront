@@ -10,6 +10,8 @@ import '../../../blocs/task_new/task_state.dart';
 import '../../../widgets/calendar_date_picker.dart';
 import 'widgets/checklist_section.dart';
 import 'widgets/subtask_tree_section.dart';
+import 'widgets/attachment_section.dart';
+import 'widgets/ai_decompose_section.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
@@ -142,25 +144,65 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           body: ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 32),
             children: [
-              // 标题 — 可编辑
+              // 标题 — 可编辑 + 完成复选框
               Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
+                  horizontal: 16,
                   vertical: 8,
                 ),
-                child: TextFormField(
-                  controller: _titleController,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                  ),
-                  onChanged: (_) => _markChanged(),
+                child: Row(
+                  children: [
+                    // 完成复选框
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _status = _status == 2 ? 0 : 2;
+                        });
+                        _markChanged();
+                      },
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _status == 2
+                              ? AppTheme.success
+                              : Colors.transparent,
+                          border: Border.all(
+                            color: _status == 2
+                                ? AppTheme.success
+                                : AppTheme.textHint,
+                            width: 2.5,
+                          ),
+                        ),
+                        child: _status == 2
+                            ? const Icon(Icons.check, size: 16, color: Colors.white)
+                            : null,
+                      ),
+                    ),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _titleController,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          color: _status == 2
+                              ? AppTheme.textHint
+                              : AppTheme.textPrimary,
+                          decoration: _status == 2
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                          isDense: true,
+                        ),
+                        onChanged: (_) => _markChanged(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),
@@ -374,6 +416,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                   );
                 },
+              ),
+              const SizedBox(height: 16),
+              // 附件
+              AttachmentSection(task: widget.task),
+              const SizedBox(height: 16),
+              // AI 拆分子任务
+              AiDecomposeSection(
+                task: widget.task,
+                projectId: _selectedProjectId,
+                currentDescription: _descController.text,
               ),
             ],
           ),
