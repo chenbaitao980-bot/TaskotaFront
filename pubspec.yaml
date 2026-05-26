@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   
   # 状态管理
@@ -43,6 +45,9 @@ dependencies:
   flutter_screenutil: ^5.9.3
   shimmer: ^3.0.0
   flutter_slidable: ^4.0.0
+  
+  # 文件选择器
+  file_picker: ^8.3.7
   
   # 工具
   intl: ^0.20.0

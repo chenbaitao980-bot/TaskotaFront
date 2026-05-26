@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "归档当前变更",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "首页任务详情加编辑按钮",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "任务详情支持勾选完成",
+      "done": false
+    },
+    {
+      "id": 4,
+      "text": "首页项目筛选",
+      "done": false
+    },
+    {
+      "id": 5,
+      "text": "任务详情附件上传模块",
+      "done": false
+    },
+    {
+      "id": 6,
+      "text": "AI拆分子任务模块",
+      "done": false
+    },
+    {
+      "id": 7,
+      "text": "验证",
+      "done": false
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "flutter analyze通过",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "功能手动验证",
+      "done": false
+    }
+  ]
+}

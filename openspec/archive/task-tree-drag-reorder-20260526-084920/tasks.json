@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {"id": 1, "text": "新增 TaskEvent：MoveTaskToParent、ToggleTaskExpand、ReorderTaskSiblings", "done": true},
+    {"id": 2, "text": "BLoC 新增 3 个 handler", "done": true},
+    {"id": 3, "text": "TaskCard 新增 depth/hasChildren/isExpanded/onToggleExpand/showDragHandle 属性", "done": true},
+    {"id": 4, "text": "重构 TaskListView：从平铺 ListView 改为树形 StatefulWidget + Draggable/DragTarget", "done": true},
+    {"id": 5, "text": "TasksPage 新增 expandedIds 读取、onToggleExpand/onMoveToParent 回调", "done": true},
+    {"id": 6, "text": "编辑 task_create_sheet.dart 新增可选父任务选择字段", "done": true},
+    {"id": 7, "text": "创建回归测试用例文件", "done": true},
+    {"id": 8, "text": "运行 flutter analyze 确保无警告", "done": true},
+    {"id": 9, "text": "运行 gitnexus detect-changes 确认影响范围", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "树形结构正确展示父子层级（根任务平级，子任务缩进）", "done": true},
+    {"id": 2, "text": "拖拽排序生效（同一父级下重排）", "done": true},
+    {"id": 3, "text": "子任务可拖到新父级下（跨父级移动）", "done": true},
+    {"id": 4, "text": "子任务可拖回根节点", "done": true},
+    {"id": 5, "text": "展开/折叠正常（折叠后子节点隐藏）", "done": true},
+    {"id": 6, "text": "已完成任务区域保持折叠展示", "done": true},
+    {"id": 7, "text": "筛选条件下树形结构正确", "done": true}
+  ]
+}

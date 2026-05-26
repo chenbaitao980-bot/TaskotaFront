@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "1.添加 daysOfWeekHeight、dowTextFormatter、tablePadding 三个配置",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "2.验证 diff 仅含目标改动，无无关变更",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "1.diff检查",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "2.构建确认无编译错误",
+      "done": true
+    }
+  ]
+}

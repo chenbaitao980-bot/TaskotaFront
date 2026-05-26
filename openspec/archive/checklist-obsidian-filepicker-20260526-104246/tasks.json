@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {"id": 1, "text": "pubspec.yaml 添加 file_picker 依赖", "done": true},
+    {"id": 2, "text": "obsidian_service.dart 新增 vault 自动检测", "done": true},
+    {"id": 3, "text": "checklist_section.dart 对话框改为文件选择器+自动填充", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "点击选择文件打开本地文件选择器", "done": false},
+    {"id": 2, "text": "选中 .md 文件后 Vault/路径自动填入", "done": false},
+    {"id": 3, "text": "heading 可选输入不变", "done": false}
+  ]
+}

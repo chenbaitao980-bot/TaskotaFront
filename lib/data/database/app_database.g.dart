@@ -1321,6 +1321,17 @@ class $ChecklistItemsTable extends ChecklistItems
     $customConstraints: 'NOT NULL DEFAULT 0',
     defaultValue: const CustomExpression('0'),
   );
+  static const VerificationMeta _obsidianUriMeta = const VerificationMeta(
+    'obsidianUri',
+  );
+  @override
+  late final GeneratedColumn<String> obsidianUri = GeneratedColumn<String>(
+    'obsidian_uri',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _completedTimeMeta = const VerificationMeta(
     'completedTime',
   );
@@ -1361,6 +1372,7 @@ class $ChecklistItemsTable extends ChecklistItems
     title,
     status,
     sortOrder,
+    obsidianUri,
     completedTime,
     createdAt,
     updatedAt,
@@ -1408,6 +1420,15 @@ class $ChecklistItemsTable extends ChecklistItems
       context.handle(
         _sortOrderMeta,
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('obsidian_uri')) {
+      context.handle(
+        _obsidianUriMeta,
+        obsidianUri.isAcceptableOrUnknown(
+          data['obsidian_uri']!,
+          _obsidianUriMeta,
+        ),
       );
     }
     if (data.containsKey('completed_time')) {
@@ -1464,6 +1485,10 @@ class $ChecklistItemsTable extends ChecklistItems
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      obsidianUri: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}obsidian_uri'],
+      ),
       completedTime: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}completed_time'],
@@ -1491,6 +1516,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
   final String title;
   final int status;
   final int sortOrder;
+  final String? obsidianUri;
   final int? completedTime;
   final int createdAt;
   final int updatedAt;
@@ -1500,6 +1526,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     required this.title,
     required this.status,
     required this.sortOrder,
+    this.obsidianUri,
     this.completedTime,
     required this.createdAt,
     required this.updatedAt,
@@ -1512,6 +1539,9 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     map['title'] = Variable<String>(title);
     map['status'] = Variable<int>(status);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || obsidianUri != null) {
+      map['obsidian_uri'] = Variable<String>(obsidianUri);
+    }
     if (!nullToAbsent || completedTime != null) {
       map['completed_time'] = Variable<int>(completedTime);
     }
@@ -1527,6 +1557,9 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       title: Value(title),
       status: Value(status),
       sortOrder: Value(sortOrder),
+      obsidianUri: obsidianUri == null && nullToAbsent
+          ? const Value.absent()
+          : Value(obsidianUri),
       completedTime: completedTime == null && nullToAbsent
           ? const Value.absent()
           : Value(completedTime),
@@ -1546,6 +1579,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       title: serializer.fromJson<String>(json['title']),
       status: serializer.fromJson<int>(json['status']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      obsidianUri: serializer.fromJson<String?>(json['obsidianUri']),
       completedTime: serializer.fromJson<int?>(json['completedTime']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
@@ -1560,6 +1594,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       'title': serializer.toJson<String>(title),
       'status': serializer.toJson<int>(status),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'obsidianUri': serializer.toJson<String?>(obsidianUri),
       'completedTime': serializer.toJson<int?>(completedTime),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
@@ -1572,6 +1607,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     String? title,
     int? status,
     int? sortOrder,
+    Value<String?> obsidianUri = const Value.absent(),
     Value<int?> completedTime = const Value.absent(),
     int? createdAt,
     int? updatedAt,
@@ -1581,6 +1617,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     title: title ?? this.title,
     status: status ?? this.status,
     sortOrder: sortOrder ?? this.sortOrder,
+    obsidianUri: obsidianUri.present ? obsidianUri.value : this.obsidianUri,
     completedTime: completedTime.present
         ? completedTime.value
         : this.completedTime,
@@ -1594,6 +1631,9 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       title: data.title.present ? data.title.value : this.title,
       status: data.status.present ? data.status.value : this.status,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      obsidianUri: data.obsidianUri.present
+          ? data.obsidianUri.value
+          : this.obsidianUri,
       completedTime: data.completedTime.present
           ? data.completedTime.value
           : this.completedTime,
@@ -1610,6 +1650,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
           ..write('title: $title, ')
           ..write('status: $status, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('obsidianUri: $obsidianUri, ')
           ..write('completedTime: $completedTime, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -1624,6 +1665,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     title,
     status,
     sortOrder,
+    obsidianUri,
     completedTime,
     createdAt,
     updatedAt,
@@ -1637,6 +1679,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
           other.title == this.title &&
           other.status == this.status &&
           other.sortOrder == this.sortOrder &&
+          other.obsidianUri == this.obsidianUri &&
           other.completedTime == this.completedTime &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -1648,6 +1691,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
   final Value<String> title;
   final Value<int> status;
   final Value<int> sortOrder;
+  final Value<String?> obsidianUri;
   final Value<int?> completedTime;
   final Value<int> createdAt;
   final Value<int> updatedAt;
@@ -1658,6 +1702,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     this.title = const Value.absent(),
     this.status = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.obsidianUri = const Value.absent(),
     this.completedTime = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1669,6 +1714,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     required String title,
     this.status = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.obsidianUri = const Value.absent(),
     this.completedTime = const Value.absent(),
     required int createdAt,
     required int updatedAt,
@@ -1684,6 +1730,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     Expression<String>? title,
     Expression<int>? status,
     Expression<int>? sortOrder,
+    Expression<String>? obsidianUri,
     Expression<int>? completedTime,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
@@ -1695,6 +1742,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
       if (title != null) 'title': title,
       if (status != null) 'status': status,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (obsidianUri != null) 'obsidian_uri': obsidianUri,
       if (completedTime != null) 'completed_time': completedTime,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1708,6 +1756,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     Value<String>? title,
     Value<int>? status,
     Value<int>? sortOrder,
+    Value<String?>? obsidianUri,
     Value<int?>? completedTime,
     Value<int>? createdAt,
     Value<int>? updatedAt,
@@ -1719,6 +1768,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
       title: title ?? this.title,
       status: status ?? this.status,
       sortOrder: sortOrder ?? this.sortOrder,
+      obsidianUri: obsidianUri ?? this.obsidianUri,
       completedTime: completedTime ?? this.completedTime,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1744,6 +1794,9 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (obsidianUri.present) {
+      map['obsidian_uri'] = Variable<String>(obsidianUri.value);
+    }
     if (completedTime.present) {
       map['completed_time'] = Variable<int>(completedTime.value);
     }
@@ -1767,6 +1820,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
           ..write('title: $title, ')
           ..write('status: $status, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('obsidianUri: $obsidianUri, ')
           ..write('completedTime: $completedTime, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -2714,6 +2768,7 @@ typedef $$ChecklistItemsTableCreateCompanionBuilder =
       required String title,
       Value<int> status,
       Value<int> sortOrder,
+      Value<String?> obsidianUri,
       Value<int?> completedTime,
       required int createdAt,
       required int updatedAt,
@@ -2726,6 +2781,7 @@ typedef $$ChecklistItemsTableUpdateCompanionBuilder =
       Value<String> title,
       Value<int> status,
       Value<int> sortOrder,
+      Value<String?> obsidianUri,
       Value<int?> completedTime,
       Value<int> createdAt,
       Value<int> updatedAt,
@@ -2785,6 +2841,11 @@ class $$ChecklistItemsTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get obsidianUri => $composableBuilder(
+    column: $table.obsidianUri,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2856,6 +2917,11 @@ class $$ChecklistItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get obsidianUri => $composableBuilder(
+    column: $table.obsidianUri,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get completedTime => $composableBuilder(
     column: $table.completedTime,
     builder: (column) => ColumnOrderings(column),
@@ -2915,6 +2981,11 @@ class $$ChecklistItemsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get obsidianUri => $composableBuilder(
+    column: $table.obsidianUri,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get completedTime => $composableBuilder(
     column: $table.completedTime,
@@ -2986,6 +3057,7 @@ class $$ChecklistItemsTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<int> status = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<String?> obsidianUri = const Value.absent(),
                 Value<int?> completedTime = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
@@ -2996,6 +3068,7 @@ class $$ChecklistItemsTableTableManager
                 title: title,
                 status: status,
                 sortOrder: sortOrder,
+                obsidianUri: obsidianUri,
                 completedTime: completedTime,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -3008,6 +3081,7 @@ class $$ChecklistItemsTableTableManager
                 required String title,
                 Value<int> status = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<String?> obsidianUri = const Value.absent(),
                 Value<int?> completedTime = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
@@ -3018,6 +3092,7 @@ class $$ChecklistItemsTableTableManager
                 title: title,
                 status: status,
                 sortOrder: sortOrder,
+                obsidianUri: obsidianUri,
                 completedTime: completedTime,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

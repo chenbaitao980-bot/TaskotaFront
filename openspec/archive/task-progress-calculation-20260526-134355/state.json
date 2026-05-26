@@ -1,0 +1,130 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T12:10:51.523140+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T12:13:29.136987+00:00",
+      "reason": "四件套已生成，范围限定为任务/项目进度计算、状态刷新、UI展示与测试"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T12:13:29.340522+00:00",
+      "reason": "用户已明确要求直接增加任务和项目进度概念"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T12:13:29.532424+00:00",
+      "reason": "影响分析无 HIGH/CRITICAL，开始实施"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T12:18:59.536759+00:00",
+      "reason": "递归进度计算、BLoC 快照接入、任务/项目百分比展示和单测已完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T12:19:54.468256+00:00",
+      "reason": "实现与自动化测试已完成，交给用户做界面确认"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-26T13:11:13.437653+00:00",
+      "reason": "用户验证发现进度计算 bug，回到实现态修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T13:13:14.490753+00:00",
+      "reason": "完成已完成任务进度覆盖修复并补充回归测试"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T13:13:16.813312+00:00",
+      "reason": "目标回归测试通过，交给用户验证界面"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-26T13:30:13.027219+00:00",
+      "reason": "用户验收反馈：完成区需要树形展示，项目完成度口径需要校正"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T13:34:23.830738+00:00",
+      "reason": "完成区树形展示和项目完成度返工已完成，定向测试通过"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T13:34:46.947390+00:00",
+      "reason": "定向测试已通过，等待用户在页面验证完成区树形展示和项目百分比"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-26T13:38:55.870533+00:00",
+      "reason": "用户要求归档，视为用户验证已完成"
+    },
+    {
+      "from": "verified",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T13:42:46.870455+00:00",
+      "reason": "补充归档所需回归用例和 bugfixspec 沉淀"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-26T13:42:54.217306+00:00",
+      "reason": "补充归档所需回归用例和 bugfixspec 沉淀"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T13:43:36.673138+00:00",
+      "reason": "归档回归用例和 bugfixspec 沉淀完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T13:43:47.961696+00:00",
+      "reason": "归档沉淀已补充，等待用户验证确认"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-26T13:43:51.486185+00:00",
+      "reason": "用户已要求归档，视为验证完成"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-26T13:43:55.473742+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\task-progress-calculation\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T13:43:39.738700+00:00"
+  }
+}

@@ -43,6 +43,7 @@ class CreateTask extends TaskEvent {
   final int priority;
   final int? startDate;
   final int? dueDate;
+  final String? parentId;
   CreateTask({
     required this.projectId,
     required this.title,
@@ -50,10 +51,11 @@ class CreateTask extends TaskEvent {
     this.priority = 0,
     this.startDate,
     this.dueDate,
+    this.parentId,
   });
   @override
   List<Object?> get props =>
-      [projectId, title, description, priority, startDate, dueDate];
+      [projectId, title, description, priority, startDate, dueDate, parentId];
 }
 
 class UpdateTask extends TaskEvent {
@@ -139,6 +141,15 @@ class DeleteChecklistItem extends TaskEvent {
   List<Object> get props => [id];
 }
 
+class SetChecklistItemObsidianUri extends TaskEvent {
+  final String id;
+  final String taskId;
+  final String? obsidianUri;
+  SetChecklistItemObsidianUri({required this.id, required this.taskId, this.obsidianUri});
+  @override
+  List<Object?> get props => [id, taskId, obsidianUri];
+}
+
 // --- 子任务树事件 ---
 class LoadSubTree extends TaskEvent {
   final String rootTaskId;
@@ -188,6 +199,34 @@ class ToggleTreeNode extends TaskEvent {
   @override
   List<Object> get props => [rootTaskId, nodeId];
 }
+
+// --- 树形拖拽事件 ---
+class MoveTaskToParent extends TaskEvent {
+  final String taskId;
+  final String? newParentId; // null = 移为根任务
+  final String? projectId;
+  MoveTaskToParent({required this.taskId, this.newParentId, this.projectId});
+  @override
+  List<Object?> get props => [taskId, newParentId, projectId];
+}
+
+class ToggleTaskExpand extends TaskEvent {
+  final String taskId;
+  ToggleTaskExpand({required this.taskId});
+  @override
+  List<Object> get props => [taskId];
+}
+
+class ReorderTaskSiblings extends TaskEvent {
+  final String? parentId; // null = 根级任务
+  final List<String> orderedIds;
+  ReorderTaskSiblings({this.parentId, required this.orderedIds});
+  @override
+  List<Object?> get props => [parentId, orderedIds];
+}
+
+class ExpandAllTasks extends TaskEvent {}
+class CollapseAllTasks extends TaskEvent {}
 
 class TaskEvent extends Equatable {
   @override

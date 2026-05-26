@@ -1,16 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/project_repository.dart';
+import '../../../widgets/calendar_date_picker.dart';
 
 class TaskEditPage extends StatefulWidget {
   final Task task;
   final ProjectRepository projectRepository;
+  final ValueChanged<Map<String, dynamic>>? onAutoSave;
 
   const TaskEditPage({
     super.key,
     required this.task,
     required this.projectRepository,
+    this.onAutoSave,
   });
 
   @override
@@ -26,6 +31,10 @@ class _TaskEditPageState extends State<TaskEditPage> {
   late int _priority;
   DateTime? _startDate;
   DateTime? _dueDate;
+  bool _hasChanges = false;
+  bool _allowPop = false;
+  bool _isClosing = false;
+  Timer? _autoSaveTimer;
 
   @override
   void initState() {
@@ -46,50 +55,56 @@ class _TaskEditPageState extends State<TaskEditPage> {
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel();
     _titleController.dispose();
     _descController.dispose();
     super.dispose();
   }
 
+  void _markChanged() {
+    _hasChanges = true;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 700), _saveChanges);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('编辑任务'),
-        actions: [
-          TextButton(
-            onPressed: _submit,
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            TextFormField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: '任务标题',
-                border: OutlineInputBorder(),
+    return PopScope(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _closePage();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('编辑任务')),
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: '任务标题',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _markChanged(),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? '请输入标题' : null,
               ),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? '请输入标题' : null,
-            ),
-            const SizedBox(height: 16),
-            FutureBuilder<List<Project>>(
-              future: _projectsFuture,
-              builder: (context, snapshot) {
-                final projects = snapshot.data ?? [];
-                return DropdownButtonFormField<String>(
-                  value: _selectedProjectId,
-                  decoration: const InputDecoration(
-                    labelText: '所属项目',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: projects
-                      .map((p) => DropdownMenuItem(
+              const SizedBox(height: 16),
+              FutureBuilder<List<Project>>(
+                future: _projectsFuture,
+                builder: (context, snapshot) {
+                  final projects = snapshot.data ?? [];
+                  return DropdownButtonFormField<String>(
+                    initialValue: _selectedProjectId,
+                    decoration: const InputDecoration(
+                      labelText: '所属项目',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: projects
+                        .map(
+                          (p) => DropdownMenuItem(
                             value: p.id,
                             child: Row(
                               children: [
@@ -97,8 +112,11 @@ class _TaskEditPageState extends State<TaskEditPage> {
                                   width: 10,
                                   height: 10,
                                   decoration: BoxDecoration(
-                                    color: Color(int.parse(
-                                        p.color.replaceFirst('#', '0xFF'))),
+                                    color: Color(
+                                      int.parse(
+                                        p.color.replaceFirst('#', '0xFF'),
+                                      ),
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -106,111 +124,167 @@ class _TaskEditPageState extends State<TaskEditPage> {
                                 Text(p.name),
                               ],
                             ),
-                          ))
-                      .toList(),
-                  onChanged: (v) =>
-                      setState(() => _selectedProjectId = v ?? _selectedProjectId),
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            const Text('优先级', style: TextStyle(fontSize: 14)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                (0, '无'),
-                (1, '低'),
-                (3, '中'),
-                (5, '高'),
-              ]
-                  .map((p) => ChoiceChip(
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      setState(
+                        () => _selectedProjectId = v ?? _selectedProjectId,
+                      );
+                      _markChanged();
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              const Text('优先级', style: TextStyle(fontSize: 14)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [(0, '无'), (1, '低'), (3, '中'), (5, '高')]
+                    .map(
+                      (p) => ChoiceChip(
                         label: Text(p.$2),
                         selected: _priority == p.$1,
-                        onSelected: (v) =>
-                            setState(() => _priority = p.$1),
-                      ))
-                  .toList(),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _DateField(
-                    label: '开始时间',
-                    date: _startDate,
-                    onTap: () => _pickDate(true),
-                    onClear: () => setState(() => _startDate = null),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _DateField(
-                    label: '截止时间',
-                    date: _dueDate,
-                    onTap: () => _pickDate(false),
-                    onClear: () => setState(() => _dueDate = null),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _descController,
-              decoration: const InputDecoration(
-                labelText: '描述（选填）',
-                border: OutlineInputBorder(),
+                        onSelected: (v) {
+                          setState(() => _priority = p.$1);
+                          _markChanged();
+                        },
+                      ),
+                    )
+                    .toList(),
               ),
-              maxLines: 4,
-            ),
-          ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _DateField(
+                      label: '开始时间',
+                      date: _startDate,
+                      onTap: () => _pickDateTime(true),
+                      onClear: () {
+                        setState(() => _startDate = null);
+                        _markChanged();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _DateField(
+                      label: '截止时间',
+                      date: _dueDate,
+                      onTap: () => _pickDateTime(false),
+                      onClear: () {
+                        setState(() => _dueDate = null);
+                        _markChanged();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _descController,
+                decoration: const InputDecoration(
+                  labelText: '描述（选填）',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 4,
+                onChanged: (_) => _markChanged(),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _pickDate(bool isStart) async {
+  Future<void> _pickDateTime(bool isStart) async {
     final now = DateTime.now();
     final initialDate = isStart ? _startDate : _dueDate;
-    final pickedDate = await showDatePicker(
+    final picked = await showCalendarDatePicker(
       context: context,
       initialDate: initialDate ?? now,
       firstDate: now.subtract(const Duration(days: 365)),
       lastDate: now.add(const Duration(days: 365)),
     );
-    if (pickedDate == null) return;
+    if (picked == null) return;
     if (!mounted) return;
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initialDate ?? now),
-    );
-    if (pickedTime == null) return;
-    final combined = DateTime(
-      pickedDate.year,
-      pickedDate.month,
-      pickedDate.day,
-      pickedTime.hour,
-      pickedTime.minute,
-    );
     setState(() {
       if (isStart) {
-        _startDate = combined;
+        _startDate = picked;
       } else {
-        _dueDate = combined;
+        _dueDate = picked;
       }
     });
+    _markChanged();
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(context, {
+  Future<void> _closePage() async {
+    if (_isClosing) return;
+    _isClosing = true;
+    _autoSaveTimer?.cancel();
+    final hadChanges = _hasChanges;
+    final saved = _saveChanges(showErrors: true);
+    if (!saved) {
+      _isClosing = false;
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _allowPop = true);
+    if (widget.onAutoSave == null && hadChanges) {
+      Navigator.pop(context, _payload());
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  bool _saveChanges({bool showErrors = false}) {
+    if (!_hasChanges) return true;
+    if (showErrors && !_formKey.currentState!.validate()) return false;
+    if (!showErrors && _titleController.text.trim().isEmpty) return false;
+    if (_startDate == null) {
+      if (showErrors) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请选择开始时间')));
+      }
+      return false;
+    }
+    if (_dueDate == null) {
+      if (showErrors) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请选择截止时间')));
+      }
+      return false;
+    }
+    if (!_dueDate!.isAfter(_startDate!)) {
+      if (showErrors) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('截止时间必须晚于开始时间')));
+      }
+      return false;
+    }
+
+    if (widget.onAutoSave == null) return true;
+
+    widget.onAutoSave!.call(_payload());
+    _hasChanges = false;
+    return true;
+  }
+
+  Map<String, dynamic> _payload() {
+    return {
       'title': _titleController.text.trim(),
       'projectId': _selectedProjectId,
       'description': _descController.text.trim(),
       'priority': _priority,
-      'startDate': _startDate?.millisecondsSinceEpoch,
-      'dueDate': _dueDate?.millisecondsSinceEpoch,
-    });
+      'startDate': _startDate!.millisecondsSinceEpoch,
+      'dueDate': _dueDate!.millisecondsSinceEpoch,
+    };
   }
 }
 
@@ -244,13 +318,18 @@ class _DateField extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: const TextStyle(
-                          fontSize: 12, color: AppTheme.textHint)),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textHint,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     date != null
-                        ? '${date!.year}-${date!.month.toString().padLeft(2, '0')}-${date!.day.toString().padLeft(2, '0')} ${date!.hour.toString().padLeft(2, '0')}:${date!.minute.toString().padLeft(2, '0')}'
+                        ? '${date!.month}/${date!.day} '
+                              '${date!.hour.toString().padLeft(2, '0')}:${date!.minute.toString().padLeft(2, '0')}'
                         : '选择',
                     style: TextStyle(
                       fontSize: 14,
@@ -265,7 +344,11 @@ class _DateField extends StatelessWidget {
             if (date != null)
               GestureDetector(
                 onTap: onClear,
-                child: const Icon(Icons.close, size: 16, color: AppTheme.textHint),
+                child: const Icon(
+                  Icons.close,
+                  size: 16,
+                  color: AppTheme.textHint,
+                ),
               ),
           ],
         ),

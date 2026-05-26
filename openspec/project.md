@@ -7,7 +7,7 @@ SmartAssistant
 Flutter
 
 ## GitNexus
-- GitNexus 别名：`smart_assistant`
+- GitNexus 别名：`smart-assistant`
 - 约束：GitNexus query/impact/detect-changes SHALL 优先绑定当前项目图谱。
 
 ## 全局约束

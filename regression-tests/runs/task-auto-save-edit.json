@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "mode": "command",
+  "command_or_url": "flutter analyze lib\\presentation\\pages\\tasks\\task_detail\\task_detail_page.dart lib\\presentation\\pages\\tasks\\widgets\\task_edit_page.dart lib\\presentation\\pages\\tasks\\task_detail\\widgets\\subtask_tree_section.dart",
+  "started_at": "2026-05-26T13:26:14.461938+00:00",
+  "finished_at": "2026-05-26T13:26:23.583183+00:00",
+  "exit_code": 0,
+  "stdout_tail": "Analyzing 3 items...                                            \nNo issues found! (ran in 4.8s)\n",
+  "stderr_tail": ""
+}

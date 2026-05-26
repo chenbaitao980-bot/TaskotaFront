@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "修复PopupMenuButton null value选择问题",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "日历修改后刷新TaskNewBloc",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "放大ResizeHandle热区+着色区实时预览",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "给跨日任务条添加拖拽调整能力",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "切回全部项目功能可正常使用",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "日历拖拽后切换到任务页时间立即更新",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "时间线拖拽热区扩大+着色区实时跟随调整",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "跨日任务可拖拽调整开始/结束日期",
+      "done": true
+    }
+  ]
+}

@@ -6,6 +6,7 @@ class ProjectSidebar extends StatelessWidget {
   final List<Project> projects;
   final String? selectedProjectId;
   final String? selectedFilter;
+  final Map<String, int> projectProgress;
   final ValueChanged<String?> onProjectSelected;
   final ValueChanged<String> onFilterSelected;
   final VoidCallback onCreateProject;
@@ -17,6 +18,7 @@ class ProjectSidebar extends StatelessWidget {
     required this.projects,
     this.selectedProjectId,
     this.selectedFilter,
+    this.projectProgress = const {},
     required this.onProjectSelected,
     required this.onFilterSelected,
     required this.onCreateProject,
@@ -35,23 +37,24 @@ class ProjectSidebar extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-              ),
+              decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.checklist_rounded,
-                          color: Colors.white, size: 28),
+                      const Icon(
+                        Icons.checklist_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                       const SizedBox(width: 10),
                       Text(
                         '任务管理',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
@@ -123,8 +126,7 @@ class ProjectSidebar extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       itemBuilder: (context, index) {
                         final project = projects[index];
-                        final isSelected =
-                            project.id == selectedProjectId;
+                        final isSelected = project.id == selectedProjectId;
                         return _buildProjectItem(
                           context,
                           project: project,
@@ -147,9 +149,11 @@ class ProjectSidebar extends StatelessWidget {
   }) {
     final isSelected = selectedFilter == filter && selectedProjectId == null;
     return ListTile(
-      leading: Icon(icon,
-          color: isSelected ? AppTheme.primaryColor : AppTheme.textHint,
-          size: 22),
+      leading: Icon(
+        icon,
+        color: isSelected ? AppTheme.primaryColor : AppTheme.textHint,
+        size: 22,
+      ),
       title: Text(
         label,
         style: TextStyle(
@@ -171,6 +175,7 @@ class ProjectSidebar extends StatelessWidget {
     required Project project,
     required bool isSelected,
   }) {
+    final progress = (projectProgress[project.id] ?? 0).clamp(0, 100).toInt();
     return ListTile(
       leading: Container(
         width: 12,
@@ -188,37 +193,65 @@ class ProjectSidebar extends StatelessWidget {
           color: isSelected ? AppTheme.primaryColor : AppTheme.textPrimary,
         ),
       ),
-      trailing: PopupMenuButton<String>(
-        onSelected: (action) {
-          if (action == 'edit') {
-            onEditProject?.call(project);
-          } else if (action == 'delete') {
-            onDeleteProject?.call(project);
-          }
-        },
-        itemBuilder: (context) => [
-          const PopupMenuItem(
-            value: 'edit',
-            child: Row(
-              children: [
-                Icon(Icons.edit_outlined, size: 18, color: AppTheme.textPrimary),
-                SizedBox(width: 8),
-                Text('编辑'),
-              ],
+      trailing: SizedBox(
+        width: 88,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              '$progress%',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.textHint,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          const PopupMenuItem(
-            value: 'delete',
-            child: Row(
-              children: [
-                Icon(Icons.delete_outline, size: 18, color: AppTheme.error),
-                SizedBox(width: 8),
-                Text('删除', style: TextStyle(color: AppTheme.error)),
+            PopupMenuButton<String>(
+              onSelected: (action) {
+                if (action == 'edit') {
+                  onEditProject?.call(project);
+                } else if (action == 'delete') {
+                  onDeleteProject?.call(project);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: AppTheme.textPrimary,
+                      ),
+                      SizedBox(width: 8),
+                      Text('编辑'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.delete_outline,
+                        size: 18,
+                        color: AppTheme.error,
+                      ),
+                      SizedBox(width: 8),
+                      Text('删除', style: TextStyle(color: AppTheme.error)),
+                    ],
+                  ),
+                ),
               ],
+              icon: const Icon(
+                Icons.more_horiz,
+                size: 18,
+                color: AppTheme.textHint,
+              ),
             ),
-          ),
-        ],
-        icon: const Icon(Icons.more_horiz, size: 18, color: AppTheme.textHint),
+          ],
+        ),
       ),
       dense: true,
       onTap: () => onProjectSelected(project.id),

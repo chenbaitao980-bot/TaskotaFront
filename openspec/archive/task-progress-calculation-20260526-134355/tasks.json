@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "定位现有任务/检查项/项目完成度逻辑",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "实现递归任务进度和项目进度计算",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "在状态/检查项变更后刷新任务进度",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "补充最小测试验证规则",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "flutter test",
+      "done": true
+    }
+  ]
+}

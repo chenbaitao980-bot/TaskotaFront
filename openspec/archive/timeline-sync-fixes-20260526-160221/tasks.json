@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "添加时间轴左右滚动按钮",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "监听 TaskNewBloc 实现任务同步",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "任务详情补项目标签",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "检查项缓存失效后自动加载",
+      "done": true
+    },
+    {
+      "id": 5,
+      "text": "选中任务展示子任务树",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "flutter analyze 无新增问题",
+      "done": true
+    }
+  ]
+}

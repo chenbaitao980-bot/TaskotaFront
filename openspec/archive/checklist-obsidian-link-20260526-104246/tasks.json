@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {"id": 1, "text": "数据库 migration: ChecklistItems 新增 obsidian_uri 字段, schema 2→3", "done": true},
+    {"id": 2, "text": "重新生成 Drift 代码: dart run build_runner build", "done": true},
+    {"id": 3, "text": "ChecklistRepository 新增 setObsidianUri() + create() 扩展 obsidianUri 参数", "done": true},
+    {"id": 4, "text": "BLoC 新增 SetChecklistItemObsidianUri event + bloc 处理", "done": true},
+    {"id": 5, "text": "新建 lib/services/obsidian_service.dart 跨平台 URI 启动服务", "done": true},
+    {"id": 6, "text": "checklist_section.dart: 长按菜单 + 链接图标 + 关联对话框 UI", "done": true},
+    {"id": 7, "text": "URI 格式校验 + 结构化输入自动构建 URI", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "数据库升级 v2→v3 不丢数据", "done": false},
+    {"id": 2, "text": "检查项可绑定 Obsidian URI (结构化输入 + 粘贴 URI 两种方式)", "done": false},
+    {"id": 3, "text": "点击链接图标跳转到 Obsidian 对应文档", "done": false},
+    {"id": 4, "text": "支持 vault+file+heading 三级定位", "done": false},
+    {"id": 5, "text": "可移除关联，图标消失", "done": false},
+    {"id": 6, "text": "非法 URI 格式校验拒绝保存", "done": false},
+    {"id": 7, "text": "Obsidian 未安装时 Toast 错误提示", "done": false}
+  ]
+}

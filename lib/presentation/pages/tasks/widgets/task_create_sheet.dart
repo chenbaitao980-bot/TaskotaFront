@@ -2,15 +2,22 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/project_repository.dart';
+import '../../../widgets/calendar_date_picker.dart';
 
 class TaskCreateSheet extends StatefulWidget {
   final String? initialProjectId;
   final ProjectRepository projectRepository;
+  final List<Task> availableParentTasks;
+  final int? initialStartDateMillis;
+  final int? initialDueDateMillis;
 
   const TaskCreateSheet({
     super.key,
     this.initialProjectId,
     required this.projectRepository,
+    this.availableParentTasks = const [],
+    this.initialStartDateMillis,
+    this.initialDueDateMillis,
   });
 
   @override
@@ -26,11 +33,20 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
   int _priority = 0;
   DateTime? _startDate;
   DateTime? _dueDate;
+  String? _parentTaskId;
 
   @override
   void initState() {
     super.initState();
     _selectedProjectId = widget.initialProjectId;
+    if (widget.initialStartDateMillis != null) {
+      _startDate =
+          DateTime.fromMillisecondsSinceEpoch(widget.initialStartDateMillis!);
+    }
+    if (widget.initialDueDateMillis != null) {
+      _dueDate =
+          DateTime.fromMillisecondsSinceEpoch(widget.initialDueDateMillis!);
+    }
     _projectsFuture = widget.projectRepository.getActive();
   }
 
@@ -59,7 +75,6 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 拖动指示条
               Center(
                 child: Container(
                   width: 40,
@@ -78,7 +93,6 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                     ),
               ),
               const SizedBox(height: 16),
-              // 标题
               TextFormField(
                 controller: _titleController,
                 autofocus: true,
@@ -91,7 +105,6 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                     v == null || v.trim().isEmpty ? '请输入标题' : null,
               ),
               const SizedBox(height: 12),
-              // 项目选择
               FutureBuilder<List<Project>>(
                 future: _projectsFuture,
                 builder: (context, snapshot) {
@@ -127,7 +140,31 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                 },
               ),
               const SizedBox(height: 12),
-              // 优先级
+              if (widget.availableParentTasks.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  value: _parentTaskId,
+                  decoration: const InputDecoration(
+                    labelText: '父任务（可选）',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String>(
+                      value: null,
+                      child: Text('无（根任务）'),
+                    ),
+                    ...widget.availableParentTasks.map((t) =>
+                        DropdownMenuItem(
+                          value: t.id,
+                          child: Text(
+                            t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )),
+                  ],
+                  onChanged: (v) => setState(() => _parentTaskId = v),
+                ),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   const Text('优先级：', style: TextStyle(fontSize: 14)),
@@ -136,14 +173,13 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                 ],
               ),
               const SizedBox(height: 12),
-              // 日期
               Row(
                 children: [
                   Expanded(
                     child: _DateButton(
                       label: '开始时间',
                       date: _startDate,
-                      onTap: () => _pickDate(true),
+                      onTap: () => _pickDateTime(true),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -151,13 +187,12 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                     child: _DateButton(
                       label: '截止时间',
                       date: _dueDate,
-                      onTap: () => _pickDate(false),
+                      onTap: () => _pickDateTime(false),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              // 描述
               TextFormField(
                 controller: _descController,
                 decoration: const InputDecoration(
@@ -167,7 +202,6 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                 maxLines: 2,
               ),
               const SizedBox(height: 20),
-              // 保存按钮
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -228,47 +262,51 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     }
   }
 
-  Future<void> _pickDate(bool isStart) async {
+  Future<void> _pickDateTime(bool isStart) async {
     final now = DateTime.now();
     final initialDate = isStart ? _startDate : _dueDate;
-    final pickedDate = await showDatePicker(
+    final picked = await showCalendarDatePicker(
       context: context,
       initialDate: initialDate ?? now,
       firstDate: now.subtract(const Duration(days: 365)),
       lastDate: now.add(const Duration(days: 365)),
     );
-    if (pickedDate == null) return;
+    if (picked == null) return;
     if (!mounted) return;
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initialDate ?? now),
-    );
-    if (pickedTime == null) return;
-    final combined = DateTime(
-      pickedDate.year,
-      pickedDate.month,
-      pickedDate.day,
-      pickedTime.hour,
-      pickedTime.minute,
-    );
     setState(() {
       if (isStart) {
-        _startDate = combined;
+        _startDate = picked;
       } else {
-        _dueDate = combined;
+        _dueDate = picked;
       }
     });
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    if (_startDate == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请选择开始时间')));
+      return;
+    }
+    if (_dueDate == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请选择截止时间')));
+      return;
+    }
+    if (!_dueDate!.isAfter(_startDate!)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('截止时间必须晚于开始时间')));
+      return;
+    }
     Navigator.pop(context, {
       'title': _titleController.text.trim(),
       'projectId': _selectedProjectId,
       'description': _descController.text.trim(),
       'priority': _priority,
-      'startDate': _startDate?.millisecondsSinceEpoch,
-      'dueDate': _dueDate?.millisecondsSinceEpoch,
+      'startDate': _startDate!.millisecondsSinceEpoch,
+      'dueDate': _dueDate!.millisecondsSinceEpoch,
+      'parentId': _parentTaskId,
     });
   }
 }
@@ -299,18 +337,16 @@ class _DateButton extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(
-                    fontSize: 12, color: AppTheme.textHint)),
+                style: const TextStyle(fontSize: 12, color: AppTheme.textHint)),
             const SizedBox(height: 4),
             Text(
               date != null
-                  ? '${date!.month}/${date!.day} ${date!.hour.toString().padLeft(2, '0')}:${date!.minute.toString().padLeft(2, '0')}'
-                  : '选择日期',
+                  ? '${date!.month}/${date!.day} '
+                      '${date!.hour.toString().padLeft(2, '0')}:${date!.minute.toString().padLeft(2, '0')}'
+                  : '选择时间',
               style: TextStyle(
                 fontSize: 14,
-                color: date != null
-                    ? AppTheme.textPrimary
-                    : AppTheme.textHint,
+                color: date != null ? AppTheme.textPrimary : AppTheme.textHint,
               ),
             ),
           ],

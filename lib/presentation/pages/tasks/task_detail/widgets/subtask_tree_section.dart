@@ -57,14 +57,17 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
                   children: [
-                    const Icon(Icons.account_tree_outlined,
-                        size: 20, color: AppTheme.textPrimary),
+                    const Icon(
+                      Icons.account_tree_outlined,
+                      size: 20,
+                      color: AppTheme.textPrimary,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       '子任务',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     if (descendants.isNotEmpty) ...[
                       const SizedBox(width: 8),
@@ -131,24 +134,28 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
       final hasChildren = allTasks.any((t) => t.parentId == child.id);
       final isExpanded = expandedNodes.contains(child.id);
 
-      widgets.add(_buildNodeRow(
-        child: child,
-        depth: depth,
-        hasChildren: hasChildren,
-        isExpanded: isExpanded,
-        rootId: rootId,
-        allTasks: allTasks,
-      ));
+      widgets.add(
+        _buildNodeRow(
+          child: child,
+          depth: depth,
+          hasChildren: hasChildren,
+          isExpanded: isExpanded,
+          rootId: rootId,
+          allTasks: allTasks,
+        ),
+      );
 
       if (isExpanded && hasChildren) {
-        widgets.addAll(_buildTree(
-          allTasks,
-          rootId,
-          expandedNodes,
-          child.id,
-          depth + 1,
-          context,
-        ));
+        widgets.addAll(
+          _buildTree(
+            allTasks,
+            rootId,
+            expandedNodes,
+            child.id,
+            depth + 1,
+            context,
+          ),
+        );
       }
     }
     return widgets;
@@ -168,11 +175,13 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
       onAcceptWithDetails: (details) {
         final draggedId = details.data;
         if (draggedId == child.id) return;
-        context.read<TaskNewBloc>().add(MoveSubTask(
-              taskId: draggedId,
-              newParentId: child.id,
-              rootTaskId: rootId,
-            ));
+        context.read<TaskNewBloc>().add(
+          MoveSubTask(
+            taskId: draggedId,
+            newParentId: child.id,
+            rootTaskId: rootId,
+          ),
+        );
       },
       builder: (context, candidateData, rejectedData) {
         final isDragOver = candidateData.isNotEmpty;
@@ -182,7 +191,9 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                 ? AppTheme.primaryColor.withValues(alpha: 0.08)
                 : null,
             border: isDragOver
-                ? Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3))
+                ? Border.all(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                  )
                 : null,
           ),
           child: Padding(
@@ -199,37 +210,48 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.bgCard,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(child.title,
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500)),
+                      child: Text(
+                        child.title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
                   ),
                   childWhenDragging: Opacity(
                     opacity: 0.3,
                     child: Container(
                       padding: const EdgeInsets.all(8),
-                      child: Icon(Icons.drag_indicator_rounded,
-                          size: 20, color: AppTheme.textHint),
+                      child: Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 20,
+                        color: AppTheme.textHint,
+                      ),
                     ),
                   ),
                   child: Container(
                     padding: const EdgeInsets.all(8),
-                    child: Icon(Icons.drag_indicator_rounded,
-                        size: 20, color: AppTheme.textHint),
+                    child: Icon(
+                      Icons.drag_indicator_rounded,
+                      size: 20,
+                      color: AppTheme.textHint,
+                    ),
                   ),
                 ),
                 // 展开/折叠
                 if (hasChildren)
                   GestureDetector(
                     onTap: () => context.read<TaskNewBloc>().add(
-                        ToggleTreeNode(
-                            rootTaskId: rootId, nodeId: child.id)),
+                      ToggleTreeNode(rootTaskId: rootId, nodeId: child.id),
+                    ),
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       child: Icon(
@@ -246,8 +268,8 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                 // 复选框
                 GestureDetector(
                   onTap: () => context.read<TaskNewBloc>().add(
-                      ToggleSubTask(
-                          id: child.id, rootTaskId: rootId)),
+                    ToggleSubTask(id: child.id, rootTaskId: rootId),
+                  ),
                   child: Container(
                     width: 20,
                     height: 20,
@@ -265,8 +287,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                       ),
                     ),
                     child: isCompleted
-                        ? const Icon(Icons.check,
-                            size: 12, color: Colors.white)
+                        ? const Icon(Icons.check, size: 12, color: Colors.white)
                         : null,
                   ),
                 ),
@@ -275,8 +296,9 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                   child: GestureDetector(
                     onTap: () {
                       if (hasChildren) {
-                        context.read<TaskNewBloc>().add(ToggleTreeNode(
-                            rootTaskId: rootId, nodeId: child.id));
+                        context.read<TaskNewBloc>().add(
+                          ToggleTreeNode(rootTaskId: rootId, nodeId: child.id),
+                        );
                       }
                     },
                     child: Text(
@@ -309,33 +331,44 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                   itemBuilder: (context) => [
                     const PopupMenuItem(
                       value: 'add_child',
-                      child: Row(children: [
-                        Icon(Icons.add_circle_outline, size: 16),
-                        SizedBox(width: 8),
-                        Text('添加子任务'),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(Icons.add_circle_outline, size: 16),
+                          SizedBox(width: 8),
+                          Text('添加子任务'),
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(
                       value: 'edit',
-                      child: Row(children: [
-                        Icon(Icons.edit_outlined, size: 16),
-                        SizedBox(width: 8),
-                        Text('编辑'),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_outlined, size: 16),
+                          SizedBox(width: 8),
+                          Text('编辑'),
+                        ],
+                      ),
                     ),
                     const PopupMenuItem(
                       value: 'delete',
-                      child: Row(children: [
-                        Icon(Icons.delete_outline,
-                            size: 16, color: AppTheme.error),
-                        SizedBox(width: 8),
-                        Text('删除',
-                            style: TextStyle(color: AppTheme.error)),
-                      ]),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
+                            size: 16,
+                            color: AppTheme.error,
+                          ),
+                          SizedBox(width: 8),
+                          Text('删除', style: TextStyle(color: AppTheme.error)),
+                        ],
+                      ),
                     ),
                   ],
-                  icon: const Icon(Icons.more_horiz,
-                      size: 16, color: AppTheme.textHint),
+                  icon: const Icon(
+                    Icons.more_horiz,
+                    size: 16,
+                    color: AppTheme.textHint,
+                  ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
@@ -362,11 +395,13 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
           ),
           onSubmitted: (v) {
             if (v.trim().isNotEmpty) {
-              context.read<TaskNewBloc>().add(AddSubTask(
-                    parentId: parentId,
-                    title: v.trim(),
-                    projectId: widget.projectId,
-                  ));
+              context.read<TaskNewBloc>().add(
+                AddSubTask(
+                  parentId: parentId,
+                  title: v.trim(),
+                  projectId: widget.projectId,
+                ),
+              );
               Navigator.pop(ctx);
             }
           },
@@ -379,11 +414,13 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
           TextButton(
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
-                context.read<TaskNewBloc>().add(AddSubTask(
-                      parentId: parentId,
-                      title: controller.text.trim(),
-                      projectId: widget.projectId,
-                    ));
+                context.read<TaskNewBloc>().add(
+                  AddSubTask(
+                    parentId: parentId,
+                    title: controller.text.trim(),
+                    projectId: widget.projectId,
+                  ),
+                );
                 Navigator.pop(ctx);
               }
             },
@@ -395,37 +432,51 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
   }
 
   void _editSubTask(BuildContext context, Task task) {
+    final bloc = context.read<TaskNewBloc>();
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(
-          value: context.read<TaskNewBloc>(),
+          value: bloc,
           child: TaskEditPage(
             task: task,
-            projectRepository:
-                context.read<TaskNewBloc>().projectRepository,
+            projectRepository: bloc.projectRepository,
+            onAutoSave: (data) {
+              bloc.add(
+                UpdateTask(
+                  id: task.id,
+                  title: data['title'] as String,
+                  projectId: data['projectId'] as String,
+                  description: data['description'] as String,
+                  priority: data['priority'] as int,
+                  startDate: data['startDate'] as int?,
+                  dueDate: data['dueDate'] as int?,
+                ),
+              );
+            },
           ),
         ),
       ),
     ).then((result) {
       if (result != null && mounted) {
-        context.read<TaskNewBloc>().add(UpdateTask(
-              id: task.id,
-              title: result['title'] as String,
-              projectId: result['projectId'] as String,
-              description: result['description'] as String,
-              priority: result['priority'] as int,
-              startDate: result['startDate'] as int?,
-              dueDate: result['dueDate'] as int?,
-            ));
+        bloc.add(
+          UpdateTask(
+            id: task.id,
+            title: result['title'] as String,
+            projectId: result['projectId'] as String,
+            description: result['description'] as String,
+            priority: result['priority'] as int,
+            startDate: result['startDate'] as int?,
+            dueDate: result['dueDate'] as int?,
+          ),
+        );
       }
       // 无论编辑保存还是删除，都刷新树
       if (mounted) _loadTree();
     });
   }
 
-  void _deleteSubTask(
-      BuildContext context, Task task, String rootId) {
+  void _deleteSubTask(BuildContext context, Task task, String rootId) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -438,10 +489,9 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
           ),
           TextButton(
             onPressed: () {
-              context.read<TaskNewBloc>().add(DeleteSubTask(
-                    taskId: task.id,
-                    rootTaskId: rootId,
-                  ));
+              context.read<TaskNewBloc>().add(
+                DeleteSubTask(taskId: task.id, rootTaskId: rootId),
+              );
               Navigator.pop(ctx);
             },
             style: TextButton.styleFrom(foregroundColor: AppTheme.error),

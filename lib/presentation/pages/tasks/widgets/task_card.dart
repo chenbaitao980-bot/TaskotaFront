@@ -6,22 +6,37 @@ import '../../../../data/database/app_database.dart';
 class TaskCard extends StatelessWidget {
   final Task task;
   final String? projectName;
+  final int progress;
   final VoidCallback onTap;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
+
+  // 树形结构属性
+  final int depth;
+  final bool hasChildren;
+  final bool isExpanded;
+  final VoidCallback? onToggleExpand;
+  final bool showDragHandle;
 
   const TaskCard({
     super.key,
     required this.task,
     this.projectName,
+    this.progress = 0,
     required this.onTap,
     required this.onToggle,
     required this.onDelete,
+    this.depth = 0,
+    this.hasChildren = false,
+    this.isExpanded = false,
+    this.onToggleExpand,
+    this.showDragHandle = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isCompleted = task.status == 2;
+    final progressPercent = progress.clamp(0, 100).toInt();
     final priorityColor = _priorityColor(task.priority);
 
     return Slidable(
@@ -63,9 +78,43 @@ class TaskCard extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             child: Row(
               children: [
+                // 缩进空白
+                SizedBox(width: depth * 24.0),
+
+                // 拖拽手柄
+                if (showDragHandle)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.drag_indicator_rounded,
+                      size: 18,
+                      color: AppTheme.textHint.withValues(alpha: 0.5),
+                    ),
+                  ),
+
+                // 展开/折叠箭头
+                if (hasChildren)
+                  GestureDetector(
+                    onTap: onToggleExpand,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        isExpanded
+                            ? Icons.expand_more_rounded
+                            : Icons.chevron_right_rounded,
+                        size: 20,
+                        color: AppTheme.textHint,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 24),
+
                 // 优先级色条
                 Container(
                   width: 4,
@@ -76,6 +125,7 @@ class TaskCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
+
                 // 复选框
                 GestureDetector(
                   onTap: onToggle,
@@ -100,6 +150,7 @@ class TaskCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
+
                 // 标题和项目名
                 Expanded(
                   child: Column(
@@ -130,9 +181,44 @@ class TaskCard extends StatelessWidget {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: progressPercent / 100,
+                                minHeight: 4,
+                                backgroundColor: AppTheme.borderSubtle
+                                    .withValues(alpha: 0.6),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  isCompleted
+                                      ? AppTheme.success
+                                      : AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 36,
+                            child: Text(
+                              '$progressPercent%',
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textHint,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
+
                 // 截止日期
                 if (task.dueDate != null)
                   Text(

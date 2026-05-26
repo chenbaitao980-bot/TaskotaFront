@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "mode": "command",
+  "command_or_url": "flutter test test\\task_progress_calculator_test.dart",
+  "started_at": "2026-05-26T13:33:14.148170+00:00",
+  "finished_at": "2026-05-26T13:33:22.004436+00:00",
+  "exit_code": 0,
+  "stdout_tail": "00:00 +0: loading E:/claude/project2/smart_assistant/test/task_progress_calculator_test.dart\n00:00 +0: leaf task progress follows checklist completion\n00:00 +1: completed leaf task overrides incomplete checklist progress\n00:00 +2: leaf task without checklist follows task completion status\n00:00 +3: parent task recursively includes self and descendant work units\n00:00 +4: project progress counts each work unit once\n00:00 +5: project progress does not overweight checklist item count\n00:00 +6: completed parent overrides descendant progress for project total\n00:00 +7: All tests passed!\n",
+  "stderr_tail": ""
+}

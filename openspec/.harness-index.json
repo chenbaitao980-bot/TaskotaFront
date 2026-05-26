@@ -2,11 +2,18 @@
   "schema_version": 1,
   "signature": {
     "openspec\\specs\\build-packaging\\spec.md": 1779687384.3696485,
-    "openspec\\specs\\project-baseline\\spec.md": 1779696327.906225,
+    "openspec\\specs\\project-baseline\\spec.md": 1779763388.79767,
     "openspec\\specs\\smart-butler\\spec.md": 1779530718.3428078,
+    "openspec\\changes\\calendar-filter-and-sync-fix\\tasks.md": 1779773122.0445852,
+    "openspec\\changes\\task-auto-save-edit\\tasks.md": 1779772948.4651835,
+    "openspec\\changes\\task-progress-calculation\\tasks.md": 1779771832.9926808,
+    "openspec\\changes\\calendar-filter-and-sync-fix\\specs\\calendar-filter-and-sync-fix\\spec.md": 1779768242.7740993,
+    "openspec\\changes\\task-auto-save-edit\\specs\\task-auto-save-edit\\spec.md": 1779772657.9431624,
+    "openspec\\changes\\task-progress-calculation\\specs\\task-progress-calculation\\spec.md": 1779768651.5045574,
     "openspec\\bugfixspecs\\auth\\register-click-no-response.md": 1779529051.5967536,
     "openspec\\bugfixspecs\\smart-butler\\ai-suggestion-mismatch.md": 1779623757.1638181,
-    "openspec\\bugfixspecs\\smart-butler\\bug-003.md": 1779623766.8149405
+    "openspec\\bugfixspecs\\smart-butler\\bug-003.md": 1779623766.8149405,
+    "openspec\\bugfixspecs\\task-hierarchy-time-precision\\subtask-delete-refresh.md": 1779714092.9921844
   },
   "specs": [
     {
@@ -125,7 +132,38 @@
       "search_text": "smart-butler\n定义 AI 智能日程管家 MVP 的核心业务能力和用户交互流程。\n# Smart Butler Spec\n\n## Purpose\n定义 AI 智能日程管家 MVP 的核心业务能力和用户交互流程。\n\n## Requirements\n\n### Requirement: 语音/文字录入日程\n用户 SHALL 能通过语音或文字输入创建日程，系统使用原生 ASR 进行语音识别，调用 LLM 解析自然语言为结构化日程数据。\n\n#### Scenario: 语音录入日程\n- WHEN 用户点击语音录入按钮并说话\n- THEN 系统调用 speech_to_text 获取语音文本\n- AND 调用 DeepSeek API 解析文本为结构化日程（标题、时间、优先级）\n- AND 展示解析结果给用户确认\n- AND 用户确认后写入本地存储和 Supabase\n\n#### Scenario: 文字录入日程\n- WHEN 用户在输入框输入日程描述（如\"明天下午3点开会\"）\n- THEN 系统调用 LLM 解析为结构化日程\n- AND 后续流程同语音录入\n\n### Requirement: 日历视图\n用户 SHALL 能在周视图和月视图中可视化查看所有日程，并支持在日历上直接新建、编辑、删除日程。\n\n#### Scenario: 查看周视图\n- WHEN 用户切换到日历Tab\n- THEN 默认展示周视图\n- AND 显示该周每天的时间格子\n- AND 日程以时间块形式展示\n- AND 自动滚动到当前时间位置\n\n#### Scenario: 切换到月视图\n- WHEN 用户点击月视图切换按钮\n- THEN 日历切换为月视图\n- AND 有日程的日期显示圆点标记\n- AND 点击日期展示当日日程列表\n\n#### Scenario: 日历上新建日程\n- WHEN 用户长按某个日期/时间格\n- THEN 弹出新建日程对话框\n- AND 填写后保存到本地和云端\n\n#### Scenario: 编辑/删除日程\n- WHEN 用户点击已有日程\n- THEN 弹出日程详情/编辑页\n- AND 支持修改标题、时间、优先级、描述\n- AND 支持删除日程（确认后）\n\n#### Scenario: 标记日程完成状态\n- WHEN 用户在日程列表或日历视图中点击日程旁的复选框\n- THEN 勾选 SHALL 将日程状态设为已完成\n- AND 取消勾选 SHALL 将日程状态设为进行中\n- AND 状态变更 SHALL 立即持久化到本地存储\n\n### Requirement: AI任务拆解\n用户 SHALL 能输入大目标，AI 将其递归拆解为 目标→月→周 三层结构化任务。\n\n#### Scenario: 目标拆解\n- WHEN 用户输入目标描述（如\"今年拿下日语N1\"）\n- THEN AI 先询问必要信息（当前水平、可用时间等）\n- AND AI 输出三层拆解：战略层（季度里程碑）→ 战术层（月任务）→ 执行层（周任务）\n- AND 用户可确认并批量写入日程\n\n### Requirement: 云端同步\n系统 SHALL 使用 Supabase 作为云端后端，实现日程和任务数据的跨设备同步。\n\n#### Scenario: 数据同步\n- WHEN 用户在任一设备上修改数据\n- THEN 数据通过 Supabase 同步到云端\n- AND 其他设备通过 Realtime 或轮询获取更新\n\n### Requirement: 用户注册与登录\n用户 SHALL 能通过邮箱和密码注册账号并登录，使用 Supabase Auth 进行身份认证。\n\n#### Scenario: 用户注册\n- WHEN 用户输入邮箱和密码并点击注册\n- THEN 系统调用 Supabase Auth 创建账号\n- AND 自动创建用户画像记录\n- AND 跳转到首页\n\n#### Scenario: 用户登录\n- WHEN 用户输入正确凭据并点击登录\n- THEN 系统验证身份\n- AND 加载用户数据\n- AND 跳转到首页\n\n#### Scenario: 未登录访问\n- WHEN 未登录用户打开应用\n- THEN 展示登录页面\n- AND 阻止访问其他功能页面\n\n### Requirement: Windows 桌面打包\n每次代码变更后打包 SHALL 执行全量构建，确保无增量编译缓存残留。\n\n#### Scenario: 交付 Windows 桌面版\n- WHEN 用户要求打包 Windows 桌面版应用\n- THEN AI SHALL 先执行 `flutter clean` 清理增量编译缓存\n- AND 执行 `flutter build windows --release` 全量构建\n- AND 复制产物到 release 目录\n- AND 打包为 ZIP 分发包交付\n"
     }
   ],
-  "changes": [],
+  "changes": [
+    {
+      "name": "calendar-filter-and-sync-fix",
+      "tasks": [
+        "修复PopupMenuButton null value选择问题",
+        "日历修改后刷新TaskNewBloc",
+        "放大ResizeHandle热区",
+        "给跨日任务条添加拖拽调整能力"
+      ],
+      "search_text": "calendar-filter-and-sync-fix\n# 任务：calendar-filter-and-sync-fix\n\n## 实施\n- [ ] 1. 修复PopupMenuButton null value选择问题\n- [ ] 2. 日历修改后刷新TaskNewBloc\n- [ ] 3. 放大ResizeHandle热区\n- [ ] 4. 给跨日任务条添加拖拽调整能力\n\n## 验证\n- [x] <用户确认：切回全部项目功能可正常使用>\n- [x] <用户确认：日历拖拽后切换到任务页时间立即更新>\n- [x] <用户确认：时间线拖拽更容易点击>\n- [x] <用户确认：跨日任务可拖拽调整>\n\n# Delta: calendar-filter-and-sync-fix\n\n## 与主规范关系\nNew Capability\n\n## 命中的主规范\n- Capability: `calendar-filter-and-sync-fix`\n- Requirement: `未命中具体 Requirement 时由实施者补齐或说明不改 spec`\n- Scenario: `未命中具体 Scenario 时由实施者补齐或说明不改 spec`\n\n## 变更类型\nMODIFIED\n\n## 业务冲突检查\n| 维度 | 状态 |\n|------|------|\n| 主规范 Req 命中 | 无 |\n| 关系判断 | 新增 |\n| 其他 active change 撞车 | 无 |\n| 冲突状态 | 无冲突 |\n| 是否允许 ADDED | 是 |\n| 归档完整性 | ✅ |\n\n## 原规则\n无\n\n## 新规则\n本次变更后的 Requirement / Scenario；bugfix 且不改 spec 时写\"不改变业务规则\"\n\n## 改动明细\n- 文件：`实施时记录实际文件路径`\n- 位置：实施时记录关键位置\n- 改前：未提供原行为；实施前根据现有代码/规范确认\n- 改后：未提供新行为；实施前根据验收标准确认\n"
+    },
+    {
+      "name": "task-auto-save-edit",
+      "tasks": [
+        "定位任务与子任务编辑保存逻辑",
+        "移除任务编辑保存按钮并实现自动保存",
+        "对子任务编辑实现默认保存",
+        "运行最小验证并检查 diff"
+      ],
+      "search_text": "task-auto-save-edit\n# 任务：task-auto-save-edit\n\n## 实施\n- [ ] 1. 定位任务与子任务编辑保存逻辑\n- [ ] 2. 移除任务编辑保存按钮并实现自动保存\n- [ ] 3. 对子任务编辑实现默认保存\n- [ ] 4. 运行最小验证并检查 diff\n\n## 验证\n- [ ] <用户确认：flutter analyze 或等价静态检查通过>\n- [ ] <用户确认：代码检查确认任务编辑保存按钮移除且字段变更触发保存>\n\n# Delta: task-auto-save-edit\n\n## 与主规范关系\nNew Capability\n\n## 变更类型\nMODIFIED\n\n## 新规则\n不改变业务规则；仅执行本次最小修复或调整。\n"
+    },
+    {
+      "name": "task-progress-calculation",
+      "tasks": [
+        "定位现有任务/检查项/项目完成度逻辑",
+        "实现递归任务进度和项目进度计算",
+        "在状态/检查项变更后刷新任务进度",
+        "补充最小测试验证规则"
+      ],
+      "search_text": "task-progress-calculation\n# 任务：task-progress-calculation\n\n## 实施\n- [ ] 1. 定位现有任务/检查项/项目完成度逻辑\n- [ ] 2. 实现递归任务进度和项目进度计算\n- [ ] 3. 在状态/检查项变更后刷新任务进度\n- [ ] 4. 补充最小测试验证规则\n\n## 验证\n- [ ] <用户确认：flutter test>\n\n# Delta: task-progress-calculation\n\n## 与主规范关系\nNew Capability\n\n## 命中的主规范\n- Capability: `task-progress-calculation`\n- Requirement: `未命中具体 Requirement 时由实施者补齐或说明不改 spec`\n- Scenario: `未命中具体 Scenario 时由实施者补齐或说明不改 spec`\n\n## 变更类型\nMODIFIED\n\n## 业务冲突检查\n| 维度 | 状态 |\n|------|------|\n| 主规范 Req 命中 | 无 |\n| 关系判断 | 新增 |\n| 其他 active change 撞车 | 无 |\n| 冲突状态 | 无冲突 |\n| 是否允许 ADDED | 是 |\n| 归档完整性 | ✅ |\n\n## 原规则\n无\n\n## 新规则\n本次变更后的 Requirement / Scenario；bugfix 且不改 spec 时写\"不改变业务规则\"\n\n## 改动明细\n- 文件：`实施时记录实际文件路径`\n- 位置：实施时记录关键位置\n- 改前：未提供原行为；实施前根据现有代码/规范确认\n- 改后：未提供新行为；实施前根据验收标准确认\n"
+    }
+  ],
   "bugfixes": [
     {
       "path": "E:\\claude\\project2\\smart_assistant\\openspec\\bugfixspecs\\auth\\register-click-no-response.md",
@@ -149,6 +187,12 @@
       "root_cause": "`_generateSuggestions` 关键词匹配方案使用固定顺序的 `contains` 检查，AI 回复同时包含多维度关键词（如\"希望\"+\"每天\"）时匹配到错误分支",
       "forbidden": [],
       "search_text": "bug-003.md\n# bug-003: AI 拆分对话选项卡错乱\n\n## 适用范围\n- Capability: smart-butler\n- 关联 change: fix-ai-options-fallback\n- 关联文件/函数: `ai_chat_page.dart/_generateSuggestions`, `ai_service.dart/_systemPrompt`\n\n## 用户可见现象\nAI 拆分对话时，第三轮问题（\"希望达到什么效果\"）显示的选项卡是时间选项（每天30分钟等）而非目标选项\n\n## 根本原因\n`_generateSuggestions` 关键词匹配方案使用固定顺序的 `contains` 检查，AI 回复同时包含多维度关键词（如\"希望\"+\"每天\"）时匹配到错误分支\n\n## 为什么会反复修不好\n连续 3 次修复均使用关键词匹配方案的不同变体（调整顺序→增加关键词→微调），证明该方案根本不可靠\n\n## 当前修复策略\n完全移除客户端关键词匹配回退，所有选项必须来自 AI 输出的 `[OPTIONS:]` 结构化标记\n\n> ⚠️ 此策略为当前最佳猜测。若再次触发同类 bug，说明此策略也失败，需重新分析根因并设计新方案。\n\n## 复盘经验（供参考）\n- 客户端关键词 contains 匹配不可靠，不建议作为长期方案\n- AI 侧 `[OPTIONS:]` 生成质量是选项正确性的关键\n- 若复发，优先排查 AI 是否未正确输出 `[OPTIONS:]`，而非猜测关键词\n\n## 最小验证集\n```bash\nflutter analyze --no-fatal-infos\n```\n\n## 相关历史\n| change | bugfix_count | 归档时间 |\n|---|---:|---|\n| fix-ai-options-fallback | 1 | 2026-05-24 19:53 |\n"
+    },
+    {
+      "path": "E:\\claude\\project2\\smart_assistant\\openspec\\bugfixspecs\\task-hierarchy-time-precision\\subtask-delete-refresh.md",
+      "root_cause": "BLoC事件链时序问题：子任务的增删改操作与状态刷新不放在同一个handler里，导致LoadTasks事件覆盖子树状态",
+      "forbidden": [],
+      "search_text": "subtask-delete-refresh.md\n# subtask-delete-refresh: TBD\n\n## 适用范围\n- Capability: task-hierarchy-time-precision\n- 关联 change: task-hierarchy-time-precision\n- 关联文件/函数: TBD\n\n## 用户可见现象\nTBD\n\n## 根本原因\nBLoC事件链时序问题：子任务的增删改操作与状态刷新不放在同一个handler里，导致LoadTasks事件覆盖子树状态\n\n## 为什么会反复修不好\n反复出现4次，且每次修复方式不同，最终确定为专用DeleteSubTask事件模式\n\n## 正确修复模型\nTBD\n\n## 复盘教训（供参考）\n- TBD\n\n## 防复发检查项\n- [ ] TBD\n\n## 最小验证集\n```bash\n# TBD\n```\n\n## 相关历史\n| change | bugfix_count | 归档时间 |\n|---|---:|---|\n| task-hierarchy-time-precision | 1 | 2026-05-25 21:01 |\n"
     }
   ]
 }

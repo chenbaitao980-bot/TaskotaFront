@@ -18,6 +18,8 @@ class TaskNewLoaded extends TaskNewState {
   final Map<String, List<ChecklistItem>> checklistItems;
   final Map<String, List<Task>> subTrees;
   final Map<String, Set<String>> expandedNodes;
+  final Map<String, int> taskProgress;
+  final Map<String, int> projectProgress;
 
   TaskNewLoaded({
     this.projects = const [],
@@ -27,6 +29,8 @@ class TaskNewLoaded extends TaskNewState {
     this.checklistItems = const {},
     this.subTrees = const {},
     this.expandedNodes = const {},
+    this.taskProgress = const {},
+    this.projectProgress = const {},
   });
 
   TaskNewLoaded copyWith({
@@ -37,6 +41,8 @@ class TaskNewLoaded extends TaskNewState {
     Map<String, List<ChecklistItem>>? checklistItems,
     Map<String, List<Task>>? subTrees,
     Map<String, Set<String>>? expandedNodes,
+    Map<String, int>? taskProgress,
+    Map<String, int>? projectProgress,
   }) {
     return TaskNewLoaded(
       projects: projects ?? this.projects,
@@ -46,19 +52,23 @@ class TaskNewLoaded extends TaskNewState {
       checklistItems: checklistItems ?? this.checklistItems,
       subTrees: subTrees ?? this.subTrees,
       expandedNodes: expandedNodes ?? this.expandedNodes,
+      taskProgress: taskProgress ?? this.taskProgress,
+      projectProgress: projectProgress ?? this.projectProgress,
     );
   }
 
   @override
   List<Object?> get props => [
-        projects,
-        tasks,
-        selectedProjectId,
-        selectedFilter,
-        checklistItems,
-        subTrees,
-        expandedNodes,
-      ];
+    projects,
+    tasks,
+    selectedProjectId,
+    selectedFilter,
+    checklistItems,
+    subTrees,
+    expandedNodes,
+    taskProgress,
+    projectProgress,
+  ];
 }
 
 class TaskNewError extends TaskNewState {

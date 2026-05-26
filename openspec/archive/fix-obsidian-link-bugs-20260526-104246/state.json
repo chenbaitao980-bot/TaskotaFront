@@ -1,0 +1,58 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T10:03:51.176749+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T10:04:12.760673+00:00",
+      "reason": "根因: (1) URI 的 & 被 cmd 当命令分隔符 (2) Value(null) 类型推断可能失败"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T10:04:12.957920+00:00",
+      "reason": "用户已验证问题"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T10:04:13.139560+00:00",
+      "reason": "开始修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T10:06:45.722826+00:00",
+      "reason": "两个 Bug 修复完成: (1) openUri URI 加引号 (2) setObsidianUri Value 显式类型; dart analyze 零错误"
+    },
+    {
+      "from": "implemented",
+      "to": "verified",
+      "at": "2026-05-26T02:40:43.344780+00:00",
+      "reason": "用户确认功能正常"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-26T02:40:43.344780+00:00",
+      "reason": "所有变更已验证，归档"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\fix-obsidian-link-bugs\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T10:06:52.483233+00:00"
+  }
+}

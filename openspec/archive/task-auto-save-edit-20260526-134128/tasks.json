@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "定位任务与子任务编辑保存逻辑",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "移除任务编辑保存按钮并实现自动保存",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "对子任务编辑实现默认保存",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "运行最小验证并检查 diff",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "flutter analyze 或等价静态检查通过",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "代码检查确认任务编辑保存按钮移除且字段变更触发保存",
+      "done": true
+    }
+  ]
+}

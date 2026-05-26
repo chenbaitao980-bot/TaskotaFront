@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/entities/task_breakdown.dart';
 import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
+import '../../widgets/calendar_date_picker.dart';
 
 class CreateTaskPage extends StatefulWidget {
   final TaskBreakdown? existingTask;
@@ -30,8 +31,8 @@ class CreateTaskPage extends StatefulWidget {
 class _CreateTaskPageState extends State<CreateTaskPage> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  late DateTime _startDate;
-  late DateTime _endDate;
+  late DateTime _startDateTime;
+  late DateTime _endDateTime;
   late String _priority;
   late bool _focusRequired;
   late bool _isParent;
@@ -39,9 +40,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   String? _parentTaskName;
   bool _isEditing = false;
   final LocalStorageService _storage = LocalStorageService();
-
-  TimeOfDay get _startTime => TimeOfDay.fromDateTime(_startDate);
-  TimeOfDay get _endTime => TimeOfDay.fromDateTime(_endDate);
 
   @override
   void initState() {
@@ -51,15 +49,15 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       final t = widget.existingTask!;
       _titleController.text = t.title;
       _descriptionController.text = t.description ?? '';
-      _startDate = t.startDate ?? DateTime.now();
-      _endDate = t.endDate ?? _defaultEndDate(_startDate);
+      _startDateTime = t.startDate ?? DateTime.now();
+      _endDateTime = t.endDate ?? _defaultEndDateTime(_startDateTime);
       _priority = t.priority;
       _focusRequired = t.focusRequired;
       _isParent = t.isParent;
     } else {
       _titleController.text = widget.initialTitle ?? '';
-      _startDate = widget.initialStartDate ?? DateTime.now();
-      _endDate = _defaultEndDate(_startDate, widget.initialEndDate);
+      _startDateTime = _defaultStartDateTime();
+      _endDateTime = _defaultEndDateTime(_startDateTime, widget.initialEndDate);
       _priority = 'P2';
       _focusRequired = false;
       _isParent = false;
@@ -143,61 +141,40 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     return 'local_user';
   }
 
-  Future<void> _selectDate(bool isStart) async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: isStart ? _startDate : _endDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
-    );
-    if (date != null && mounted) {
-      setState(() {
-        if (isStart) {
-          _startDate = _combineDateTime(date, _startTime);
-        } else {
-          _endDate = _combineDateTime(date, _endTime);
-        }
-      });
-    }
+  DateTime _defaultStartDateTime() {
+    final now = DateTime.now();
+    // 就近取 15 分钟整倍数
+    final minute = ((now.minute / 15).ceil() * 15) % 60;
+    final hour = now.hour + (((now.minute / 15).ceil() * 15) ~/ 60);
+    return DateTime(now.year, now.month, now.day, hour % 24, minute);
   }
 
-  Future<void> _selectTime(bool isStart) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: isStart ? _startTime : _endTime,
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        if (isStart) {
-          _startDate = _combineDateTime(_startDate, picked);
-        } else {
-          _endDate = _combineDateTime(_endDate, picked);
-        }
-      });
-    }
-  }
-
-  DateTime _combineDateTime(DateTime date, TimeOfDay time) {
-    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
-  }
-
-  DateTime _defaultEndDate(DateTime start, [DateTime? preferredEnd]) {
-    if (preferredEnd != null &&
-        _isSameDate(start, preferredEnd) &&
-        preferredEnd.isAfter(start)) {
+  DateTime _defaultEndDateTime(DateTime start, [DateTime? preferredEnd]) {
+    if (preferredEnd != null && preferredEnd.isAfter(start)) {
       return preferredEnd;
     }
     return start.add(const Duration(hours: 1));
   }
 
-  bool _isSameDate(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
+  Future<void> _pickDateTime(bool isStart) async {
+    final picked = await showCalendarDatePicker(
+      context: context,
+      initialDate: isStart ? _startDateTime : _endDateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        if (isStart) {
+          _startDateTime = picked;
+          if (_endDateTime.isBefore(_startDateTime)) {
+            _endDateTime = _startDateTime.add(const Duration(hours: 1));
+          }
+        } else {
+          _endDateTime = picked;
+        }
+      });
+    }
   }
 
   Future<void> _saveTask() async {
@@ -208,18 +185,20 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       ).showSnackBar(const SnackBar(content: Text('请输入任务标题')));
       return;
     }
-    if (!_endDate.isAfter(_startDate)) {
+
+    // 日期必填校验
+    if (!_endDateTime.isAfter(_startDateTime)) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间')));
+      ).showSnackBar(const SnackBar(content: Text('截止时间必须晚于开始时间')));
       return;
     }
 
     // 非父任务：检测时间冲突
     if (!_isParent) {
       final conflict = _storage.detectTaskTimeConflict(
-        _startDate,
-        _endDate,
+        _startDateTime,
+        _endDateTime,
         excludeId: widget.existingTask?.id,
       );
       if (conflict) {
@@ -251,8 +230,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         description: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
-        startDate: _startDate,
-        endDate: _endDate,
+        startDate: _startDateTime,
+        endDate: _endDateTime,
         priority: _priority,
         focusRequired: _focusRequired,
         isParent: _isParent,
@@ -271,8 +250,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             : (_parentTaskId != null || widget.parentScheduleId != null
                   ? 'subtask'
                   : 'task'),
-        startDate: _startDate,
-        endDate: _endDate,
+        startDate: _startDateTime,
+        endDate: _endDateTime,
         priority: _priority,
         parentTaskId: _parentTaskId,
         parentScheduleId: widget.parentScheduleId,
@@ -332,7 +311,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ),
             const SizedBox(height: 16),
 
-            // Parent Task （滴答清单风格）
+            // Parent Task
             Text('所属父任务', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Container(
@@ -386,7 +365,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ),
             const SizedBox(height: 28),
 
-            // Date section
+            // Date/Time section (merged)
             Text('日期范围', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
             Container(
@@ -397,44 +376,22 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
               child: Column(
                 children: [
-                  _datePickerTile(
+                  _dateTimeTile(
                     Icons.calendar_today,
-                    '开始日期',
-                    _startDate,
-                    () => _selectDate(true),
-                  ),
-                  const Divider(
-                    height: 0.5,
-                    indent: 52,
-                    color: AppTheme.borderSubtle,
-                  ),
-                  _timePickerTile(
-                    Icons.access_time,
                     '开始时间',
-                    _startDate,
-                    () => _selectTime(true),
+                    _startDateTime,
+                    () => _pickDateTime(true),
                   ),
                   const Divider(
                     height: 0.5,
                     indent: 52,
                     color: AppTheme.borderSubtle,
                   ),
-                  _datePickerTile(
+                  _dateTimeTile(
                     Icons.event,
-                    '截止日期',
-                    _endDate,
-                    () => _selectDate(false),
-                  ),
-                  const Divider(
-                    height: 0.5,
-                    indent: 52,
-                    color: AppTheme.borderSubtle,
-                  ),
-                  _timePickerTile(
-                    Icons.access_time_filled,
-                    '结束时间',
-                    _endDate,
-                    () => _selectTime(false),
+                    '截止时间',
+                    _endDateTime,
+                    () => _pickDateTime(false),
                   ),
                 ],
               ),
@@ -514,10 +471,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  Widget _datePickerTile(
+  Widget _dateTimeTile(
     IconData icon,
     String label,
-    DateTime date,
+    DateTime dateTime,
     VoidCallback onTap,
   ) {
     return ListTile(
@@ -527,7 +484,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
       ),
       subtitle: Text(
-        _dateLabel(date),
+        _dateTimeLabel(dateTime),
         style: const TextStyle(color: AppTheme.textSecondary),
       ),
       trailing: const Icon(
@@ -540,37 +497,16 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  Widget _timePickerTile(
-    IconData icon,
-    String label,
-    DateTime date,
-    VoidCallback onTap,
-  ) {
-    return ListTile(
-      leading: Icon(icon, color: AppTheme.primaryColor, size: 22),
-      title: Text(
-        label,
-        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
-      ),
-      subtitle: Text(
-        _timeLabel(date),
-        style: const TextStyle(color: AppTheme.textSecondary),
-      ),
-      trailing: const Icon(
-        Icons.chevron_right,
-        size: 20,
-        color: AppTheme.textHint,
-      ),
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-    );
+  String _dateTimeLabel(DateTime dt) {
+    final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    final wd = weekdays[dt.weekday - 1];
+    final now = DateTime.now();
+    final isToday = dt.year == now.year &&
+        dt.month == now.month &&
+        dt.day == now.day;
+    return '${dt.month}月${dt.day}日 $wd${isToday ? '（今天）' : ''}  '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
-
-  String _dateLabel(DateTime date) =>
-      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-
-  String _timeLabel(DateTime date) =>
-      '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
   Widget _buildPriorityChip(String value, String label, Color color) {
     final selected = _priority == value;

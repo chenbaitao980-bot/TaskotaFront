@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
@@ -10,7 +11,6 @@ import 'data/database/app_database.dart';
 import 'data/repositories/project_repository.dart';
 import 'data/repositories/task_repository.dart';
 import 'data/repositories/checklist_repository.dart';
-import 'presentation/blocs/ai_chat/ai_chat_bloc.dart';
 import 'presentation/blocs/auth/auth_bloc.dart';
 import 'presentation/blocs/schedule/schedule_bloc.dart';
 import 'presentation/blocs/task/task_bloc.dart';
@@ -82,9 +82,6 @@ class MyApp extends StatelessWidget {
               ),
             ),
             BlocProvider(
-              create: (context) => AiChatBloc(),
-            ),
-            BlocProvider(
               create: (context) => task_new.TaskNewBloc(
                 projectRepository: projectRepository,
                 taskRepository: taskRepository,
@@ -98,11 +95,25 @@ class MyApp extends StatelessWidget {
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.lightTheme,
             themeMode: ThemeMode.light,
+            locale: const Locale('zh', 'CN'),
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [
+              Locale('zh', 'CN'),
+              Locale('en', 'US'),
+            ],
             onGenerateRoute: AppRouter.onGenerateRoute,
             home: BlocBuilder<AuthBloc, AuthState>(
               builder: (context, state) {
                 if (state is Authenticated || state is LocalAuthenticated) {
-                  return const HomePage();
+                  return HomePage(
+                    projectRepository: projectRepository,
+                    taskRepository: taskRepository,
+                    checklistRepository: checklistRepository,
+                  );
                 }
                 if (state is AuthLoading) {
                   return const Scaffold(

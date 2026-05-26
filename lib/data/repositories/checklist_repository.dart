@@ -13,26 +13,42 @@ class ChecklistRepository {
         .get();
   }
 
+  Future<List<ChecklistItem>> getByTaskIds(List<String> taskIds) async {
+    if (taskIds.isEmpty) return [];
+    return (_db.select(_db.checklistItems)
+          ..where((c) => c.taskId.isIn(taskIds))
+          ..orderBy([(c) => OrderingTerm(expression: c.sortOrder)]))
+        .get();
+  }
+
   Future<ChecklistItem> create({
     required String taskId,
     required String title,
+    String? obsidianUri,
   }) async {
     final id = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
     final existing = await getByTask(taskId);
     final sortOrder = existing.length;
 
-    await _db.into(_db.checklistItems).insert(ChecklistItemsCompanion(
-      id: Value(id),
-      taskId: Value(taskId),
-      title: Value(title),
-      sortOrder: Value(sortOrder),
-      createdAt: Value(now),
-      updatedAt: Value(now),
-    ));
-    final result = await (_db.select(_db.checklistItems)
-          ..where((c) => c.id.equals(id)))
-        .get();
+    await _db
+        .into(_db.checklistItems)
+        .insert(
+          ChecklistItemsCompanion(
+            id: Value(id),
+            taskId: Value(taskId),
+            title: Value(title),
+            obsidianUri: obsidianUri != null
+                ? Value(obsidianUri)
+                : const Value.absent(),
+            sortOrder: Value(sortOrder),
+            createdAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+    final result = await (_db.select(
+      _db.checklistItems,
+    )..where((c) => c.id.equals(id))).get();
     return result.first;
   }
 
@@ -50,11 +66,21 @@ class ChecklistRepository {
     await (_db.delete(_db.checklistItems)..where((c) => c.id.equals(id))).go();
   }
 
+  Future<void> setObsidianUri(String id, String? uri) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (_db.update(_db.checklistItems)..where((c) => c.id.equals(id))).write(
+      ChecklistItemsCompanion(
+        obsidianUri: uri != null ? Value(uri) : Value<String?>(null),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
   Future<void> toggleStatus(String id) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final result = await (_db.select(_db.checklistItems)
-          ..where((c) => c.id.equals(id)))
-        .get();
+    final result = await (_db.select(
+      _db.checklistItems,
+    )..where((c) => c.id.equals(id))).get();
     if (result.isEmpty) return;
     final item = result.first;
     final newStatus = item.status == 0 ? 1 : 0;
@@ -68,16 +94,16 @@ class ChecklistRepository {
   }
 
   Future<int> getCompletedCount(String taskId) async {
-    final result = await (_db.select(_db.checklistItems)
-          ..where((c) => c.taskId.equals(taskId) & c.status.equals(1)))
-        .get();
+    final result = await (_db.select(
+      _db.checklistItems,
+    )..where((c) => c.taskId.equals(taskId) & c.status.equals(1))).get();
     return result.length;
   }
 
   Future<int> getTotalCount(String taskId) async {
-    final result = await (_db.select(_db.checklistItems)
-          ..where((c) => c.taskId.equals(taskId)))
-        .get();
+    final result = await (_db.select(
+      _db.checklistItems,
+    )..where((c) => c.taskId.equals(taskId))).get();
     return result.length;
   }
 }

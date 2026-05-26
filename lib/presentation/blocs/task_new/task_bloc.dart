@@ -5,6 +5,7 @@ import '../../../data/database/app_database.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../data/repositories/checklist_repository.dart';
+import '../../../domain/tasks/task_progress_calculator.dart';
 
 class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   final ProjectRepository projectRepository;
@@ -32,6 +33,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<UpdateChecklistItem>(_onUpdateChecklistItem);
     on<ToggleChecklistItem>(_onToggleChecklistItem);
     on<DeleteChecklistItem>(_onDeleteChecklistItem);
+    on<SetChecklistItemObsidianUri>(_onSetChecklistItemObsidianUri);
 
     on<LoadSubTree>(_onLoadSubTree);
     on<AddSubTask>(_onAddSubTask);
@@ -39,16 +41,25 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<MoveSubTask>(_onMoveSubTask);
     on<ToggleSubTask>(_onToggleSubTask);
     on<ToggleTreeNode>(_onToggleTreeNode);
+
+    on<MoveTaskToParent>(_onMoveTaskToParent);
+    on<ToggleTaskExpand>(_onToggleTaskExpand);
+    on<ReorderTaskSiblings>(_onReorderTaskSiblings);
+    on<ExpandAllTasks>(_onExpandAllTasks);
+    on<CollapseAllTasks>(_onCollapseAllTasks);
   }
 
   // --- 项目 ---
 
   Future<void> _onLoadProjects(
-      LoadProjects event, Emitter<TaskNewState> emit) async {
+    LoadProjects event,
+    Emitter<TaskNewState> emit,
+  ) async {
     emit(TaskNewLoading());
     try {
       final projects = await projectRepository.getActive();
       final tasks = await taskRepository.getAll();
+      final progress = await _calculateProgress(tasks);
 
       // 保留子树状态
       Map<String, List<Task>> subTrees = const {};
@@ -59,19 +70,25 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         expandedNodes = current.expandedNodes;
       }
 
-      emit(TaskNewLoaded(
-        projects: projects,
-        tasks: tasks,
-        subTrees: subTrees,
-        expandedNodes: expandedNodes,
-      ));
+      emit(
+        TaskNewLoaded(
+          projects: projects,
+          tasks: tasks,
+          subTrees: subTrees,
+          expandedNodes: expandedNodes,
+          taskProgress: progress.taskProgress,
+          projectProgress: progress.projectProgress,
+        ),
+      );
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }
   }
 
   Future<void> _onCreateProject(
-      CreateProject event, Emitter<TaskNewState> emit) async {
+    CreateProject event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await projectRepository.create(name: event.name, color: event.color);
       final projects = await projectRepository.getActive();
@@ -87,10 +104,15 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onUpdateProject(
-      UpdateProject event, Emitter<TaskNewState> emit) async {
+    UpdateProject event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
-      await projectRepository.update(event.id,
-          name: event.name, color: event.color);
+      await projectRepository.update(
+        event.id,
+        name: event.name,
+        color: event.color,
+      );
       final projects = await projectRepository.getActive();
       if (state is TaskNewLoaded) {
         emit((state as TaskNewLoaded).copyWith(projects: projects));
@@ -101,16 +123,23 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onDeleteProject(
-      DeleteProject event, Emitter<TaskNewState> emit) async {
+    DeleteProject event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await projectRepository.delete(event.id);
       final projects = await projectRepository.getActive();
       final tasks = await taskRepository.getAll();
+      final progress = await _calculateProgress(tasks);
       if (state is TaskNewLoaded) {
-        emit((state as TaskNewLoaded).copyWith(
-          projects: projects,
-          tasks: tasks,
-        ));
+        emit(
+          (state as TaskNewLoaded).copyWith(
+            projects: projects,
+            tasks: tasks,
+            taskProgress: progress.taskProgress,
+            projectProgress: progress.projectProgress,
+          ),
+        );
       }
     } catch (e) {
       emit(TaskNewError(e.toString()));
@@ -119,8 +148,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
   // --- 任务 ---
 
-  Future<void> _onLoadTasks(
-      LoadTasks event, Emitter<TaskNewState> emit) async {
+  Future<void> _onLoadTasks(LoadTasks event, Emitter<TaskNewState> emit) async {
     // 在 emit loading 前先保留子树状态，避免被 loading 覆盖
     Map<String, List<Task>> preservedSubTrees = const {};
     Map<String, Set<String>> preservedExpanded = const {};
@@ -133,6 +161,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     emit(TaskNewLoading());
     try {
       final projects = await projectRepository.getActive();
+      final allTasks = await taskRepository.getAll();
       List<Task> tasks;
       if (event.filter == 'today') {
         tasks = await taskRepository.getToday();
@@ -141,24 +170,41 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       } else if (event.projectId != null) {
         tasks = await taskRepository.getByProject(event.projectId!);
       } else {
-        tasks = await taskRepository.getAll();
+        tasks = allTasks;
+      }
+      final progress = await _calculateProgress(allTasks);
+
+      // 默认展开所有有子节点的任务
+      final newExpanded = Map<String, Set<String>>.from(preservedExpanded);
+      if (!newExpanded.containsKey('main_tree')) {
+        final allParentIds = tasks
+            .where((t) => tasks.any((c) => c.parentId == t.id))
+            .map((t) => t.id)
+            .toSet();
+        newExpanded['main_tree'] = allParentIds;
       }
 
-      emit(TaskNewLoaded(
-        projects: projects,
-        tasks: tasks,
-        selectedProjectId: event.projectId,
-        selectedFilter: event.filter ?? 'all',
-        subTrees: preservedSubTrees,
-        expandedNodes: preservedExpanded,
-      ));
+      emit(
+        TaskNewLoaded(
+          projects: projects,
+          tasks: tasks,
+          selectedProjectId: event.projectId,
+          selectedFilter: event.filter ?? 'all',
+          subTrees: preservedSubTrees,
+          expandedNodes: newExpanded,
+          taskProgress: progress.taskProgress,
+          projectProgress: progress.projectProgress,
+        ),
+      );
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }
   }
 
   Future<void> _onCreateTask(
-      CreateTask event, Emitter<TaskNewState> emit) async {
+    CreateTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await taskRepository.create(
         projectId: event.projectId,
@@ -167,6 +213,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         priority: event.priority,
         startDate: event.startDate,
         dueDate: event.dueDate,
+        parentId: event.parentId,
       );
       add(LoadTasks());
     } catch (e) {
@@ -175,48 +222,62 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onUpdateTask(
-      UpdateTask event, Emitter<TaskNewState> emit) async {
+    UpdateTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
-      await taskRepository.update(event.id,
-          projectId: event.projectId,
-          title: event.title,
-          description: event.description,
-          priority: event.priority,
-          startDate: event.startDate,
-          dueDate: event.dueDate);
+      await taskRepository.update(
+        event.id,
+        projectId: event.projectId,
+        title: event.title,
+        description: event.description,
+        priority: event.priority,
+        startDate: event.startDate,
+        dueDate: event.dueDate,
+      );
       final current = state as TaskNewLoaded;
-      add(LoadTasks(
-        projectId: current.selectedProjectId,
-        filter: current.selectedFilter,
-      ));
+      add(
+        LoadTasks(
+          projectId: current.selectedProjectId,
+          filter: current.selectedFilter,
+        ),
+      );
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }
   }
 
   Future<void> _onDeleteTask(
-      DeleteTask event, Emitter<TaskNewState> emit) async {
+    DeleteTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await taskRepository.delete(event.id);
       final current = state as TaskNewLoaded;
-      add(LoadTasks(
-        projectId: current.selectedProjectId,
-        filter: current.selectedFilter,
-      ));
+      add(
+        LoadTasks(
+          projectId: current.selectedProjectId,
+          filter: current.selectedFilter,
+        ),
+      );
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }
   }
 
   Future<void> _onToggleTaskStatus(
-      ToggleTaskStatus event, Emitter<TaskNewState> emit) async {
+    ToggleTaskStatus event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await taskRepository.toggleStatus(event.id);
       final current = state as TaskNewLoaded;
-      add(LoadTasks(
-        projectId: current.selectedProjectId,
-        filter: current.selectedFilter,
-      ));
+      add(
+        LoadTasks(
+          projectId: current.selectedProjectId,
+          filter: current.selectedFilter,
+        ),
+      );
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }
@@ -225,14 +286,26 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   // --- 检查项 ---
 
   Future<void> _onLoadChecklistItems(
-      LoadChecklistItems event, Emitter<TaskNewState> emit) async {
+    LoadChecklistItems event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       final items = await checklistRepository.getByTask(event.taskId);
+      final allTasks = await taskRepository.getAll();
+      final progress = await _calculateProgress(allTasks);
       if (state is TaskNewLoaded) {
         final current = state as TaskNewLoaded;
-        final newMap = Map<String, List<ChecklistItem>>.from(current.checklistItems);
+        final newMap = Map<String, List<ChecklistItem>>.from(
+          current.checklistItems,
+        );
         newMap[event.taskId] = items;
-        emit(current.copyWith(checklistItems: newMap));
+        emit(
+          current.copyWith(
+            checklistItems: newMap,
+            taskProgress: progress.taskProgress,
+            projectProgress: progress.projectProgress,
+          ),
+        );
       }
     } catch (e) {
       emit(TaskNewError(e.toString()));
@@ -240,7 +313,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onAddChecklistItem(
-      AddChecklistItem event, Emitter<TaskNewState> emit) async {
+    AddChecklistItem event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await checklistRepository.create(
         taskId: event.taskId,
@@ -253,7 +328,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onUpdateChecklistItem(
-      UpdateChecklistItem event, Emitter<TaskNewState> emit) async {
+    UpdateChecklistItem event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await checklistRepository.update(event.id, title: event.title);
     } catch (e) {
@@ -262,7 +339,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onToggleChecklistItem(
-      ToggleChecklistItem event, Emitter<TaskNewState> emit) async {
+    ToggleChecklistItem event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await checklistRepository.toggleStatus(event.id);
       add(LoadChecklistItems(taskId: event.taskId));
@@ -272,9 +351,23 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onDeleteChecklistItem(
-      DeleteChecklistItem event, Emitter<TaskNewState> emit) async {
+    DeleteChecklistItem event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await checklistRepository.delete(event.id);
+      add(LoadChecklistItems(taskId: event.taskId));
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onSetChecklistItemObsidianUri(
+    SetChecklistItemObsidianUri event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    try {
+      await checklistRepository.setObsidianUri(event.id, event.obsidianUri);
       add(LoadChecklistItems(taskId: event.taskId));
     } catch (e) {
       emit(TaskNewError(e.toString()));
@@ -284,22 +377,34 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   // --- 子任务树 ---
 
   Future<void> _onLoadSubTree(
-      LoadSubTree event, Emitter<TaskNewState> emit) async {
+    LoadSubTree event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       final descendants = await taskRepository.getDescendants(event.rootTaskId);
+      final allTasks = await taskRepository.getAll();
+      final progress = await _calculateProgress(allTasks);
       if (state is TaskNewLoaded) {
         final current = state as TaskNewLoaded;
         final newTrees = Map<String, List<Task>>.from(current.subTrees);
         newTrees[event.rootTaskId] = descendants;
 
-        final directChildren =
-            descendants.where((t) => t.parentId == event.rootTaskId).toList();
-        final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
-        newExpanded[event.rootTaskId] = {
-          for (final c in directChildren) c.id,
-        };
+        final directChildren = descendants
+            .where((t) => t.parentId == event.rootTaskId)
+            .toList();
+        final newExpanded = Map<String, Set<String>>.from(
+          current.expandedNodes,
+        );
+        newExpanded[event.rootTaskId] = {for (final c in directChildren) c.id};
 
-        emit(current.copyWith(subTrees: newTrees, expandedNodes: newExpanded));
+        emit(
+          current.copyWith(
+            subTrees: newTrees,
+            expandedNodes: newExpanded,
+            taskProgress: progress.taskProgress,
+            projectProgress: progress.projectProgress,
+          ),
+        );
       }
     } catch (e) {
       emit(TaskNewError(e.toString()));
@@ -307,7 +412,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onAddSubTask(
-      AddSubTask event, Emitter<TaskNewState> emit) async {
+    AddSubTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await taskRepository.create(
         projectId: event.projectId,
@@ -321,15 +428,25 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onDeleteSubTask(
-      DeleteSubTask event, Emitter<TaskNewState> emit) async {
+    DeleteSubTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await taskRepository.delete(event.taskId);
       final descendants = await taskRepository.getDescendants(event.rootTaskId);
+      final allTasks = await taskRepository.getAll();
+      final progress = await _calculateProgress(allTasks);
       if (state is TaskNewLoaded) {
         final current = state as TaskNewLoaded;
         final newTrees = Map<String, List<Task>>.from(current.subTrees);
         newTrees[event.rootTaskId] = descendants;
-        emit(current.copyWith(subTrees: newTrees));
+        emit(
+          current.copyWith(
+            subTrees: newTrees,
+            taskProgress: progress.taskProgress,
+            projectProgress: progress.projectProgress,
+          ),
+        );
       }
     } catch (e) {
       emit(TaskNewError(e.toString()));
@@ -337,7 +454,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onMoveSubTask(
-      MoveSubTask event, Emitter<TaskNewState> emit) async {
+    MoveSubTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await taskRepository.moveTask(event.taskId, event.newParentId);
       add(LoadSubTree(rootTaskId: event.rootTaskId));
@@ -347,7 +466,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onToggleSubTask(
-      ToggleSubTask event, Emitter<TaskNewState> emit) async {
+    ToggleSubTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
     try {
       await taskRepository.toggleStatus(event.id);
       add(LoadSubTree(rootTaskId: event.rootTaskId));
@@ -357,7 +478,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   Future<void> _onToggleTreeNode(
-      ToggleTreeNode event, Emitter<TaskNewState> emit) async {
+    ToggleTreeNode event,
+    Emitter<TaskNewState> emit,
+  ) async {
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
@@ -377,8 +500,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     if (state is TaskNewLoaded) {
       final loaded = state as TaskNewLoaded;
       for (final entry in loaded.subTrees.entries) {
-        if (entry.key == taskId ||
-            entry.value.any((t) => t.id == taskId)) {
+        if (entry.key == taskId || entry.value.any((t) => t.id == taskId)) {
           for (final rootKey in loaded.subTrees.keys) {
             if (rootKey == taskId) return rootKey;
             final tree = loaded.subTrees[rootKey] ?? [];
@@ -388,5 +510,118 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       }
     }
     return taskId;
+  }
+
+  Future<TaskProgressSnapshot> _calculateProgress(List<Task> allTasks) async {
+    final checklistItems = await checklistRepository.getByTaskIds(
+      allTasks.map((task) => task.id).toList(),
+    );
+    return TaskProgressCalculator.calculate(
+      tasks: allTasks,
+      checklistItems: checklistItems,
+    );
+  }
+
+  // --- 树形拖拽 ---
+
+  Future<void> _onMoveTaskToParent(
+    MoveTaskToParent event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    try {
+      // 循环检测：不能将任务移到自己的后代下
+      if (event.newParentId != null && state is TaskNewLoaded) {
+        final tasks = (state as TaskNewLoaded).tasks;
+        if (_isDescendantOf(event.taskId, event.newParentId!, tasks)) {
+          return; // 会形成循环，忽略操作
+        }
+      }
+      await taskRepository.moveTask(event.taskId, event.newParentId);
+      final current = state as TaskNewLoaded;
+      add(
+        LoadTasks(
+          projectId: current.selectedProjectId,
+          filter: current.selectedFilter,
+        ),
+      );
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  /// 检查 targetId 是否是 ancestorId 的后代
+  bool _isDescendantOf(String ancestorId, String targetId, List<Task> tasks) {
+    String? current = targetId;
+    final visited = <String>{};
+    while (current != null && visited.add(current)) {
+      if (current == ancestorId) return true;
+      final task = tasks.where((t) => t.id == current).firstOrNull;
+      current = task?.parentId;
+    }
+    return false;
+  }
+
+  Future<void> _onToggleTaskExpand(
+    ToggleTaskExpand event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    if (state is TaskNewLoaded) {
+      final current = state as TaskNewLoaded;
+      final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
+      final mainTree = Set<String>.from(newExpanded['main_tree'] ?? {});
+      if (mainTree.contains(event.taskId)) {
+        mainTree.remove(event.taskId);
+      } else {
+        mainTree.add(event.taskId);
+      }
+      newExpanded['main_tree'] = mainTree;
+      emit(current.copyWith(expandedNodes: newExpanded));
+    }
+  }
+
+  Future<void> _onReorderTaskSiblings(
+    ReorderTaskSiblings event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    try {
+      await taskRepository.reorderSubTasks(event.parentId, event.orderedIds);
+      final current = state as TaskNewLoaded;
+      add(
+        LoadTasks(
+          projectId: current.selectedProjectId,
+          filter: current.selectedFilter,
+        ),
+      );
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onExpandAllTasks(
+    ExpandAllTasks event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    if (state is TaskNewLoaded) {
+      final current = state as TaskNewLoaded;
+      final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
+      final allParentIds = current.tasks
+          .where((t) => current.tasks.any((c) => c.parentId == t.id))
+          .map((t) => t.id)
+          .toSet();
+      newExpanded['main_tree'] = allParentIds;
+      emit(current.copyWith(expandedNodes: newExpanded));
+    }
+  }
+
+  Future<void> _onCollapseAllTasks(
+    CollapseAllTasks event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    if (state is TaskNewLoaded) {
+      final current = state as TaskNewLoaded;
+      final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
+      newExpanded['main_tree'] = <String>{};
+      emit(current.copyWith(expandedNodes: newExpanded));
+    }
   }
 }

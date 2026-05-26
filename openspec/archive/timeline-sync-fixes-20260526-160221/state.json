@@ -1,0 +1,64 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T15:56:01.633558+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T15:56:12.169674+00:00",
+      "reason": "四件套内容已填写"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T15:56:16.835457+00:00",
+      "reason": "用户已确认需求卡"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T15:56:20.639369+00:00",
+      "reason": "代码已实施"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T15:56:33.922517+00:00",
+      "reason": "5个实施项和1个验证项全部完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T16:00:54.451203+00:00",
+      "reason": "准备归档，请求用户验证确认"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-26T16:00:58.554806+00:00",
+      "reason": "用户确认归档，功能已验证"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-26T16:02:21.569516+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\timeline-sync-fixes\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T15:56:39.722074+00:00"
+  }
+}

@@ -18,32 +18,44 @@ echo Version: %VERSION%
 
 :: Build Flutter Windows Release
 echo.
-echo [1/3] Building Flutter Windows Release...
+echo [1/4] Building Flutter Windows Release...
 call flutter build windows --release
 if %errorlevel% neq 0 (
     echo [ERROR] Build failed, check errors above
     pause
     exit /b 1
 )
-echo [1/3] Build complete
+echo [1/4] Build complete
 
 :: Prepare output directory
 echo.
-echo [2/3] Preparing output directory...
+echo [2/4] Preparing output directory...
 if exist smart_assistant_windows_release (
     rmdir /s /q smart_assistant_windows_release
 )
 mkdir smart_assistant_windows_release
-echo [2/3] Output directory ready
+echo [2/4] Output directory ready
 
 :: Copy build artifacts
 echo.
-echo [3/3] Copying build artifacts...
+echo [3/4] Copying build artifacts...
 xcopy /e /i /q /y build\windows\x64\runner\Release\* smart_assistant_windows_release\ >nul
 if %errorlevel% neq 0 (
     echo [WARN] Copy may be incomplete, check build\windows\x64\runner\Release\
 )
-echo [3/3] Copy complete
+echo [3/4] Copy complete
+
+:: Copy data files (cmake INSTALL often fails in sandbox, losing app.so + flutter_assets)
+echo.
+echo [4/4] Copying data files (app.so + flutter_assets)...
+if not exist smart_assistant_windows_release\data mkdir smart_assistant_windows_release\data
+if not exist smart_assistant_windows_release\data\flutter_assets mkdir smart_assistant_windows_release\data\flutter_assets
+xcopy /e /i /q /y build\flutter_assets\* smart_assistant_windows_release\data\flutter_assets\ >nul
+copy /y build\windows\app.so smart_assistant_windows_release\data\app.so >nul
+if exist build\windows\x64\runner\Release\data\icudtl.dat (
+    copy /y build\windows\x64\runner\Release\data\icudtl.dat smart_assistant_windows_release\data\icudtl.dat >nul
+)
+echo [4/4] Data copy complete
 
 :: Write version file
 echo %VERSION% > smart_assistant_windows_release\version.txt

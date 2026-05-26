@@ -1,0 +1,46 @@
+{
+  "status": "implemented",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T13:46:20.041100+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T13:46:25.350072+00:00",
+      "reason": "四件套就绪"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T13:46:30.185494+00:00",
+      "reason": "用户已确认实施"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T13:46:30.386536+00:00",
+      "reason": "开始实施"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T13:49:56.596899+00:00",
+      "reason": "所有6项实施任务完成，flutter analyze无报错"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": false,
+  "archivable": false,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\calendar-week-view-improvements\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T13:50:02.533303+00:00"
+  }
+}

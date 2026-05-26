@@ -1,0 +1,64 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T14:56:20.428719+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T14:59:44.716193+00:00",
+      "reason": "四件套已更新完成"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T14:59:49.797138+00:00",
+      "reason": "用户已确认执行"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T14:59:52.654363+00:00",
+      "reason": "开始实施代码修改"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T15:03:16.070847+00:00",
+      "reason": "实施完成：三个配置参数修改通过编译验证"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T15:03:25.287003+00:00",
+      "reason": "请用户运行应用确认 UI 不再重叠"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-26T16:00:52.857558+00:00",
+      "reason": "用户确认归档，功能已验证"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-26T16:02:19.902366+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "ok",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\calendar-weekday-date-overlap\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T15:03:21.598916+00:00"
+  }
+}

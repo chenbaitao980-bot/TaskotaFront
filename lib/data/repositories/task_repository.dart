@@ -121,7 +121,7 @@ class TaskRepository {
       TasksCompanion(
         parentId: newParentId != null
             ? Value(newParentId)
-            : const Value.absent(),
+            : const Value(null),
         updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
       ),
     );

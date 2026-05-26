@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {"id": 1, "text": "Bug1: obsidian_service.dart - URI 加引号防止 cmd & 截断", "done": true},
+    {"id": 2, "text": "Bug2: checklist_repository.dart - Value(null) 显式类型", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "文件选择器绑定后数据持久化", "done": false},
+    {"id": 2, "text": "点击跳转成功打开 Obsidian", "done": false}
+  ]
+}

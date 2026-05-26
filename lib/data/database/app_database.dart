@@ -47,6 +47,7 @@ class ChecklistItems extends Table {
   TextColumn get title => text()();
   IntColumn get status => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
+  TextColumn? get obsidianUri => text().nullable()();
   IntColumn? get completedTime => integer().nullable()();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
@@ -62,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -80,6 +81,9 @@ class AppDatabase extends _$AppDatabase {
       onUpgrade: (m, from, to) async {
         if (from < 2) {
           await m.addColumn(tasks, tasks.parentId);
+        }
+        if (from < 3) {
+          await m.addColumn(checklistItems, checklistItems.obsidianUri);
         }
       },
     );

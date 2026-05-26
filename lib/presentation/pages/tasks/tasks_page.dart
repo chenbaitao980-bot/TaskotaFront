@@ -44,11 +44,16 @@ class _TasksPageState extends State<TasksPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline,
-                      size: 48, color: AppTheme.error),
+                  const Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: AppTheme.error,
+                  ),
                   const SizedBox(height: 16),
-                  Text('加载失败：${state.message}',
-                      style: const TextStyle(color: AppTheme.error)),
+                  Text(
+                    '加载失败：${state.message}',
+                    style: const TextStyle(color: AppTheme.error),
+                  ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () =>
@@ -76,6 +81,7 @@ class _TasksPageState extends State<TasksPage> {
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
               ),
               actions: [
+                _buildExpandCollapseButton(state),
                 IconButton(
                   icon: const Icon(Icons.add_rounded),
                   onPressed: () => _showCreateProjectDialog(context),
@@ -86,20 +92,16 @@ class _TasksPageState extends State<TasksPage> {
               projects: state.projects,
               selectedProjectId: state.selectedProjectId,
               selectedFilter: selectedFilter,
+              projectProgress: state.projectProgress,
               onProjectSelected: (id) {
                 Navigator.pop(context);
-                context
-                    .read<TaskNewBloc>()
-                    .add(LoadTasks(projectId: id));
+                context.read<TaskNewBloc>().add(LoadTasks(projectId: id));
               },
               onFilterSelected: (filter) {
                 Navigator.pop(context);
-                context
-                    .read<TaskNewBloc>()
-                    .add(LoadTasks(filter: filter));
+                context.read<TaskNewBloc>().add(LoadTasks(filter: filter));
               },
-              onCreateProject: () =>
-                  _showCreateProjectDialog(context),
+              onCreateProject: () => _showCreateProjectDialog(context),
               onEditProject: (project) =>
                   _showEditProjectDialog(context, project),
               onDeleteProject: (project) =>
@@ -108,13 +110,24 @@ class _TasksPageState extends State<TasksPage> {
             body: TaskListView(
               tasks: state.tasks,
               projectNames: projectNames,
+              taskProgress: state.taskProgress,
               selectedFilter: selectedFilter,
               selectedProjectId: state.selectedProjectId,
+              expandedIds: state.expandedNodes['main_tree'] ?? {},
               onTaskTap: (id) => _openTaskDetail(id, state),
-              onTaskToggle: (id) => context
-                  .read<TaskNewBloc>()
-                  .add(ToggleTaskStatus(id: id)),
+              onTaskToggle: (id) =>
+                  context.read<TaskNewBloc>().add(ToggleTaskStatus(id: id)),
               onTaskDelete: (id) => _confirmDeleteTask(id),
+              onToggleExpand: (id) =>
+                  context.read<TaskNewBloc>().add(ToggleTaskExpand(taskId: id)),
+              onMoveToParent: (taskId, newParentId) =>
+                  context.read<TaskNewBloc>().add(
+                    MoveTaskToParent(
+                      taskId: taskId,
+                      newParentId: newParentId,
+                      projectId: state.selectedProjectId,
+                    ),
+                  ),
             ),
             floatingActionButton: FloatingActionButton(
               onPressed: () => _showCreateTaskSheet(context),
@@ -125,9 +138,7 @@ class _TasksPageState extends State<TasksPage> {
           );
         }
 
-        return const Scaffold(
-          body: Center(child: Text('初始化中...')),
-        );
+        return const Scaffold(body: Center(child: Text('初始化中...')));
       },
     );
   }
@@ -144,6 +155,30 @@ class _TasksPageState extends State<TasksPage> {
     return '所有任务';
   }
 
+  Widget _buildExpandCollapseButton(TaskNewLoaded state) {
+    final allParentIds = state.tasks
+        .where((t) => state.tasks.any((c) => c.parentId == t.id))
+        .map((t) => t.id)
+        .toSet();
+    final expandedIds = state.expandedNodes['main_tree'] ?? {};
+    if (allParentIds.isEmpty) return const SizedBox.shrink();
+
+    final isAllExpanded = expandedIds.containsAll(allParentIds);
+    return IconButton(
+      icon: Icon(
+        isAllExpanded ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
+      ),
+      tooltip: isAllExpanded ? '全部折叠' : '全部展开',
+      onPressed: () {
+        if (isAllExpanded) {
+          context.read<TaskNewBloc>().add(CollapseAllTasks());
+        } else {
+          context.read<TaskNewBloc>().add(ExpandAllTasks());
+        }
+      },
+    );
+  }
+
   Future<void> _openTaskDetail(String id, TaskNewLoaded state) async {
     final task = state.tasks.where((t) => t.id == id).firstOrNull;
     if (task == null) return;
@@ -158,10 +193,12 @@ class _TasksPageState extends State<TasksPage> {
     );
     // 从详情页返回后刷新列表
     if (mounted) {
-      context.read<TaskNewBloc>().add(LoadTasks(
-        projectId: state.selectedProjectId,
-        filter: state.selectedFilter,
-      ));
+      context.read<TaskNewBloc>().add(
+        LoadTasks(
+          projectId: state.selectedProjectId,
+          filter: state.selectedFilter,
+        ),
+      );
     }
   }
 
@@ -225,7 +262,9 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> _showEditProjectDialog(
-      BuildContext context, Project project) async {
+    BuildContext context,
+    Project project,
+  ) async {
     final controller = TextEditingController(text: project.name);
     final name = await showDialog<String>(
       context: context,
@@ -253,15 +292,16 @@ class _TasksPageState extends State<TasksPage> {
       ),
     );
     if (name != null && name.isNotEmpty) {
-      context.read<TaskNewBloc>().add(UpdateProject(
-            id: project.id,
-            name: name,
-          ));
+      context.read<TaskNewBloc>().add(
+        UpdateProject(id: project.id, name: name),
+      );
     }
   }
 
   Future<void> _confirmDeleteProject(
-      BuildContext context, Project project) async {
+    BuildContext context,
+    Project project,
+  ) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -289,8 +329,9 @@ class _TasksPageState extends State<TasksPage> {
   Future<void> _showCreateTaskSheet(BuildContext context) async {
     final repo = context.read<TaskNewBloc>().projectRepository;
     final blocState = context.read<TaskNewBloc>().state;
-    final initialProjectId =
-        blocState is TaskNewLoaded ? blocState.selectedProjectId : null;
+    final initialProjectId = blocState is TaskNewLoaded
+        ? blocState.selectedProjectId
+        : null;
 
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -299,18 +340,24 @@ class _TasksPageState extends State<TasksPage> {
       builder: (_) => TaskCreateSheet(
         initialProjectId: initialProjectId,
         projectRepository: repo,
+        availableParentTasks: blocState is TaskNewLoaded
+            ? blocState.tasks.where((t) => t.status == 0).toList()
+            : [],
       ),
     );
 
     if (result != null && context.mounted) {
-      context.read<TaskNewBloc>().add(CreateTask(
-        projectId: (result['projectId'] as String?) ?? 'inbox',
-        title: result['title'] as String,
-        description: result['description'] as String? ?? '',
-        priority: result['priority'] as int? ?? 0,
-        startDate: result['startDate'] as int?,
-        dueDate: result['dueDate'] as int?,
-      ));
+      context.read<TaskNewBloc>().add(
+        CreateTask(
+          projectId: (result['projectId'] as String?) ?? 'inbox',
+          title: result['title'] as String,
+          description: result['description'] as String? ?? '',
+          priority: result['priority'] as int? ?? 0,
+          startDate: result['startDate'] as int?,
+          dueDate: result['dueDate'] as int?,
+          parentId: result['parentId'] as String?,
+        ),
+      );
     }
   }
 }

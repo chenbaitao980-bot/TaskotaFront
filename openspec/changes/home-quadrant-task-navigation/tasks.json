@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+"mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "_TimelineTask 加 parentId 字段",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "时间轴增加天/小时视图切换开关",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "小时视图：按24小时列展示当天任务，支持左右滑动",
+      "done": true
+    },
+    {
+      "id": 4,
+      "text": "四象限点击任务选中+时间轴滚动(天/小时视图均支持)",
+      "done": true
+    },
+    {
+      "id": 5,
+      "text": "子任务点击切换+时间轴滚动",
+      "done": true
+    },
+    {
+      "id": 6,
+      "text": "详情区增加父任务展示和点击切换",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "四象限点击任一项验证时间轴滚动和详情切换",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "子任务点击验证切换",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "有父任务时验证展示并可点击切换",
+      "done": false
+    },
+    {
+      "id": 4,
+      "text": "默认显示小时视图，可切换回天视图",
+      "done": false
+    },
+    {
+      "id": 5,
+      "text": "小时视图下左右滑动正常，任务按小时定位",
+      "done": false
+    }
+  ]
+}

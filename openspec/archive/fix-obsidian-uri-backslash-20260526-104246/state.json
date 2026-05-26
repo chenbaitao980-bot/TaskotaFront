@@ -1,0 +1,58 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T10:16:35.043104+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T10:16:53.605478+00:00",
+      "reason": "根因: Process.run 双引号被转义导致 URI 前面多反斜杠"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T10:16:58.931439+00:00",
+      "reason": "用户截图确认问题"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T10:17:53.645476+00:00",
+      "reason": "开始实施"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T10:17:53.825850+00:00",
+      "reason": "rundll32 ShellExecute 替代 cmd start，零错误"
+    },
+    {
+      "from": "implemented",
+      "to": "verified",
+      "at": "2026-05-26T02:40:43.344780+00:00",
+      "reason": "用户确认功能正常"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-26T02:40:43.344780+00:00",
+      "reason": "所有变更已验证，归档"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\fix-obsidian-uri-backslash\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T10:18:00.483021+00:00"
+  }
+}

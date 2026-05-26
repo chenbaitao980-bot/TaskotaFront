@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "mode": "command",
+  "command_or_url": "flutter test test\\\\widget_test.dart",
+  "started_at": "2026-05-26T13:15:45.931175+00:00",
+  "finished_at": "2026-05-26T13:15:59.533594+00:00",
+  "exit_code": 0,
+  "stdout_tail": "00:00 +0: loading E:/claude/project2/smart_assistant/test/widget_test.dart\n00:00 +0: (setUpAll)\nsupabase.supabase_flutter: INFO: ***** Supabase init completed ***** \n00:00 +0: shows login page when unauthenticated\n00:01 +1: (tearDownAll)\n00:01 +1: All tests passed!\n",
+  "stderr_tail": ""
+}

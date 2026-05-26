@@ -1,0 +1,82 @@
+{
+  "status": "archived",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T08:08:06.517403+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T08:10:17.102816+00:00",
+      "reason": "四件套已就绪，文档正文中文达标"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T08:10:54.597402+00:00",
+      "reason": "用户已确认方案"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T08:10:54.796057+00:00",
+      "reason": "开始实施"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T08:16:20.483622+00:00",
+      "reason": "实施任务全部完成：6个文件变更、flutter analyze无警告、回归用例已创建"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T08:16:22.475557+00:00",
+      "reason": "门禁全部通过"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "implementing",
+      "at": "2026-05-26T08:24:38.738219+00:00",
+      "reason": "用户验证发现bug，返回实施修复"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-26T08:24:38.930836+00:00",
+      "reason": "Bug-001已修复：_isDescendant参数修正 + BLoC循环守卫"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-26T08:24:45.513469+00:00",
+      "reason": "门禁全部通过"
+    },
+    {
+      "from": "user_verification_pending",
+      "to": "verified",
+      "at": "2026-05-26T08:48:53.139075+00:00",
+      "reason": "用户验证通过，7项验收全部完成：树形展示、拖拽、展开折叠、筛选兼容均正常"
+    },
+    {
+      "from": "verified",
+      "to": "archived",
+      "at": "2026-05-26T08:49:20.030496+00:00",
+      "reason": "change archived"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": true,
+  "archivable": true,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\task-tree-drag-reorder\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-26T08:24:45.326447+00:00"
+  }
+}

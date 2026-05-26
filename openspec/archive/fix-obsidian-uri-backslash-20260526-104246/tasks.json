@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {"id": 1, "text": "obsidian_service.dart: rundll32 + ShellExecute 替代 cmd start", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "点击跳转无反斜杠错误", "done": false},
+    {"id": 2, "text": "URI 完整传递不含转义字符", "done": false}
+  ]
+}
