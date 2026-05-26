@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
+import '../../../blocs/task_new/task_bloc.dart';
+import '../../../blocs/task_new/task_event.dart';
+import '../../../widgets/calendar_date_picker.dart';
 
 class TaskCard extends StatelessWidget {
   final Task task;
@@ -100,8 +104,7 @@ class TaskCard extends StatelessWidget {
                   GestureDetector(
                     onTap: onToggleExpand,
                     child: Container(
-                      width: 24,
-                      height: 24,
+                      width: 24, height: 24,
                       alignment: Alignment.center,
                       child: Icon(
                         isExpanded
@@ -115,13 +118,15 @@ class TaskCard extends StatelessWidget {
                 else
                   const SizedBox(width: 24),
 
-                // 优先级色条
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: isCompleted ? AppTheme.textHint : priorityColor,
-                    borderRadius: BorderRadius.circular(2),
+                // 优先级色条（点击循环切换优先级）
+                GestureDetector(
+                  onTap: () => _cyclePriority(context, task),
+                  child: Container(
+                    width: 4, height: 40,
+                    decoration: BoxDecoration(
+                      color: isCompleted ? AppTheme.textHint : priorityColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -130,8 +135,7 @@ class TaskCard extends StatelessWidget {
                 GestureDetector(
                   onTap: onToggle,
                   child: Container(
-                    width: 22,
-                    height: 22,
+                    width: 22, height: 22,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isCompleted
@@ -219,15 +223,29 @@ class TaskCard extends StatelessWidget {
                   ),
                 ),
 
-                // 截止日期
+                // 截止日期（点击编辑日期）
                 if (task.dueDate != null)
-                  Text(
-                    _formatDate(task.dueDate!),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _isOverdue(task.dueDate!)
-                          ? AppTheme.error
-                          : AppTheme.textHint,
+                  GestureDetector(
+                    onTap: () => _editDate(context, task),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _isOverdue(task.dueDate!)
+                            ? AppTheme.error.withValues(alpha: 0.08)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _formatDate(task.dueDate!),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _isOverdue(task.dueDate!)
+                              ? AppTheme.error
+                              : AppTheme.primaryColor,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppTheme.primaryColor.withValues(alpha: 0.3),
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -238,16 +256,42 @@ class TaskCard extends StatelessWidget {
     );
   }
 
+  void _cyclePriority(BuildContext context, Task task) {
+    final values = [0, 1, 3, 5];
+    final idx = values.indexOf(task.priority);
+    final next = values[(idx + 1) % values.length];
+    context.read<TaskNewBloc>().add(UpdateTask(id: task.id, priority: next));
+  }
+
+  Future<void> _editDate(BuildContext context, Task task) async {
+    final now = DateTime.now();
+    final current = task.dueDate != null
+        ? DateTime.fromMillisecondsSinceEpoch(task.dueDate!)
+        : now;
+    final picked = await showCalendarDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked == null || !context.mounted) return;
+    final updated = DateTime(
+      picked.year, picked.month, picked.day,
+      current.hour, current.minute,
+    );
+    context.read<TaskNewBloc>().add(UpdateTask(
+      id: task.id,
+      startDate: task.startDate,
+      dueDate: updated.millisecondsSinceEpoch,
+    ));
+  }
+
   Color _priorityColor(int priority) {
     switch (priority) {
-      case 5:
-        return AppTheme.priorityP0;
-      case 3:
-        return AppTheme.priorityP1;
-      case 1:
-        return AppTheme.priorityP3;
-      default:
-        return AppTheme.borderSubtle;
+      case 5: return AppTheme.priorityP0;
+      case 3: return AppTheme.priorityP1;
+      case 1: return AppTheme.priorityP3;
+      default: return AppTheme.borderSubtle;
     }
   }
 

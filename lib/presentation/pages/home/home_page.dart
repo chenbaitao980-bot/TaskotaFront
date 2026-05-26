@@ -13,6 +13,7 @@ import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
 import '../../blocs/task_new/task_state.dart';
+import '../../widgets/calendar_date_picker.dart';
 import '../../widgets/create_schedule_dialog.dart';
 import '../calendar/calendar_page.dart';
 import '../onboarding/onboarding_page.dart';
@@ -135,7 +136,7 @@ class _HomePageState extends State<HomePage> {
         if (mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('日程已创建')));
+          ).showSnackBar(SnackBar(content: Text('日程已创建')));
         }
       } catch (e) {
         if (mounted) {
@@ -194,7 +195,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('日程已更新')));
+        ).showSnackBar(SnackBar(content: Text('日程已更新')));
       }
     }
   }
@@ -242,7 +243,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('日程已删除')));
+        ).showSnackBar(SnackBar(content: Text('日程已删除')));
       }
     }
   }
@@ -1386,36 +1387,43 @@ class _HomeContentState extends State<_HomeContent> {
                     ),
                   ],
                 ),
-                // Date
+                // Date + Priority (可点击)
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     const Icon(Icons.schedule, size: 14, color: AppTheme.textSecondary),
                     const SizedBox(width: 4),
-                    Text(
-                      _formatTaskDate(task.date),
-                      style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
-                        color: AppTheme.textSecondary,
-                        fontSize: 12,
+                    GestureDetector(
+                      onTap: () => _quickEditDate(task),
+                      child: Text(
+                        _formatTaskDate(task.date),
+                        style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
+                          color: AppTheme.primaryColor,
+                          fontSize: 12,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppTheme.primaryColor.withValues(alpha: 0.3),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _priorityColor(task.priority)
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        task.priority,
-                        style: TextStyle(
-                          color: _priorityColor(task.priority),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                    GestureDetector(
+                      onTap: () => _quickCyclePriority(task),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _priorityColor(task.priority).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: _priorityColor(task.priority).withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Text(
+                          task.priority,
+                          style: TextStyle(
+                            color: _priorityColor(task.priority),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -1767,9 +1775,48 @@ class _HomeContentState extends State<_HomeContent> {
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂不支持编辑此类型任务')),
+        SnackBar(content: Text('暂不支持编辑此类型任务')),
       );
     }
+  }
+
+  Future<void> _quickEditDate(_TimelineTask task) async {
+    if (task.source != 'db' || widget.taskRepository == null) return;
+    final now = DateTime.now();
+    final picked = await showCalendarDatePicker(
+      context: context,
+      initialDate: task.date,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked == null || !mounted) return;
+    final updated = DateTime(picked.year, picked.month, picked.day, task.date.hour, task.date.minute);
+    await widget.taskRepository!.update(task.taskId,
+      startDate: updated.millisecondsSinceEpoch,
+      dueDate: updated.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+    );
+    _loadData();
+  }
+
+  void _quickCyclePriority(_TimelineTask task) {
+    if (task.source != 'db' || widget.taskRepository == null) return;
+    final values = [0, 1, 3, 5];
+    final current = int.tryParse(task.priority) ?? 0;
+    final idx = values.indexOf(current);
+    final next = values[(idx < 0 ? 0 : idx + 1) % values.length];
+    widget.taskRepository!.update(task.taskId, priority: next);
+    final listIdx = _timelineTasks.indexOf(task);
+    if (listIdx >= 0) {
+      _timelineTasks[listIdx] = _TimelineTask(
+        id: task.id, title: task.title, description: task.description,
+        date: task.date, isCompleted: task.isCompleted,
+        priority: next.toString(), source: task.source,
+        projectId: task.projectId, taskId: task.taskId, parentId: task.parentId,
+      );
+      _applyProjectFilter();
+      if (_selectedTaskId == task.id) _selectedTask = _timelineTasks[listIdx];
+    }
+    if (mounted) setState(() {});
   }
 
   void _toggleTaskCompletion(_TimelineTask task) async {
@@ -1868,34 +1915,26 @@ class _HomeContentState extends State<_HomeContent> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    // Categorize tasks
-    final q1 = <_TimelineTask>[]; // Urgent & Important
-    final q2 = <_TimelineTask>[]; // Not Urgent & Important
-    final q3 = <_TimelineTask>[]; // Urgent & Not Important
-    final q4 = <_TimelineTask>[]; // Not Urgent & Not Important
-    final overdue = <_TimelineTask>[]; // Overdue (any quadrant)
-
-    for (final task in _filteredTasks) {
-      if (task.isCompleted) continue;
-      final isUrgent = task.date.difference(now).inDays <= 3 &&
-          task.date.isAfter(now.subtract(const Duration(days: 1)));
-      final isImportant =
-          task.priority == 'P0' || task.priority == 'P1';
-      final isOverdue = task.date.isBefore(today);
-
-      if (isOverdue) {
-        overdue.add(task);
-      }
-
-      if (isUrgent && isImportant) {
-        q1.add(task);
-      } else if (!isUrgent && isImportant) {
-        q2.add(task);
-      } else if (isUrgent && !isImportant) {
-        q3.add(task);
-      } else {
-        q4.add(task);
-      }
+    final overdueCount = _filteredTasks.where((t) => !t.isCompleted && t.date.isBefore(today)).length;
+    final scored = <_TimelineTask, int>{};
+    for (final t in _filteredTasks) {
+      if (t.isCompleted) continue;
+      final pmap = <String, int>{'P0': 5, 'P1': 3, 'P2': 1, 'P3': 0};
+      final p = pmap[t.priority] ?? 0;
+      final d = t.date.difference(now).inDays;
+      final u = d < 0 ? 10 : d <= 3 ? 5 : d <= 7 ? 2 : d <= 30 ? 0 : -2;
+      scored[t] = p * 2 + u;
+    }
+    final sorted = scored.keys.toList()..sort((a, b) => scored[b]!.compareTo(scored[a]!));
+    final q1 = <_TimelineTask>[], q2 = <_TimelineTask>[];
+    final q3 = <_TimelineTask>[], q4 = <_TimelineTask>[];
+    for (final t in sorted) {
+      final urgent = t.date.difference(now).inDays <= 3;
+      final important = t.priority == 'P0' || t.priority == 'P1';
+      (urgent ? (important ? q1 : q3) : (important ? q2 : q4)).add(t);
+    }
+    for (final q in [q1, q2, q3, q4]) {
+      if (q.length > 5) q.removeRange(5, q.length);
     }
 
     return Column(
@@ -1916,7 +1955,7 @@ class _HomeContentState extends State<_HomeContent> {
         ),
         const SizedBox(height: 12),
         // Overdue banner
-        if (overdue.isNotEmpty)
+        if (overdueCount > 0)
           Container(
             width: double.infinity,
             margin: const EdgeInsets.only(bottom: 12),
@@ -1934,7 +1973,7 @@ class _HomeContentState extends State<_HomeContent> {
                     size: 16, color: AppTheme.error),
                 const SizedBox(width: 6),
                 Text(
-                  '${overdue.length} 个任务已逾期',
+                  '$overdueCount 个任务已逾期',
                   style: const TextStyle(
                     color: AppTheme.error,
                     fontSize: 13,
@@ -1956,7 +1995,6 @@ class _HomeContentState extends State<_HomeContent> {
                       title: '重要不紧急',
                       color: const Color(0xFF4A90D9),
                       tasks: q2,
-                      isOverdue: false,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1965,7 +2003,6 @@ class _HomeContentState extends State<_HomeContent> {
                       title: '紧急重要',
                       color: const Color(0xFFE74C3C),
                       tasks: q1,
-                      isOverdue: false,
                     ),
                   ),
                 ],
@@ -1978,7 +2015,6 @@ class _HomeContentState extends State<_HomeContent> {
                       title: '不重要不紧急',
                       color: const Color(0xFF95A5A6),
                       tasks: q4,
-                      isOverdue: false,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1987,7 +2023,6 @@ class _HomeContentState extends State<_HomeContent> {
                       title: '紧急不重要',
                       color: const Color(0xFFF39C12),
                       tasks: q3,
-                      isOverdue: false,
                     ),
                   ),
                 ],
@@ -2003,7 +2038,6 @@ class _HomeContentState extends State<_HomeContent> {
     required String title,
     required Color color,
     required List<_TimelineTask> tasks,
-    required bool isOverdue,
   }) {
     // Find overdue tasks in this quadrant
     final now = DateTime.now();

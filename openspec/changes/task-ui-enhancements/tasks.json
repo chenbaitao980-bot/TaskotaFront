@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "SnackBar轻量化改造",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "任务条快速操作优先级/日期",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "四象限综合评分算法",
+      "done": false
+    },
+    {
+      "id": 4,
+      "text": "验证",
+      "done": false
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "SnackBar点击关闭",
+      "done": false
+    },
+    {
+      "id": 2,
+      "text": "任务条可改优先级/日期",
+      "done": false
+    },
+    {
+      "id": 3,
+      "text": "四象限展示≤5个/格",
+      "done": false
+    },
+    {
+      "id": 4,
+      "text": "flutter analyze通过",
+      "done": false
+    }
+  ]
+}

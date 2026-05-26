@@ -1,0 +1,35 @@
+{
+  "status": "implementing",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-26T20:11:15.891446+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-26T20:11:20.573139+00:00",
+      "reason": "四件套就绪"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-26T20:14:01.018882+00:00",
+      "reason": "用户已确认实施"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-26T20:14:01.503650+00:00",
+      "reason": "开始实施"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": false,
+  "verified_by_user": false,
+  "archivable": false,
+  "bugfix_precipitated": false
+}
