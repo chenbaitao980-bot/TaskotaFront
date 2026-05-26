@@ -122,10 +122,13 @@ class TaskCard extends StatelessWidget {
                 GestureDetector(
                   onTap: () => _cyclePriority(context, task),
                   child: Container(
-                    width: 4, height: 40,
-                    decoration: BoxDecoration(
-                      color: isCompleted ? AppTheme.textHint : priorityColor,
-                      borderRadius: BorderRadius.circular(2),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Container(
+                      width: 4, height: 32,
+                      decoration: BoxDecoration(
+                        color: isCompleted ? AppTheme.textHint : priorityColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
                 ),

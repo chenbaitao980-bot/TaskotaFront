@@ -1056,8 +1056,8 @@ class _HomeContentState extends State<_HomeContent> {
         _modeSwitchGuard = true;
         setState(() => _timelineMode = mode);
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _modeSwitchGuard = false;
           _scrollToNearestTask();
+          _modeSwitchGuard = false;
         });
       },
       child: Container(
