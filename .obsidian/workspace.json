@@ -185,8 +185,6 @@
   },
   "active": "ef46ad0a87e22972",
   "lastOpenFiles": [
-    "lib/presentation/pages/tasks/widgets/task_card.dart.tmp.15500.b7f094d2729c",
-    "lib/presentation/pages/home/home_page.dart.tmp.15500.a800dd438304",
     "smart_assistant_windows_release/version.txt",
     "smart_assistant_windows_release/data/flutter_assets/shaders/stretch_effect.frag",
     "smart_assistant_windows_release/data/flutter_assets/shaders/ink_sparkle.frag",
@@ -196,6 +194,8 @@
     "smart_assistant_windows_release/data/flutter_assets/packages/cupertino_icons",
     "smart_assistant_windows_release/data/flutter_assets/packages",
     "smart_assistant_windows_release/data/flutter_assets/fonts/MaterialIcons-Regular.otf",
+    "smart_assistant_windows_release/data/flutter_assets/fonts",
+    "smart_assistant_windows_release/data/flutter_assets/NOTICES.Z",
     "openspec/changes/home-quadrant-task-navigation/tasks.md",
     "openspec/changes/task-detail-enhancements/tasks.md",
     "openspec/changes/task-ui-enhancements/tasks.md",
