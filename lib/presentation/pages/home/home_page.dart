@@ -404,6 +404,7 @@ class _HomeContentState extends State<_HomeContent> {
   static const int _daysAfter = 180;
 
   bool _loading = false;
+  bool _modeSwitchGuard = false;
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
   String? _filterProjectId;
@@ -482,7 +483,7 @@ class _HomeContentState extends State<_HomeContent> {
         description: t.description,
         date: date,
         isCompleted: t.status == 2,
-        priority: t.priority.toString(),
+        priority: _dbPriorityToLabel(t.priority),
         source: 'db',
         projectId: t.projectId,
         taskId: t.id,
@@ -627,6 +628,12 @@ class _HomeContentState extends State<_HomeContent> {
       _selectedTask = task;
     });
 
+    // 模式切换守卫：用户手动点击天/小时模式切换时不触发自动切换
+    if (_modeSwitchGuard) {
+      _scrollToTask(task);
+      return;
+    }
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final taskDay = DateTime(task.date.year, task.date.month, task.date.day);
@@ -634,19 +641,27 @@ class _HomeContentState extends State<_HomeContent> {
 
     // 自动切换时间轴模式
     if (!isToday && _timelineMode == 'hour') {
-      // 非当天任务：切换到天视图并滚动到对应天
       setState(() => _timelineMode = 'day');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToTask(task);
       });
     } else if (isToday && _timelineMode == 'day') {
-      // 当天任务：切换回小时视图
       setState(() => _timelineMode = 'hour');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToTask(task);
       });
     } else {
       _scrollToTask(task);
+    }
+  }
+
+  /// Normalize DB priority int to label format.
+  String _dbPriorityToLabel(int p) {
+    switch (p) {
+      case 5: return 'P0';
+      case 3: return 'P1';
+      case 1: return 'P2';
+      default: return 'P3';
     }
   }
 
@@ -658,8 +673,28 @@ class _HomeContentState extends State<_HomeContent> {
         return AppTheme.priorityP1;
       case 'P2':
         return AppTheme.priorityP2;
-      default:
+      case 'P3':
         return AppTheme.priorityP3;
+      default:
+        // Handle numeric format from DB
+        if (priority == '5') return AppTheme.priorityP0;
+        if (priority == '3') return AppTheme.priorityP1;
+        if (priority == '1') return AppTheme.priorityP2;
+        return AppTheme.priorityP3;
+    }
+  }
+
+  String _priorityLabel(String priority) {
+    switch (priority) {
+      case 'P0': return '紧急';
+      case 'P1': return '重要';
+      case 'P2': return '普通';
+      case 'P3': return '低';
+      default:
+        if (priority == '5') return '紧急';
+        if (priority == '3') return '重要';
+        if (priority == '1') return '普通';
+        return '低';
     }
   }
 
@@ -1018,8 +1053,10 @@ class _HomeContentState extends State<_HomeContent> {
     return GestureDetector(
       onTap: () {
         if (_timelineMode == mode) return;
+        _modeSwitchGuard = true;
         setState(() => _timelineMode = mode);
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          _modeSwitchGuard = false;
           _scrollToNearestTask();
         });
       },
@@ -1417,19 +1454,32 @@ class _HomeContentState extends State<_HomeContent> {
                             color: _priorityColor(task.priority).withValues(alpha: 0.3),
                           ),
                         ),
-                        child: Text(
-                          task.priority,
-                          style: TextStyle(
-                            color: _priorityColor(task.priority),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8, height: 8,
+                              decoration: BoxDecoration(
+                                color: _priorityColor(task.priority),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _priorityLabel(task.priority),
+                              style: TextStyle(
+                                color: _priorityColor(task.priority),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ],
                 ),
-                // Project
+                //              ),\n                  ],\n                ),\n                // Project",}
                 if (task.projectId != null &&
                     _projectCache.containsKey(task.projectId!)) ...[
                   const SizedBox(height: 10),
@@ -1800,17 +1850,21 @@ class _HomeContentState extends State<_HomeContent> {
 
   void _quickCyclePriority(_TimelineTask task) {
     if (task.source != 'db' || widget.taskRepository == null) return;
-    final values = [0, 1, 3, 5];
-    final current = int.tryParse(task.priority) ?? 0;
-    final idx = values.indexOf(current);
-    final next = values[(idx < 0 ? 0 : idx + 1) % values.length];
-    widget.taskRepository!.update(task.taskId, priority: next);
+    // Map label back to DB value
+    const labelToDb = {'P3': 0, 'P2': 1, 'P1': 3, 'P0': 5};
+    final dbValues = [0, 1, 3, 5];
+    final labels = ['P3', 'P2', 'P1', 'P0'];
+    int currentLabelIdx = labels.indexOf(task.priority);
+    if (currentLabelIdx < 0) currentLabelIdx = 0;
+    final nextLabel = labels[(currentLabelIdx + 1) % labels.length];
+    final nextDbValue = labelToDb[nextLabel]!;
+    widget.taskRepository!.update(task.taskId, priority: nextDbValue);
     final listIdx = _timelineTasks.indexOf(task);
     if (listIdx >= 0) {
       _timelineTasks[listIdx] = _TimelineTask(
         id: task.id, title: task.title, description: task.description,
         date: task.date, isCompleted: task.isCompleted,
-        priority: next.toString(), source: task.source,
+        priority: nextLabel, source: task.source,
         projectId: task.projectId, taskId: task.taskId, parentId: task.parentId,
       );
       _applyProjectFilter();

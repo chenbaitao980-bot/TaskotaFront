@@ -41,7 +41,7 @@ class TaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCompleted = task.status == 2;
     final progressPercent = progress.clamp(0, 100).toInt();
-    final priorityColor = _priorityColor(task.priority);
+    final priorityColor = _priorityColorByInt(task.priority);
 
     return Slidable(
       endActionPane: ActionPane(
@@ -256,6 +256,24 @@ class TaskCard extends StatelessWidget {
     );
   }
 
+  String _priorityLabel(int p) {
+    switch (p) {
+      case 5: return '紧急';
+      case 3: return '重要';
+      case 1: return '普通';
+      default: return '低';
+    }
+  }
+
+  Color _priorityColor(String label) {
+    switch (label) {
+      case '紧急': return AppTheme.priorityP0;
+      case '重要': return AppTheme.priorityP1;
+      case '普通': return AppTheme.priorityP2;
+      default: return AppTheme.priorityP3;
+    }
+  }
+
   void _cyclePriority(BuildContext context, Task task) {
     final values = [0, 1, 3, 5];
     final idx = values.indexOf(task.priority);
@@ -286,7 +304,7 @@ class TaskCard extends StatelessWidget {
     ));
   }
 
-  Color _priorityColor(int priority) {
+  Color _priorityColorByInt(int priority) {
     switch (priority) {
       case 5: return AppTheme.priorityP0;
       case 3: return AppTheme.priorityP1;
