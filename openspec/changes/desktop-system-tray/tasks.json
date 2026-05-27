@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {"id": 1, "text": "添加 system_tray 和 window_manager 依赖", "done": true},
+    {"id": 2, "text": "配置窗口关闭事件：拦截关闭改为隐藏到系统托盘", "done": true},
+    {"id": 3, "text": "实现系统托盘图标和右键菜单（显示/退出）", "done": true},
+    {"id": 4, "text": "main.dart 初始化系统托盘，关联通知服务", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "关闭窗口后应用仍在系统托盘运行", "done": false},
+    {"id": 2, "text": "托盘右键菜单可打开窗口和退出", "done": false},
+    {"id": 3, "text": "dart analyze 通过", "done": true}
+  ]
+}

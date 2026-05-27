@@ -26,9 +26,26 @@ CREATE TABLE IF NOT EXISTS schedules (
     metadata JSONB,
     source TEXT DEFAULT 'manual',
     parent_task_id UUID,
+    remind_before_minutes INTEGER DEFAULT 15,
+    reminder_enabled BOOLEAN DEFAULT true,
+    is_repeating BOOLEAN DEFAULT false,
+    repeat_interval INTEGER,
+    reminder_type TEXT DEFAULT 'once',
+    sync_status TEXT DEFAULT 'local',
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- 提醒表（已存在，补充索引）
+CREATE INDEX IF NOT EXISTS idx_reminders_schedule ON reminders(schedule_id);
+
+-- 兼容：为已存在的 schedules 表添加提醒字段（如有重复运行忽略）
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS remind_before_minutes INTEGER DEFAULT 15;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN DEFAULT true;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS is_repeating BOOLEAN DEFAULT false;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS repeat_interval INTEGER;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS reminder_type TEXT DEFAULT 'once';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS sync_status TEXT DEFAULT 'local';
 
 -- 3. 任务拆解表（树形结构）
 CREATE TABLE IF NOT EXISTS task_breakdowns (
@@ -141,6 +158,18 @@ CREATE TRIGGER update_schedules_updated_at
 
 CREATE TRIGGER update_task_breakdowns_updated_at
     BEFORE UPDATE ON task_breakdowns FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 本地任务云同步表（存储 Drift 本地任务的 JSON 快照，用于跨设备同步）
+CREATE TABLE IF NOT EXISTS local_task_sync (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    tasks_data JSONB NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE local_task_sync ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can only access own task sync" ON local_task_sync
+    FOR ALL USING (auth.uid() = user_id);
 
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_schedules_user_time ON schedules(user_id, start_time);

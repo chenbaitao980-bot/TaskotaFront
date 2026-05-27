@@ -1,6 +1,26 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 
+/// 提前时间选项
+const List<Map<String, dynamic>> _remindBeforeOptions = [
+  {'label': '5 分钟', 'value': 5},
+  {'label': '10 分钟', 'value': 10},
+  {'label': '15 分钟', 'value': 15},
+  {'label': '30 分钟', 'value': 30},
+  {'label': '1 小时', 'value': 60},
+  {'label': '2 小时', 'value': 120},
+  {'label': '1 天', 'value': 1440},
+];
+
+/// 重复间隔选项
+const List<Map<String, dynamic>> _repeatIntervalOptions = [
+  {'label': '每 5 分钟', 'value': 5},
+  {'label': '每 10 分钟', 'value': 10},
+  {'label': '每 15 分钟', 'value': 15},
+  {'label': '每 30 分钟', 'value': 30},
+  {'label': '每 1 小时', 'value': 60},
+];
+
 class CreateScheduleDialog extends StatefulWidget {
   final String? initialTitle;
   final DateTime? initialDate;
@@ -8,6 +28,12 @@ class CreateScheduleDialog extends StatefulWidget {
   final DateTime? initialEndTime;
   final String? initialPriority;
   final bool isEditing;
+
+  // 提醒相关初始值（编辑时使用）
+  final int? initialRemindBeforeMinutes;
+  final bool? initialReminderEnabled;
+  final bool? initialIsRepeating;
+  final int? initialRepeatInterval;
 
   const CreateScheduleDialog({
     super.key,
@@ -17,6 +43,10 @@ class CreateScheduleDialog extends StatefulWidget {
     this.initialEndTime,
     this.initialPriority,
     this.isEditing = false,
+    this.initialRemindBeforeMinutes,
+    this.initialReminderEnabled,
+    this.initialIsRepeating,
+    this.initialRepeatInterval,
   });
 
   @override
@@ -31,6 +61,12 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
   late String _priority;
+
+  // 提醒状态
+  late bool _reminderEnabled;
+  late int _remindBeforeMinutes;
+  late bool _isRepeating;
+  late int? _repeatInterval;
 
   @override
   void initState() {
@@ -58,6 +94,12 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
     _startTime = TimeOfDay.fromDateTime(initialStart);
     _endTime = TimeOfDay.fromDateTime(initialEnd);
     _priority = widget.initialPriority ?? 'P2';
+
+    // 提醒初始化：编辑时有初始值，新建时用默认值
+    _reminderEnabled = widget.initialReminderEnabled ?? true;
+    _remindBeforeMinutes = widget.initialRemindBeforeMinutes ?? 15;
+    _isRepeating = widget.initialIsRepeating ?? false;
+    _repeatInterval = widget.initialRepeatInterval;
   }
 
   @override
@@ -118,6 +160,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 8),
+              // ── 标题 ──
               TextField(
                 controller: _titleController,
                 decoration: const InputDecoration(
@@ -127,6 +170,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                 autofocus: true,
               ),
               const SizedBox(height: 12),
+              // ── 描述 ──
               TextField(
                 controller: _descController,
                 decoration: const InputDecoration(
@@ -136,6 +180,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                 maxLines: 2,
               ),
               const SizedBox(height: 20),
+              // ── 时间区块 ──
               Container(
                 decoration: BoxDecoration(
                   color: AppTheme.bgInput.withValues(alpha: 0.5),
@@ -186,6 +231,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                 ),
               ),
               const SizedBox(height: 20),
+              // ── 优先级 ──
               Row(
                 children: [
                   const Text(
@@ -211,6 +257,9 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+              // ── 提醒设置区块 ──
+              _buildReminderSection(),
             ],
           ),
         ),
@@ -243,6 +292,163 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
           child: const Text('保存'),
         ),
       ],
+    );
+  }
+
+  /// 提醒配置 UI
+  Widget _buildReminderSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgInput.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderSubtle.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          // ── 启用提醒 ──
+          SwitchListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            isThreeLine: true,
+            secondary: Icon(
+              Icons.notifications_active,
+              size: 20,
+              color: _reminderEnabled
+                  ? AppTheme.primaryColor
+                  : AppTheme.textHint,
+            ),
+            title: const Text(
+              '启用提醒',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            subtitle: Text(
+              _reminderEnabled ? '将在日程开始前通知您' : '不会发送提醒',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            value: _reminderEnabled,
+            onChanged: (v) => setState(() => _reminderEnabled = v),
+          ),
+          if (_reminderEnabled) ...[
+            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            // ── 提前时间选择 ──
+            _buildDropdownTile(
+              icon: Icons.timer_outlined,
+              label: '提前提醒',
+              value: _remindBeforeMinutes,
+              options: _remindBeforeOptions,
+              onChanged: (v) => setState(() => _remindBeforeMinutes = v),
+            ),
+            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            // ── 重复/一次性 ──
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              isThreeLine: true,
+              secondary: Icon(
+                Icons.repeat,
+                size: 20,
+                color: _isRepeating
+                    ? AppTheme.warning
+                    : AppTheme.textHint,
+              ),
+              title: const Text(
+                '重复提醒',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              subtitle: Text(
+                _isRepeating ? '将按间隔重复提醒直到您处理' : '仅提醒一次',
+                style:
+                    const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              value: _isRepeating,
+              onChanged: (v) => setState(() => _isRepeating = v),
+            ),
+            if (_isRepeating) ...[
+              const Divider(
+                  height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+              _buildDropdownTile(
+                icon: Icons.hourglass_bottom,
+                label: '重复间隔',
+                value: _repeatInterval ?? 5,
+                options: _repeatIntervalOptions,
+                onChanged: (v) => setState(() => _repeatInterval = v),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 带下拉菜单的 ListTile
+  Widget _buildDropdownTile({
+    required IconData icon,
+    required String label,
+    required int value,
+    required List<Map<String, dynamic>> options,
+    required ValueChanged<int> onChanged,
+  }) {
+    final selectedLabel =
+        options.firstWhere((o) => o['value'] == value)['label'] as String;
+    return ListTile(
+      minVerticalPadding: 8,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
+      title: Text(
+        label,
+        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+      ),
+      subtitle: Text(
+        selectedLabel,
+        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+      ),
+      trailing: const Icon(
+        Icons.arrow_drop_down,
+        size: 20,
+        color: AppTheme.textHint,
+      ),
+      onTap: () => _showDropdownPicker(
+        label: label,
+        value: value,
+        options: options,
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  /// 弹出下拉选择器
+  void _showDropdownPicker({
+    required String label,
+    required int value,
+    required List<Map<String, dynamic>> options,
+    required ValueChanged<int> onChanged,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(label),
+        children: options.map((opt) {
+          final optValue = opt['value'] as int;
+          final optLabel = opt['label'] as String;
+          return RadioListTile<int>(
+            title: Text(optLabel),
+            value: optValue,
+            groupValue: value,
+            onChanged: (v) {
+              if (v != null) {
+                onChanged(v);
+                Navigator.pop(ctx);
+              }
+            },
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -310,6 +516,12 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
       'startTime': startDateTime,
       'endTime': endDateTime,
       'priority': _priority,
+      // 提醒字段
+      'reminderEnabled': _reminderEnabled,
+      'remindBeforeMinutes': _remindBeforeMinutes,
+      'isRepeating': _isRepeating,
+      'repeatInterval': _isRepeating ? _repeatInterval : null,
+      'reminderType': _isRepeating ? 'repeat' : 'once',
     });
   }
 

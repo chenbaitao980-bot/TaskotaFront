@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {"id": 1, "text": "桌面端通知改为Windows右下角Toast弹窗（替换MessageBox）", "done": true},
+    {"id": 2, "text": "创建/编辑任务时分钟选择器改为滚轮选择，支持0-59所有分钟值", "done": true},
+    {"id": 3, "text": "日历时间轴拖拽分钟限制移除（0/15/30/45 → 任意分钟）", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "提醒弹窗在右下角显示，使用Windows原生Toast", "done": false},
+    {"id": 2, "text": "选择时间时可滚动选择任意分钟数", "done": true},
+    {"id": 3, "text": "dart analyze通过", "done": true}
+  ]
+}

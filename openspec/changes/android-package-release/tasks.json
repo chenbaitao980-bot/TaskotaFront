@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {"id": 1, "text": "执行 flutter build apk --release 打包 Android APK", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "build/app/outputs/flutter-apk/app-release.apk 存在且大小合理", "done": true}
+  ]
+}

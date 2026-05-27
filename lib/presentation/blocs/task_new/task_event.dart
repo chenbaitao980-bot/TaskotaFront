@@ -66,6 +66,8 @@ class UpdateTask extends TaskEvent {
   final int? priority;
   final int? startDate;
   final int? dueDate;
+  final int? remindBeforeMinutes;
+  final int? reminderEnabled;
   UpdateTask({
     required this.id,
     this.projectId,
@@ -74,6 +76,8 @@ class UpdateTask extends TaskEvent {
     this.priority,
     this.startDate,
     this.dueDate,
+    this.remindBeforeMinutes,
+    this.reminderEnabled,
   });
   @override
   List<Object?> get props => [
@@ -84,6 +88,8 @@ class UpdateTask extends TaskEvent {
         priority,
         startDate,
         dueDate,
+        remindBeforeMinutes,
+        reminderEnabled,
       ];
 }
 
@@ -227,6 +233,9 @@ class ReorderTaskSiblings extends TaskEvent {
 
 class ExpandAllTasks extends TaskEvent {}
 class CollapseAllTasks extends TaskEvent {}
+
+/// 从云端拉取任务并合并到本地
+class SyncFromCloud extends TaskEvent {}
 
 class TaskEvent extends Equatable {
   @override

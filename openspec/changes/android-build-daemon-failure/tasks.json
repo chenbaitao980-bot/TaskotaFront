@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "mode": "lite",
+  "implementation_tasks": [
+    {
+      "id": 1,
+      "text": "收集并复现构建失败日志",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "定位涉及的 Android/Gradle/Kotlin 配置与代码入口",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "实施最小修复（如需要）",
+      "done": true
+    }
+  ],
+  "verification_items": [
+    {
+      "id": 1,
+      "text": "复跑打包命令或等价 Gradle 任务确认失败消失",
+      "done": true
+    }
+  ]
+}

@@ -4,12 +4,16 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
+  screen_retriever_windows
   speech_to_text_windows
   sqlite3_flutter_libs
+  system_tray
   url_launcher_windows
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  flutter_local_notifications_windows
   jni
 )
 

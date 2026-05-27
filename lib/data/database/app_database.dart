@@ -8,10 +8,23 @@ part 'app_database.g.dart';
 
 // --- 表定义 ---
 
+class ProjectGroups extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get color => text().customConstraint('NOT NULL DEFAULT \'#4772FA\'')();
+  IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class Projects extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get color => text().customConstraint('NOT NULL DEFAULT \'#4772FA\'')();
+  TextColumn? get groupId => text().nullable()();
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get archived => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
@@ -36,6 +49,9 @@ class Tasks extends Table {
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
+  IntColumn get remindBeforeMinutes => integer().customConstraint('NOT NULL DEFAULT 15')();
+  IntColumn get reminderEnabled => integer().customConstraint('NOT NULL DEFAULT 1')();
+  IntColumn? get estimatedMinutes => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -58,12 +74,12 @@ class ChecklistItems extends Table {
 
 // --- 数据库 ---
 
-@DriftDatabase(tables: [Projects, Tasks, ChecklistItems])
+@DriftDatabase(tables: [Projects, Tasks, ChecklistItems, ProjectGroups])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -84,6 +100,15 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 3) {
           await m.addColumn(checklistItems, checklistItems.obsidianUri);
+        }
+        if (from < 4) {
+          await m.addColumn(tasks, tasks.remindBeforeMinutes);
+          await m.addColumn(tasks, tasks.reminderEnabled);
+        }
+        if (from < 5) {
+          await m.createTable(projectGroups);
+          await m.addColumn(projects, projects.groupId);
+          await m.addColumn(tasks, tasks.estimatedMinutes);
         }
       },
     );

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "mode": "standard",
+  "implementation_tasks": [
+    {"id": 1, "text": "修改Schedule实体模型，添加提醒字段（remindBeforeMinutes, isRepeating, repeatInterval, repeatType, isReminderEnabled）", "done": true},
+    {"id": 2, "text": "添加flutter_local_notifications依赖，升级NotificationService支持OS级通知", "done": true},
+    {"id": 3, "text": "修改create_schedule_dialog，添加提醒配置UI（提前时间选择、重复/一次性切换）", "done": true},
+    {"id": 4, "text": "修改ScheduleBloc和SupabaseService，支持提醒字段同步到云端", "done": true},
+    {"id": 5, "text": "实现Android端通知权限申请和本地通知调度", "done": true},
+    {"id": 6, "text": "更新数据库migration脚本，添加reminder相关字段到schedules表", "done": true},
+    {"id": 7, "text": "配置Android Release构建签名，打包APK", "done": true},
+    {"id": 8, "text": "增加移动端一键打包脚本（build_android.bat）", "done": true},
+    {"id": 9, "text": "修复home_page.dart构建报错（Task构造函数缺remindBeforeMinutes/reminderEnabled）", "done": true},
+    {"id": 10, "text": "为旧版task_detail_page.dart添加提醒配置UI（task/task_detail_page.dart）", "done": true},
+    {"id": 11, "text": "在TaskBreakdown模型中添加提醒字段（remindBeforeMinutes/reminderEnabled）", "done": true},
+    {"id": 12, "text": "添加云同步拉取机制（TaskNewBloc._syncFromCloud + main.dart启动触发）", "done": true},
+    {"id": 13, "text": "修复Windows桌面端通知（PowerShell回退 + Timer改为桌面原生通知）", "done": true},
+    {"id": 14, "text": "修复test/task_progress_calculator_test.dart编译错误", "done": true}
+  ],
+  "verification_items": [
+    {"id": 1, "text": "Windows桌面端创建日程时能设置提醒时间（默认15分钟前）", "done": true},
+    {"id": 2, "text": "提醒时间到后在Windows上弹出OS级通知", "done": false},
+    {"id": 3, "text": "支持设置重复提醒（如每5分钟重复）和一次性提醒", "done": true},
+    {"id": 4, "text": "Android APK能正常安装运行", "done": true},
+    {"id": 5, "text": "Windows端创建的日程和提醒设置在Android端可见", "done": false},
+    {"id": 6, "text": "Android端能收到本地通知提醒", "done": false},
+    {"id": 7, "text": "dart analyze通过（无错误）", "done": true},
+    {"id": 8, "text": "编辑已有任务能显示和修改提醒配置", "done": true}
+  ]
+}

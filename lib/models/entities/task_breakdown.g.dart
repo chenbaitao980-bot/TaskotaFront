@@ -30,6 +30,8 @@ _$TaskBreakdownImpl _$$TaskBreakdownImplFromJson(Map<String, dynamic> json) =>
       dependencies: (json['dependencies'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
+      remindBeforeMinutes: (json['remindBeforeMinutes'] as num?)?.toInt() ?? 15,
+      reminderEnabled: json['reminderEnabled'] as bool? ?? true,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -52,6 +54,8 @@ Map<String, dynamic> _$$TaskBreakdownImplToJson(_$TaskBreakdownImpl instance) =>
       'focusRequired': instance.focusRequired,
       'isParent': instance.isParent,
       'dependencies': instance.dependencies,
+      'remindBeforeMinutes': instance.remindBeforeMinutes,
+      'reminderEnabled': instance.reminderEnabled,
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),
     };

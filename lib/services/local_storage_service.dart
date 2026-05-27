@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/entities/schedule.dart';
 import '../models/entities/task_breakdown.dart';
 import 'package:uuid/uuid.dart';
+import 'supabase_service.dart';
 
 class LocalStorageService {
   static const _schedulesKey = 'local_schedules';
@@ -82,6 +83,10 @@ class LocalStorageService {
     required DateTime endTime,
     String priority = 'P2',
     bool focusRequired = false,
+    int remindBeforeMinutes = 15,
+    bool reminderEnabled = true,
+    bool isRepeating = false,
+    int? repeatInterval,
   }) async {
     final now = DateTime.now();
     final schedule = Schedule(
@@ -93,6 +98,11 @@ class LocalStorageService {
       endTime: endTime,
       priority: priority,
       focusRequired: focusRequired,
+      remindBeforeMinutes: remindBeforeMinutes,
+      reminderEnabled: reminderEnabled,
+      isRepeating: isRepeating,
+      repeatInterval: repeatInterval,
+      reminderType: isRepeating ? 'repeat' : 'once',
       createdAt: now,
       updatedAt: now,
     );
@@ -216,6 +226,7 @@ class LocalStorageService {
     if (task.parentTaskId != null) {
       await refreshParentFlag(task.parentTaskId!);
     }
+    _syncTasksToCloud(); // 自动同步到云端
     return task;
   }
 
@@ -233,6 +244,7 @@ class LocalStorageService {
         await refreshParentFlag(updated.parentTaskId!);
       }
     }
+    _syncTasksToCloud(); // 自动同步到云端
     return tasks[index];
   }
 
@@ -361,6 +373,7 @@ class LocalStorageService {
     if (parentId != null) {
       await refreshParentFlag(parentId);
     }
+    _syncTasksToCloud(); // 自动同步到云端
   }
 
   Future<void> _saveTasks(List<TaskBreakdown> tasks) async {
@@ -404,6 +417,15 @@ class LocalStorageService {
     await _prefs?.setBool(_onboardingKey, true);
   }
 
+  // AI 排程：是否跳过周末
+  static const _skipWeekendsKey = 'ai_schedule_skip_weekends';
+
+  bool get skipWeekends => _prefs?.getBool(_skipWeekendsKey) ?? false;
+
+  Future<void> setSkipWeekends(bool value) async {
+    await _prefs?.setBool(_skipWeekendsKey, value);
+  }
+
   Future<void> saveExplicitProfile(Map<String, dynamic> data) async {
     await _prefs?.setString(_profileKey, json.encode(data));
   }
@@ -422,6 +444,52 @@ class LocalStorageService {
     final jsonStr = _prefs?.getString('implicit_profile');
     if (jsonStr == null) return null;
     return json.decode(jsonStr) as Map<String, dynamic>;
+  }
+
+  // ── 云同步 ──
+
+  /// 将本地所有任务推送到 Supabase 云端
+  Future<void> _syncTasksToCloud() async {
+    final svc = SupabaseService();
+    try {
+      // 先拉取远端合并，再推送（解决多端覆盖问题）
+      await fetchAndMergeFromCloud();
+      final tasks = getTasks();
+      final jsonList = tasks.map((t) => t.toJson()).toList();
+      if (jsonList.isEmpty) return;
+      await svc.syncLocalTasks(jsonList);
+    } catch (_) {}
+  }
+
+  /// 从云端拉取任务并合并到本地（根据 updatedAt 保留最新版本）
+  Future<void> fetchAndMergeFromCloud() async {
+    final svc = SupabaseService();
+    try {
+      final remoteJson = await svc.fetchRemoteLocalTasks();
+      if (remoteJson == null || remoteJson.isEmpty) return;
+      final localTasks = getTasks();
+      final localMap = {for (final t in localTasks) t.id: t};
+      bool changed = false;
+
+      for (final json in remoteJson) {
+        final remote = TaskBreakdown.fromJson(json);
+        final local = localMap[remote.id];
+        if (local == null || remote.updatedAt.isAfter(local.updatedAt)) {
+          if (local != null) {
+            final idx = localTasks.indexOf(local);
+            localTasks[idx] = remote;
+          } else {
+            localTasks.add(remote);
+          }
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        final jsonList = localTasks.map((t) => t.toJson()).toList();
+        await _prefs?.setString(_tasksKey, json.encode(jsonList));
+      }
+    } catch (_) {}
   }
 
   // Conflict detection

@@ -1,9 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../services/local_storage_service.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  final _storage = LocalStorageService();
+  bool _ready = false;
+  bool _skipWeekends = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _storage.init();
+    if (!mounted) return;
+    setState(() {
+      _skipWeekends = _storage.skipWeekends;
+      _ready = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,9 +43,39 @@ class ProfilePage extends StatelessWidget {
             const SizedBox(height: 16),
             _buildStatsSection(context),
             const SizedBox(height: 16),
+            _buildSettingsSection(),
+            const SizedBox(height: 16),
             _buildMenuSection(),
             const SizedBox(height: 32),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsSection() {
+    if (!_ready) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppTheme.cardShadow,
+        ),
+        child: SwitchListTile(
+          title: const Text('AI 排程跳过周末',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+          subtitle: const Text('开启后，AI 拆分子任务时不把任务排到周六/周日',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          value: _skipWeekends,
+          activeThumbColor: AppTheme.primaryColor,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          onChanged: (v) async {
+            setState(() => _skipWeekends = v);
+            await _storage.setSkipWeekends(v);
+          },
         ),
       ),
     );

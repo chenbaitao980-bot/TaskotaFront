@@ -1,10 +1,13 @@
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
+import '../../services/project_sync_service.dart';
 
 class ProjectRepository {
   final AppDatabase _db;
-  ProjectRepository(this._db);
+  final ProjectSyncService? _syncService;
+  ProjectRepository(this._db, {ProjectSyncService? syncService})
+      : _syncService = syncService;
 
   Future<List<Project>> getAll() async {
     return _db.select(_db.projects).get();
@@ -27,6 +30,7 @@ class ProjectRepository {
     required String name,
     String color = '#4772FA',
     int sortOrder = 0,
+    String? groupId,
   }) async {
     final id = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -35,17 +39,24 @@ class ProjectRepository {
       name: Value(name),
       color: Value(color),
       sortOrder: Value(sortOrder),
+      groupId: groupId != null ? Value(groupId) : const Value.absent(),
       createdAt: Value(now),
       updatedAt: Value(now),
     ));
     final result = await (_db.select(_db.projects)
           ..where((p) => p.id.equals(id)))
         .get();
+    _syncService?.pushProject(result.first);
     return result.first;
   }
 
   Future<void> update(String id,
-      {String? name, String? color, int? sortOrder, int? archived}) async {
+      {String? name,
+      String? color,
+      int? sortOrder,
+      int? archived,
+      String? groupId,
+      bool clearGroup = false}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await (_db.update(_db.projects)..where((p) => p.id.equals(id))).write(
       ProjectsCompanion(
@@ -53,9 +64,14 @@ class ProjectRepository {
         color: color != null ? Value(color) : const Value.absent(),
         sortOrder: sortOrder != null ? Value(sortOrder) : const Value.absent(),
         archived: archived != null ? Value(archived) : const Value.absent(),
+        groupId: clearGroup
+            ? const Value(null)
+            : (groupId != null ? Value(groupId) : const Value.absent()),
         updatedAt: Value(now),
       ),
     );
+    final updated = await get(id);
+    if (updated != null) _syncService?.pushProject(updated);
   }
 
   Future<void> delete(String id) async {
@@ -69,6 +85,7 @@ class ProjectRepository {
     }
     await (_db.delete(_db.tasks)..where((t) => t.projectId.equals(id))).go();
     await (_db.delete(_db.projects)..where((p) => p.id.equals(id))).go();
+    _syncService?.removeProject(id);
   }
 
   Future<void> archive(String id) async {

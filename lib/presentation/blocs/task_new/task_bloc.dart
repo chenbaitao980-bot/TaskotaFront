@@ -3,19 +3,25 @@ import 'task_event.dart';
 import 'task_state.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/project_repository.dart';
+import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../data/repositories/checklist_repository.dart';
 import '../../../domain/tasks/task_progress_calculator.dart';
+import '../../../services/supabase_service.dart';
 
 class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   final ProjectRepository projectRepository;
+  final ProjectGroupRepository? projectGroupRepository;
   final TaskRepository taskRepository;
   final ChecklistRepository checklistRepository;
+  final SupabaseService? supabaseService;
 
   TaskNewBloc({
     required this.projectRepository,
+    this.projectGroupRepository,
     required this.taskRepository,
     required this.checklistRepository,
+    this.supabaseService,
   }) : super(TaskNewInitial()) {
     on<LoadProjects>(_onLoadProjects);
     on<CreateProject>(_onCreateProject);
@@ -47,6 +53,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<ReorderTaskSiblings>(_onReorderTaskSiblings);
     on<ExpandAllTasks>(_onExpandAllTasks);
     on<CollapseAllTasks>(_onCollapseAllTasks);
+    on<SyncFromCloud>(_onSyncFromCloud);
   }
 
   // --- 项目 ---
@@ -70,14 +77,17 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         expandedNodes = current.expandedNodes;
       }
 
+      final groups = await (projectGroupRepository?.getAll() ?? Future.value(<ProjectGroup>[]));
       emit(
         TaskNewLoaded(
           projects: projects,
+          groups: groups,
           tasks: tasks,
           subTrees: subTrees,
           expandedNodes: expandedNodes,
           taskProgress: progress.taskProgress,
           projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
         ),
       );
     } catch (e) {
@@ -138,6 +148,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
             tasks: tasks,
             taskProgress: progress.taskProgress,
             projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
           ),
         );
       }
@@ -184,9 +195,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         newExpanded['main_tree'] = allParentIds;
       }
 
+      final groups = await (projectGroupRepository?.getAll() ?? Future.value(<ProjectGroup>[]));
       emit(
         TaskNewLoaded(
           projects: projects,
+          groups: groups,
           tasks: tasks,
           selectedProjectId: event.projectId,
           selectedFilter: event.filter ?? 'all',
@@ -194,10 +207,57 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           expandedNodes: newExpanded,
           taskProgress: progress.taskProgress,
           projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
         ),
       );
     } catch (e) {
       emit(TaskNewError(e.toString()));
+    }
+  }
+
+  /// 从云端拉取任务并合并到本地数据库
+  Future<void> _onSyncFromCloud(
+    SyncFromCloud event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    final svc = supabaseService;
+    if (svc == null) {
+      print('[Sync] supabaseService 为空，跳过拉取');
+      return;
+    }
+    try {
+      final remoteJson = await svc.fetchRemoteLocalTasks();
+      if (remoteJson == null || remoteJson.isEmpty) {
+        print('[Sync] 云端无可同步任务');
+        return;
+      }
+      print('[Sync] 从云端拉取 ${remoteJson.length} 条任务');
+      for (final json in remoteJson) {
+        await taskRepository.syncFromJson(json);
+        print('[Sync] 已合并任务: ${json['id']} - ${json['title']}');
+      }
+      add(LoadTasks());
+      print('[Sync] 同步完成');
+    } catch (e) {
+      print('[Sync] 拉取失败: $e');
+    }
+  }
+
+  /// 将当前所有本地任务同步到 Supabase 云端
+  Future<void> _syncTasksToCloud() async {
+    final svc = supabaseService;
+    if (svc == null) {
+      print('[Sync] supabaseService 为空，跳过推送');
+      return;
+    }
+    try {
+      final allTasks = await taskRepository.getAll();
+      final jsonList = allTasks.map((t) => t.toJson()).toList();
+      print('[Sync] 推送 ${jsonList.length} 条任务到云端');
+      await svc.syncLocalTasks(jsonList);
+      print('[Sync] 推送完成');
+    } catch (e) {
+      print('[Sync] 推送失败: $e');
     }
   }
 
@@ -234,7 +294,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         priority: event.priority,
         startDate: event.startDate,
         dueDate: event.dueDate,
+        remindBeforeMinutes: event.remindBeforeMinutes,
+        reminderEnabled: event.reminderEnabled,
       );
+      await _syncTasksToCloud();
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
@@ -253,6 +316,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   ) async {
     try {
       await taskRepository.delete(event.id);
+      await _syncTasksToCloud();
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
@@ -271,6 +335,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   ) async {
     try {
       await taskRepository.toggleStatus(event.id);
+      await _syncTasksToCloud();
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
@@ -304,6 +369,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
             checklistItems: newMap,
             taskProgress: progress.taskProgress,
             projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
           ),
         );
       }
@@ -403,6 +469,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
             expandedNodes: newExpanded,
             taskProgress: progress.taskProgress,
             projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
           ),
         );
       }
@@ -445,6 +512,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
             subTrees: newTrees,
             taskProgress: progress.taskProgress,
             projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
           ),
         );
       }
@@ -516,9 +584,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     final checklistItems = await checklistRepository.getByTaskIds(
       allTasks.map((task) => task.id).toList(),
     );
+    final projects = await projectRepository.getAll();
     return TaskProgressCalculator.calculate(
       tasks: allTasks,
       checklistItems: checklistItems,
+      projects: projects,
     );
   }
 

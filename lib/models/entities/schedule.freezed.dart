@@ -34,6 +34,12 @@ mixin _$Schedule {
   Map<String, dynamic>? get metadata => throw _privateConstructorUsedError;
   String get source => throw _privateConstructorUsedError;
   String? get parentTaskId => throw _privateConstructorUsedError;
+  int get remindBeforeMinutes => throw _privateConstructorUsedError;
+  bool get reminderEnabled => throw _privateConstructorUsedError;
+  bool get isRepeating => throw _privateConstructorUsedError;
+  int? get repeatInterval => throw _privateConstructorUsedError;
+  String get reminderType => throw _privateConstructorUsedError;
+  String get syncStatus => throw _privateConstructorUsedError;
   DateTime get createdAt => throw _privateConstructorUsedError;
   DateTime get updatedAt => throw _privateConstructorUsedError;
 
@@ -66,6 +72,12 @@ abstract class $ScheduleCopyWith<$Res> {
     Map<String, dynamic>? metadata,
     String source,
     String? parentTaskId,
+    int remindBeforeMinutes,
+    bool reminderEnabled,
+    bool isRepeating,
+    int? repeatInterval,
+    String reminderType,
+    String syncStatus,
     DateTime createdAt,
     DateTime updatedAt,
   });
@@ -99,6 +111,12 @@ class _$ScheduleCopyWithImpl<$Res, $Val extends Schedule>
     Object? metadata = freezed,
     Object? source = null,
     Object? parentTaskId = freezed,
+    Object? remindBeforeMinutes = null,
+    Object? reminderEnabled = null,
+    Object? isRepeating = null,
+    Object? repeatInterval = freezed,
+    Object? reminderType = null,
+    Object? syncStatus = null,
     Object? createdAt = null,
     Object? updatedAt = null,
   }) {
@@ -156,6 +174,30 @@ class _$ScheduleCopyWithImpl<$Res, $Val extends Schedule>
                 ? _value.parentTaskId
                 : parentTaskId // ignore: cast_nullable_to_non_nullable
                       as String?,
+            remindBeforeMinutes: null == remindBeforeMinutes
+                ? _value.remindBeforeMinutes
+                : remindBeforeMinutes // ignore: cast_nullable_to_non_nullable
+                      as int,
+            reminderEnabled: null == reminderEnabled
+                ? _value.reminderEnabled
+                : reminderEnabled // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            isRepeating: null == isRepeating
+                ? _value.isRepeating
+                : isRepeating // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            repeatInterval: freezed == repeatInterval
+                ? _value.repeatInterval
+                : repeatInterval // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            reminderType: null == reminderType
+                ? _value.reminderType
+                : reminderType // ignore: cast_nullable_to_non_nullable
+                      as String,
+            syncStatus: null == syncStatus
+                ? _value.syncStatus
+                : syncStatus // ignore: cast_nullable_to_non_nullable
+                      as String,
             createdAt: null == createdAt
                 ? _value.createdAt
                 : createdAt // ignore: cast_nullable_to_non_nullable
@@ -193,6 +235,12 @@ abstract class _$$ScheduleImplCopyWith<$Res>
     Map<String, dynamic>? metadata,
     String source,
     String? parentTaskId,
+    int remindBeforeMinutes,
+    bool reminderEnabled,
+    bool isRepeating,
+    int? repeatInterval,
+    String reminderType,
+    String syncStatus,
     DateTime createdAt,
     DateTime updatedAt,
   });
@@ -225,6 +273,12 @@ class __$$ScheduleImplCopyWithImpl<$Res>
     Object? metadata = freezed,
     Object? source = null,
     Object? parentTaskId = freezed,
+    Object? remindBeforeMinutes = null,
+    Object? reminderEnabled = null,
+    Object? isRepeating = null,
+    Object? repeatInterval = freezed,
+    Object? reminderType = null,
+    Object? syncStatus = null,
     Object? createdAt = null,
     Object? updatedAt = null,
   }) {
@@ -282,6 +336,30 @@ class __$$ScheduleImplCopyWithImpl<$Res>
             ? _value.parentTaskId
             : parentTaskId // ignore: cast_nullable_to_non_nullable
                   as String?,
+        remindBeforeMinutes: null == remindBeforeMinutes
+            ? _value.remindBeforeMinutes
+            : remindBeforeMinutes // ignore: cast_nullable_to_non_nullable
+                  as int,
+        reminderEnabled: null == reminderEnabled
+            ? _value.reminderEnabled
+            : reminderEnabled // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        isRepeating: null == isRepeating
+            ? _value.isRepeating
+            : isRepeating // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        repeatInterval: freezed == repeatInterval
+            ? _value.repeatInterval
+            : repeatInterval // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        reminderType: null == reminderType
+            ? _value.reminderType
+            : reminderType // ignore: cast_nullable_to_non_nullable
+                  as String,
+        syncStatus: null == syncStatus
+            ? _value.syncStatus
+            : syncStatus // ignore: cast_nullable_to_non_nullable
+                  as String,
         createdAt: null == createdAt
             ? _value.createdAt
             : createdAt // ignore: cast_nullable_to_non_nullable
@@ -312,6 +390,12 @@ class _$ScheduleImpl implements _Schedule {
     final Map<String, dynamic>? metadata,
     this.source = 'manual',
     this.parentTaskId,
+    this.remindBeforeMinutes = 15,
+    this.reminderEnabled = true,
+    this.isRepeating = false,
+    this.repeatInterval,
+    this.reminderType = 'once',
+    this.syncStatus = 'local',
     required this.createdAt,
     required this.updatedAt,
   }) : _metadata = metadata;
@@ -359,13 +443,30 @@ class _$ScheduleImpl implements _Schedule {
   @override
   final String? parentTaskId;
   @override
+  @JsonKey()
+  final int remindBeforeMinutes;
+  @override
+  @JsonKey()
+  final bool reminderEnabled;
+  @override
+  @JsonKey()
+  final bool isRepeating;
+  @override
+  final int? repeatInterval;
+  @override
+  @JsonKey()
+  final String reminderType;
+  @override
+  @JsonKey()
+  final String syncStatus;
+  @override
   final DateTime createdAt;
   @override
   final DateTime updatedAt;
 
   @override
   String toString() {
-    return 'Schedule(id: $id, userId: $userId, title: $title, description: $description, startTime: $startTime, endTime: $endTime, priority: $priority, focusRequired: $focusRequired, parallelizable: $parallelizable, status: $status, metadata: $metadata, source: $source, parentTaskId: $parentTaskId, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'Schedule(id: $id, userId: $userId, title: $title, description: $description, startTime: $startTime, endTime: $endTime, priority: $priority, focusRequired: $focusRequired, parallelizable: $parallelizable, status: $status, metadata: $metadata, source: $source, parentTaskId: $parentTaskId, remindBeforeMinutes: $remindBeforeMinutes, reminderEnabled: $reminderEnabled, isRepeating: $isRepeating, repeatInterval: $repeatInterval, reminderType: $reminderType, syncStatus: $syncStatus, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 
   @override
@@ -392,6 +493,18 @@ class _$ScheduleImpl implements _Schedule {
             (identical(other.source, source) || other.source == source) &&
             (identical(other.parentTaskId, parentTaskId) ||
                 other.parentTaskId == parentTaskId) &&
+            (identical(other.remindBeforeMinutes, remindBeforeMinutes) ||
+                other.remindBeforeMinutes == remindBeforeMinutes) &&
+            (identical(other.reminderEnabled, reminderEnabled) ||
+                other.reminderEnabled == reminderEnabled) &&
+            (identical(other.isRepeating, isRepeating) ||
+                other.isRepeating == isRepeating) &&
+            (identical(other.repeatInterval, repeatInterval) ||
+                other.repeatInterval == repeatInterval) &&
+            (identical(other.reminderType, reminderType) ||
+                other.reminderType == reminderType) &&
+            (identical(other.syncStatus, syncStatus) ||
+                other.syncStatus == syncStatus) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
@@ -400,7 +513,7 @@ class _$ScheduleImpl implements _Schedule {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     runtimeType,
     id,
     userId,
@@ -415,9 +528,15 @@ class _$ScheduleImpl implements _Schedule {
     const DeepCollectionEquality().hash(_metadata),
     source,
     parentTaskId,
+    remindBeforeMinutes,
+    reminderEnabled,
+    isRepeating,
+    repeatInterval,
+    reminderType,
+    syncStatus,
     createdAt,
     updatedAt,
-  );
+  ]);
 
   /// Create a copy of Schedule
   /// with the given fields replaced by the non-null parameter values.
@@ -448,6 +567,12 @@ abstract class _Schedule implements Schedule {
     final Map<String, dynamic>? metadata,
     final String source,
     final String? parentTaskId,
+    final int remindBeforeMinutes,
+    final bool reminderEnabled,
+    final bool isRepeating,
+    final int? repeatInterval,
+    final String reminderType,
+    final String syncStatus,
     required final DateTime createdAt,
     required final DateTime updatedAt,
   }) = _$ScheduleImpl;
@@ -481,6 +606,18 @@ abstract class _Schedule implements Schedule {
   String get source;
   @override
   String? get parentTaskId;
+  @override
+  int get remindBeforeMinutes;
+  @override
+  bool get reminderEnabled;
+  @override
+  bool get isRepeating;
+  @override
+  int? get repeatInterval;
+  @override
+  String get reminderType;
+  @override
+  String get syncStatus;
   @override
   DateTime get createdAt;
   @override

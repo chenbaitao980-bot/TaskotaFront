@@ -3,10 +3,12 @@ import '../../data/database/app_database.dart';
 class TaskProgressSnapshot {
   final Map<String, int> taskProgress;
   final Map<String, int> projectProgress;
+  final Map<String, int> groupProgress;
 
   const TaskProgressSnapshot({
     required this.taskProgress,
     required this.projectProgress,
+    this.groupProgress = const {},
   });
 }
 
@@ -14,6 +16,7 @@ class TaskProgressCalculator {
   static TaskProgressSnapshot calculate({
     required List<Task> tasks,
     required List<ChecklistItem> checklistItems,
+    List<Project> projects = const [],
   }) {
     final childrenByParent = <String, List<Task>>{};
     for (final task in tasks) {
@@ -62,9 +65,22 @@ class TaskProgressCalculator {
       for (final entry in projectTotals.entries) entry.key: entry.value.percent,
     };
 
+    // 组进度：把同 groupId 的项目 tally 累加
+    final groupTotals = <String, _ProgressTally>{};
+    for (final p in projects) {
+      final gid = p.groupId;
+      if (gid == null) continue;
+      final t = projectTotals[p.id] ?? const _ProgressTally(0, 0);
+      groupTotals[gid] = (groupTotals[gid] ?? const _ProgressTally(0, 0)) + t;
+    }
+    final groupProgress = <String, int>{
+      for (final e in groupTotals.entries) e.key: e.value.percent,
+    };
+
     return TaskProgressSnapshot(
       taskProgress: taskProgress,
       projectProgress: projectProgress,
+      groupProgress: groupProgress,
     );
   }
 

@@ -59,7 +59,10 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
     12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
   ];
 
-  static const List<int> _minuteOptions = [0, 15, 30, 45];
+  // 分钟下拉，5 分钟一档（与日历拖动吸附粒度一致）
+  static const List<int> _minuteOptions = [
+    0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55,
+  ];
 
   @override
   void initState() {
@@ -71,12 +74,10 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
     );
     _currentMonth = DateTime(widget.initialDate.year, widget.initialDate.month);
     _selectedHour = widget.initialDate.hour;
-    // 就近取 15 分钟的整倍数
+    // 把初始分钟吸附到最近的 5 分钟
     final m = widget.initialDate.minute;
-    _selectedMinute = _minuteOptions.firstWhere(
-      (opt) => opt >= m,
-      orElse: () => 0,
-    );
+    _selectedMinute = (m / 5).round() * 5;
+    if (_selectedMinute >= 60) _selectedMinute = 55;
   }
 
   DateTime get _result => DateTime(
@@ -135,10 +136,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
+    return SingleChildScrollView(
       child: Container(
         decoration: const BoxDecoration(
           color: AppTheme.bgCard,
@@ -261,7 +259,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
           padding: EdgeInsets.symmetric(horizontal: 4),
           child: Text(':', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
         ),
-        // 分
+        // 分（下拉框，5 分钟一档）
         _timeDropdown(
           value: _selectedMinute,
           items: _minuteOptions,

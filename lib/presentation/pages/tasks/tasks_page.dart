@@ -90,9 +90,11 @@ class _TasksPageState extends State<TasksPage> {
             ),
             drawer: ProjectSidebar(
               projects: state.projects,
+              groups: state.groups,
               selectedProjectId: state.selectedProjectId,
               selectedFilter: selectedFilter,
               projectProgress: state.projectProgress,
+              groupProgress: state.groupProgress,
               onProjectSelected: (id) {
                 Navigator.pop(context);
                 context.read<TaskNewBloc>().add(LoadTasks(projectId: id));

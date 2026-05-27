@@ -1,14 +1,20 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
+import 'package:window_manager/window_manager.dart';
+import 'package:system_tray/system_tray.dart';
 
 import 'core/constants/app_constants.dart';
+import 'core/desktop/desktop_runtime.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/database/app_database.dart';
 import 'data/repositories/project_repository.dart';
+import 'data/repositories/project_group_repository.dart';
 import 'data/repositories/task_repository.dart';
 import 'data/repositories/checklist_repository.dart';
 import 'presentation/blocs/auth/auth_bloc.dart';
@@ -18,10 +24,19 @@ import 'presentation/blocs/task_new/task_bloc.dart' as task_new;
 import 'presentation/pages/auth/login_page.dart';
 import 'presentation/pages/home/home_page.dart';
 import 'services/notification_service.dart';
+import 'services/project_sync_service.dart';
 import 'services/supabase_service.dart';
+import 'services/task_sync_service.dart';
+
+final SystemTray systemTray = SystemTray();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 桌面端：初始化窗口管理
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    await windowManager.ensureInitialized();
+  }
 
   await Supabase.initialize(
     url: AppConstants.supabaseUrl,
@@ -31,21 +46,84 @@ void main() async {
   await NotificationService().init();
 
   final database = AppDatabase();
-  final projectRepository = ProjectRepository(database);
-  final taskRepository = TaskRepository(database);
+  final projectRepository =
+      ProjectRepository(database, syncService: ProjectSyncService.instance);
+  final projectGroupRepository = ProjectGroupRepository(database,
+      syncService: ProjectSyncService.instance);
+  final taskRepository = TaskRepository(database, syncService: TaskSyncService.instance);
   final checklistRepository = ChecklistRepository(database);
+  TaskSyncService.instance.bind(taskRepository);
+  ProjectSyncService.instance.bind(
+    db: database,
+    projectRepo: projectRepository,
+    groupRepo: projectGroupRepository,
+  );
 
   runApp(MyApp(
     database: database,
     projectRepository: projectRepository,
+    projectGroupRepository: projectGroupRepository,
     taskRepository: taskRepository,
     checklistRepository: checklistRepository,
   ));
+
+  // 桌面端：系统托盘 + 窗口关闭拦截（需在 runApp 后）
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    await _initSystemTray();
+  }
+}
+
+Future<void> _initSystemTray() async {
+  try {
+    await windowManager.waitUntilReadyToShow();
+    await windowManager.setSkipTaskbar(false);
+
+    final trayOk = await systemTray.initSystemTray(
+      title: AppConstants.appName,
+      iconPath: 'assets/icons/tray_icon.ico',
+      toolTip: AppConstants.appName,
+    );
+    print(trayOk ? '[Tray] 初始化成功' : '[Tray] 初始化失败 - 检查图标路径');
+  } catch (e) {
+    print('[Tray] 异常: $e');
+    return;
+  }
+
+  // 右键菜单
+  final menu = [
+    MenuItem(
+      label: '显示',
+      onClicked: () async {
+        await windowManager.show();
+        await windowManager.focus();
+      },
+    ),
+    MenuSeparator(),
+    MenuItem(
+      label: '退出',
+      onClicked: () async {
+        await windowManager.destroy();
+      },
+    ),
+  ];
+  await systemTray.setContextMenu(menu);
+
+  // 左键点击托盘图标 → 显示窗口
+  systemTray.registerSystemTrayEventHandler((eventName) {
+    final action = trayEventActionFor(eventName);
+    if (action == TrayEventAction.showWindow) {
+      windowManager.show();
+      windowManager.focus();
+    } else if (action == TrayEventAction.popUpContextMenu) {
+      systemTray.popUpContextMenu();
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {
   final AppDatabase database;
   final ProjectRepository projectRepository;
+  final ProjectGroupRepository projectGroupRepository;
   final TaskRepository taskRepository;
   final ChecklistRepository checklistRepository;
 
@@ -53,6 +131,7 @@ class MyApp extends StatelessWidget {
     super.key,
     required this.database,
     required this.projectRepository,
+    required this.projectGroupRepository,
     required this.taskRepository,
     required this.checklistRepository,
   });
@@ -84,8 +163,10 @@ class MyApp extends StatelessWidget {
             BlocProvider(
               create: (context) => task_new.TaskNewBloc(
                 projectRepository: projectRepository,
+                projectGroupRepository: projectGroupRepository,
                 taskRepository: taskRepository,
                 checklistRepository: checklistRepository,
+                supabaseService: SupabaseService(),
               ),
             ),
           ],

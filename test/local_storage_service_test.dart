@@ -1,9 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:smart_assistant/core/constants/app_constants.dart';
 import 'package:smart_assistant/services/local_storage_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: AppConstants.supabaseUrl,
+      anonKey: AppConstants.supabaseAnonKey,
+    );
+  });
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../../../core/constants/app_constants.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
@@ -83,7 +84,9 @@ class _RegisterPageState extends State<RegisterPage> {
         }
       } else {
         if (mounted) {
-          context.read<AuthBloc>().add(Registered(email: email, password: password));
+          context.read<AuthBloc>().add(
+            Registered(email: email, password: password),
+          );
         }
       }
     } catch (e) {
@@ -125,38 +128,45 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
           body: SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(28, 12, 28, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 12),
                   Text(
                     '创建账号',
-                    style: GoogleFonts.instrumentSerifTextTheme().displaySmall?.copyWith(
-                      color: AppTheme.textPrimary,
-                      fontSize: 28,
-                    ),
+                    style: GoogleFonts.instrumentSerifTextTheme()
+                        .displaySmall
+                        ?.copyWith(
+                          color: AppTheme.textPrimary,
+                          fontSize: 28,
+                        ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
+                  const Text(
                     '开始你的 AI 日程管理之旅',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 15,
+                    ),
                   ),
                   const SizedBox(height: 36),
-
-                  // Form
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: '邮箱',
                       prefixIcon: Icon(Icons.email_outlined, size: 20),
                     ),
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                    onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                   ),
                   const SizedBox(height: 14),
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: '密码',
                       prefixIcon: const Icon(Icons.lock_outlined, size: 20),
@@ -167,22 +177,27 @@ class _RegisterPageState extends State<RegisterPage> {
                               : Icons.visibility_off_outlined,
                           size: 20,
                         ),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                     ),
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                    onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                   ),
                   const SizedBox(height: 14),
                   TextField(
                     controller: _confirmPasswordController,
                     obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
                     decoration: const InputDecoration(
                       labelText: '确认密码',
                       prefixIcon: Icon(Icons.lock_outlined, size: 20),
                     ),
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                    onSubmitted: (_) => _register(),
                   ),
                   const SizedBox(height: 16),
-
-                  // Terms
                   Row(
                     children: [
                       SizedBox(
@@ -190,8 +205,11 @@ class _RegisterPageState extends State<RegisterPage> {
                         width: 24,
                         child: Checkbox(
                           value: _acceptTerms,
-                          onChanged: (value) => setState(() => _acceptTerms = value ?? false),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                          onChanged: (value) =>
+                              setState(() => _acceptTerms = value ?? false),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -199,22 +217,22 @@ class _RegisterPageState extends State<RegisterPage> {
                         child: Text.rich(
                           TextSpan(
                             text: '我已阅读并同意 ',
-                            style: TextStyle(color: AppTheme.textHint, fontSize: 13),
-                            children: [
+                            style: TextStyle(
+                              color: AppTheme.textHint,
+                              fontSize: 13,
+                            ),
+                            children: const [
                               TextSpan(
                                 text: '用户协议',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppTheme.primaryColor,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              TextSpan(
-                                text: ' 和 ',
-                                style: TextStyle(color: AppTheme.textHint),
-                              ),
+                              TextSpan(text: ' 和 '),
                               TextSpan(
                                 text: '隐私政策',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppTheme.primaryColor,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -225,10 +243,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 28),
-
-                  // Register Button
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -236,7 +251,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       onPressed: isSubmitting ? null : _register,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
-                        disabledBackgroundColor: AppTheme.primaryColor.withValues(alpha: 0.5),
+                        disabledBackgroundColor: AppTheme.primaryColor
+                            .withValues(alpha: 0.5),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -245,28 +261,40 @@ class _RegisterPageState extends State<RegisterPage> {
                           ? const SizedBox(
                               height: 20,
                               width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
                             )
-                          : const Text('注册', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                          : const Text(
+                              '注册',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
-                  // Login link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('已有账号？', style: TextStyle(color: AppTheme.textHint, fontSize: 14)),
+                      Text(
+                        '已有账号？',
+                        style: TextStyle(
+                          color: AppTheme.textHint,
+                          fontSize: 14,
+                        ),
+                      ),
                       TextButton(
                         onPressed: () => AppRouter.goBack(context),
-                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
                         child: const Text('立即登录'),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 32),
                 ],
               ),
             ),

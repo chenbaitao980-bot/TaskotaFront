@@ -8,6 +8,7 @@ import '../../../blocs/task_new/task_bloc.dart';
 import '../../../blocs/task_new/task_event.dart';
 import '../../../blocs/task_new/task_state.dart';
 import '../../../widgets/calendar_date_picker.dart';
+import '../../../../services/notification_service.dart';
 import 'widgets/checklist_section.dart';
 import 'widgets/subtask_tree_section.dart';
 import 'widgets/attachment_section.dart';
@@ -31,6 +32,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   late String _selectedProjectId;
   late int _status;
   late int _savedStatus;
+  late int _remindBeforeMinutes;
+  late int _reminderEnabled;
   List<ChecklistItem> _checklistItems = [];
   bool _hasChanges = false;
   bool _allowPop = false;
@@ -46,6 +49,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     _startDateTime = t.startDate != null
         ? DateTime.fromMillisecondsSinceEpoch(t.startDate!)
         : DateTime.now();
+    _remindBeforeMinutes = t.remindBeforeMinutes;
+    _reminderEnabled = t.reminderEnabled;
     _endDateTime = t.dueDate != null
         ? DateTime.fromMillisecondsSinceEpoch(t.dueDate!)
         : _startDateTime.add(const Duration(hours: 1));
@@ -69,7 +74,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   void _markChanged() {
-    if (!_hasChanges) setState(() => _hasChanges = true);
+    _hasChanges = true;
+    _scheduleAutoSave();
+  }
+
+  void _markTextChanged() {
+    _hasChanges = true;
+    _autoSaveTimer?.cancel();
+  }
+
+  void _scheduleAutoSave() {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(milliseconds: 700), _saveTask);
   }
@@ -107,6 +121,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final projects = state is TaskNewLoaded ? state.projects : <Project>[];
 
     return BlocListener<TaskNewBloc, TaskNewState>(
+      listenWhen: (prev, curr) {
+        if (prev is! TaskNewLoaded || curr is! TaskNewLoaded) return true;
+        return prev.checklistItems[widget.task.id] !=
+            curr.checklistItems[widget.task.id];
+      },
       listener: (context, state) {
         if (state is TaskNewLoaded) {
           final items = state.checklistItems[widget.task.id] ?? [];
@@ -142,6 +161,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ],
           ),
           body: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.only(top: 8, bottom: 32),
             children: [
               // 标题 — 可编辑 + 完成复选框
@@ -177,7 +197,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           ),
                         ),
                         child: _status == 2
-                            ? const Icon(Icons.check, size: 16, color: Colors.white)
+                            ? const Icon(
+                                Icons.check,
+                                size: 16,
+                                color: Colors.white,
+                              )
                             : null,
                       ),
                     ),
@@ -199,7 +223,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           contentPadding: EdgeInsets.zero,
                           isDense: true,
                         ),
-                        onChanged: (_) => _markChanged(),
+                        onChanged: (_) => _markTextChanged(),
+                        onTapOutside: (_) => _saveTask(),
+                        onEditingComplete: _saveTask,
                       ),
                     ),
                   ],
@@ -372,60 +398,73 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     contentPadding: EdgeInsets.zero,
                     isDense: true,
                   ),
-                  onChanged: (_) => _markChanged(),
+                  onChanged: (_) => _markTextChanged(),
+                  onTapOutside: (_) => _saveTask(),
+                  onEditingComplete: _saveTask,
                 ),
               ),
               const SizedBox(height: 16),
+              // 提醒设置
+              _buildReminderSection(),
+              const SizedBox(height: 16),
               // 子任务树
-              SubtaskTreeSection(
-                task: widget.task,
-                projectId: _selectedProjectId,
+              RepaintBoundary(
+                child: SubtaskTreeSection(
+                  task: widget.task,
+                  projectId: _selectedProjectId,
+                ),
               ),
               const SizedBox(height: 16),
               // 检查项
-              ChecklistSection(
-                items: _checklistItems,
-                taskId: widget.task.id,
-                onToggle: (id) {
-                  context.read<TaskNewBloc>().add(
-                    ToggleChecklistItem(id: id, taskId: widget.task.id),
-                  );
-                },
-                onDelete: (id) {
-                  context.read<TaskNewBloc>().add(
-                    DeleteChecklistItem(id: id, taskId: widget.task.id),
-                  );
-                },
-                onEdit: (id, title) {
-                  context.read<TaskNewBloc>().add(
-                    UpdateChecklistItem(id: id, title: title),
-                  );
-                },
-                onAdd: (data) {
-                  final (taskId, title) = data;
-                  context.read<TaskNewBloc>().add(
-                    AddChecklistItem(taskId: taskId, title: title),
-                  );
-                },
-                onSetObsidianUri: (id, obsidianUri) {
-                  context.read<TaskNewBloc>().add(
-                    SetChecklistItemObsidianUri(
-                      id: id,
-                      taskId: widget.task.id,
-                      obsidianUri: obsidianUri,
-                    ),
-                  );
-                },
+              RepaintBoundary(
+                child: ChecklistSection(
+                  items: _checklistItems,
+                  taskId: widget.task.id,
+                  onToggle: (id) {
+                    context.read<TaskNewBloc>().add(
+                      ToggleChecklistItem(id: id, taskId: widget.task.id),
+                    );
+                  },
+                  onDelete: (id) {
+                    context.read<TaskNewBloc>().add(
+                      DeleteChecklistItem(id: id, taskId: widget.task.id),
+                    );
+                  },
+                  onEdit: (id, title) {
+                    context.read<TaskNewBloc>().add(
+                      UpdateChecklistItem(id: id, title: title),
+                    );
+                  },
+                  onAdd: (data) {
+                    final (taskId, title) = data;
+                    context.read<TaskNewBloc>().add(
+                      AddChecklistItem(taskId: taskId, title: title),
+                    );
+                  },
+                  onSetObsidianUri: (id, obsidianUri) {
+                    context.read<TaskNewBloc>().add(
+                      SetChecklistItemObsidianUri(
+                        id: id,
+                        taskId: widget.task.id,
+                        obsidianUri: obsidianUri,
+                      ),
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 16),
               // 附件
-              AttachmentSection(task: widget.task),
+              RepaintBoundary(
+                child: AttachmentSection(task: widget.task),
+              ),
               const SizedBox(height: 16),
               // AI 拆分子任务
-              AiDecomposeSection(
-                task: widget.task,
-                projectId: _selectedProjectId,
-                currentDescription: _descController.text,
+              RepaintBoundary(
+                child: AiDecomposeSection(
+                  task: widget.task,
+                  projectId: _selectedProjectId,
+                  currentDescription: _descController.text,
+                ),
               ),
             ],
           ),
@@ -506,6 +545,132 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             const Icon(Icons.chevron_right, size: 18, color: AppTheme.textHint),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildReminderSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: AppTheme.bgInput.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderSubtle.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            isThreeLine: true,
+            secondary: Icon(
+              Icons.notifications_active,
+              size: 20,
+              color: _reminderEnabled > 0
+                  ? AppTheme.primaryColor
+                  : AppTheme.textHint,
+            ),
+            title: const Text(
+              '启用提醒',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            subtitle: Text(
+              _reminderEnabled > 0 ? '将在任务开始前通知您' : '不会发送提醒',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            value: _reminderEnabled > 0,
+            onChanged: (v) {
+              setState(() => _reminderEnabled = v ? 1 : 0);
+              _markChanged();
+            },
+          ),
+          if (_reminderEnabled > 0) ...[
+            const Divider(
+              height: 0.5,
+              indent: 52,
+              color: AppTheme.borderSubtle,
+            ),
+            _remindDropdownTile(
+              icon: Icons.timer_outlined,
+              label: '提前提醒',
+              value: _remindBeforeMinutes,
+              options: const [5, 10, 15, 30, 60, 120, 1440],
+              optionLabels: const [
+                '5分钟',
+                '10分钟',
+                '15分钟',
+                '30分钟',
+                '1小时',
+                '2小时',
+                '1天',
+              ],
+              onChanged: (v) {
+                setState(() => _remindBeforeMinutes = v);
+                _markChanged();
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _remindDropdownTile({
+    required IconData icon,
+    required String label,
+    required int value,
+    required List<int> options,
+    required List<String> optionLabels,
+    required ValueChanged<int> onChanged,
+  }) {
+    final idx = options.indexOf(value);
+    final displayLabel = idx >= 0 ? optionLabels[idx] : '$value分钟';
+    return ListTile(
+      minVerticalPadding: 8,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
+      title: Text(
+        label,
+        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+      ),
+      subtitle: Text(
+        displayLabel,
+        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+      ),
+      trailing: const Icon(
+        Icons.arrow_drop_down,
+        size: 20,
+        color: AppTheme.textHint,
+      ),
+      onTap: () => _showRemindPicker(options, optionLabels, value, onChanged),
+    );
+  }
+
+  void _showRemindPicker(
+    List<int> options,
+    List<String> labels,
+    int current,
+    ValueChanged<int> onChanged,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('提前提醒'),
+        children: List.generate(options.length, (i) {
+          return RadioListTile<int>(
+            title: Text(labels[i]),
+            value: options[i],
+            groupValue: current,
+            onChanged: (v) {
+              if (v != null) {
+                onChanged(v);
+                Navigator.pop(ctx);
+              }
+            },
+          );
+        }),
       ),
     );
   }
@@ -621,8 +786,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         priority: _priority,
         startDate: _startDateTime.millisecondsSinceEpoch,
         dueDate: _endDateTime.millisecondsSinceEpoch,
+        remindBeforeMinutes: _remindBeforeMinutes,
+        reminderEnabled: _reminderEnabled,
       ),
     );
+    // 调度提醒通知
+    if (_reminderEnabled > 0) {
+      NotificationService().scheduleReminderForSchedule(
+        scheduleId: widget.task.id,
+        title: widget.task.title,
+        startTime: _startDateTime,
+        description: _descController.text.trim(),
+        remindBeforeMinutes: _remindBeforeMinutes,
+      );
+    }
     _hasChanges = false;
     return true;
   }

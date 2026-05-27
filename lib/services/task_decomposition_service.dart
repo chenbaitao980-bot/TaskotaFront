@@ -6,16 +6,38 @@ import '../core/constants/app_constants.dart';
 class SubtaskNode {
   final String title;
   final List<SubtaskNode> children;
+  /// 估计完成时长（分钟）。叶子节点 AI 必填；非叶子可空（由子节点累加）
+  final int? estimatedMinutes;
 
-  const SubtaskNode(this.title, [this.children = const []]);
+  const SubtaskNode(this.title, [this.children = const [], this.estimatedMinutes]);
 
-  factory SubtaskNode.fromJson(Map<String, dynamic> json) => SubtaskNode(
-    (json['title'] as String?)?.trim() ?? '',
-    (json['children'] as List<dynamic>?)
-        ?.map((e) => SubtaskNode.fromJson(e as Map<String, dynamic>))
-        .toList()
-      ?? [],
-  );
+  factory SubtaskNode.fromJson(Map<String, dynamic> json) {
+    final m = json['minutes'];
+    int? minutes;
+    if (m is int) {
+      minutes = m;
+    } else if (m is num) {
+      minutes = m.toInt();
+    } else if (m is String) {
+      minutes = int.tryParse(m);
+    }
+    // 边界：叶子超过 8h 截断；缺失默认 60
+    final children = (json['children'] as List<dynamic>?)
+            ?.map((e) => SubtaskNode.fromJson(e as Map<String, dynamic>))
+            .toList()
+        ?? [];
+    final isLeaf = children.isEmpty;
+    if (isLeaf) {
+      minutes ??= 60;
+      if (minutes > 480) minutes = 480;
+      if (minutes < 5) minutes = 5;
+    }
+    return SubtaskNode(
+      (json['title'] as String?)?.trim() ?? '',
+      children,
+      minutes,
+    );
+  }
 }
 
 /// Result of a decomposition call.
@@ -83,7 +105,7 @@ class TaskDecompositionService {
   }
 
   String _systemPrompt() {
-    return '''你是一个 WBS（工作分解结构）分解专家。你的任务是把用户的大任务拆成层级化的可执行子任务树。
+    return '''你是一个 WBS（工作分解结构）分解专家。你的任务是把用户的大任务拆成层级化的可执行子任务树，并对每个"叶子子任务"估计完成所需的分钟数。
 
 核心原则：
 1. **严格遵循描述的步骤顺序**：描述中先提到的步骤就是一级子任务
@@ -97,7 +119,20 @@ class TaskDecompositionService {
 5. **最多 3 层深度**，每级 2-5 项
 6. **禁止输出"已有子任务"列表中已经存在的任务**
 
-只返回 JSON，格式：{"subtasks":[{"title":"动词+名词","children":[{"title":"子任务","children":[]}]}]}''';
+**时长估计规则（重要）**：
+- **每一个叶子节点（即 children 为空的节点）都必须给出 "minutes" 字段**，表示完成这个任务大约要多少分钟
+- 叶子节点单段时长 **必须 ≤ 480 分钟（8 小时）**，超过就要继续往下拆成更小的子任务
+- 不要给 minutes 小于 5 的任务（太碎请合并）
+- 非叶子节点（有 children 的）**不要**输出 minutes，由子节点累加得到
+
+只返回 JSON，格式：
+{"subtasks":[
+  {"title":"父任务A","children":[
+    {"title":"子任务A1","children":[],"minutes":60},
+    {"title":"子任务A2","children":[],"minutes":120}
+  ]},
+  {"title":"叶子任务B","children":[],"minutes":180}
+]}''';
   }
 
   String _buildUserPrompt(
@@ -190,7 +225,11 @@ class TaskDecompositionService {
 
     return nodes.where((n) => !isDuplicate(n.title)).map((n) {
       if (n.children.isEmpty) return n;
-      return SubtaskNode(n.title, _deduplicate(n.children, existingTitles));
+      return SubtaskNode(
+        n.title,
+        _deduplicate(n.children, existingTitles),
+        n.estimatedMinutes,
+      );
     }).toList();
   }
 

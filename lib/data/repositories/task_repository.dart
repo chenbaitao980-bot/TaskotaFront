@@ -1,10 +1,13 @@
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
+import '../../services/task_sync_service.dart';
 
 class TaskRepository {
   final AppDatabase _db;
-  TaskRepository(this._db);
+  final TaskSyncService? _syncService;
+  TaskRepository(this._db, {TaskSyncService? syncService})
+      : _syncService = syncService;
 
   Future<List<Task>> getAll(
       {String? projectId, int? status, int? priority}) async {
@@ -150,6 +153,7 @@ class TaskRepository {
     int? dueDate,
     bool isAllDay = false,
     String? parentId,
+    int? estimatedMinutes,
   }) async {
     final id = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -163,13 +167,18 @@ class TaskRepository {
       parentId: parentId != null ? Value(parentId) : const Value.absent(),
       startDate: startDate != null ? Value(startDate) : const Value.absent(),
       dueDate: dueDate != null ? Value(dueDate) : const Value.absent(),
+      estimatedMinutes: estimatedMinutes != null
+          ? Value(estimatedMinutes)
+          : const Value.absent(),
       createdAt: Value(now),
       updatedAt: Value(now),
     ));
     final result = await (_db.select(_db.tasks)
           ..where((t) => t.id.equals(id)))
         .get();
-    return result.first;
+    final task = result.first;
+    _syncService?.push(task);
+    return task;
   }
 
   Future<void> update(String id,
@@ -181,7 +190,10 @@ class TaskRepository {
       int? dueDate,
       int? isAllDay,
       int? sortOrder,
-      String? parentId}) async {
+      String? parentId,
+      int? remindBeforeMinutes,
+      int? reminderEnabled,
+      int? estimatedMinutes}) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
       TasksCompanion(
@@ -196,9 +208,50 @@ class TaskRepository {
         isAllDay: isAllDay != null ? Value(isAllDay) : const Value.absent(),
         sortOrder: sortOrder != null ? Value(sortOrder) : const Value.absent(),
         parentId: parentId != null ? Value(parentId) : const Value.absent(),
+        remindBeforeMinutes: remindBeforeMinutes != null
+            ? Value(remindBeforeMinutes)
+            : const Value.absent(),
+        reminderEnabled: reminderEnabled != null
+            ? Value(reminderEnabled)
+            : const Value.absent(),
+        estimatedMinutes: estimatedMinutes != null
+            ? Value(estimatedMinutes)
+            : const Value.absent(),
         updatedAt: Value(now),
       ),
     );
+    final updated = await get(id);
+    if (updated != null) _syncService?.push(updated);
+
+    // 项目变更时级联同步到所有后代
+    if (projectId != null) {
+      await _cascadeProjectId(id, projectId);
+    }
+  }
+
+  /// 把指定任务的所有后代的 projectId 改为 newProjectId
+  Future<void> _cascadeProjectId(String rootId, String newProjectId) async {
+    final descendants = await getDescendants(rootId);
+    if (descendants.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (final d in descendants) {
+        if (d.projectId == newProjectId) continue;
+        batch.update(
+          _db.tasks,
+          TasksCompanion(
+            projectId: Value(newProjectId),
+            updatedAt: Value(now),
+          ),
+          where: (t) => t.id.equals(d.id),
+        );
+      }
+    });
+    for (final d in descendants) {
+      if (d.projectId == newProjectId) continue;
+      final updated = await get(d.id);
+      if (updated != null) _syncService?.push(updated);
+    }
   }
 
   Future<void> delete(String id) async {
@@ -217,6 +270,7 @@ class TaskRepository {
           ..where((c) => c.taskId.equals(id)))
         .go();
     await (_db.delete(_db.tasks)..where((t) => t.id.equals(id))).go();
+    _syncService?.remove(id);
   }
 
   Future<void> toggleStatus(String id) async {
@@ -231,6 +285,86 @@ class TaskRepository {
         updatedAt: Value(now),
       ),
     );
+    final toggled = await get(id);
+    if (toggled != null) _syncService?.push(toggled);
+  }
+
+  /// 从云端同步导入任务（插入或更新，保留原始 ID）
+  Future<void> syncFromJson(Map<String, dynamic> json) async {
+    final id = json['id'] as String;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = await get(id);
+    if (existing != null) {
+      // 仅当云端版本更新时才更新
+      final remoteUpdated = json['updatedAt'] as int? ?? 0;
+      if (remoteUpdated > existing.updatedAt) {
+        await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
+          TasksCompanion(
+            projectId: Value(json['projectId'] as String),
+            title: Value(json['title'] as String),
+            description: Value(json['description'] as String? ?? ''),
+            priority: Value(json['priority'] as int? ?? 0),
+            status: Value(json['status'] as int? ?? 0),
+            startDate: json['startDate'] != null
+                ? Value(json['startDate'] as int)
+                : const Value.absent(),
+            dueDate: json['dueDate'] != null
+                ? Value(json['dueDate'] as int)
+                : const Value.absent(),
+            isAllDay: Value(json['isAllDay'] as int? ?? 0),
+            sortOrder: Value(json['sortOrder'] as int? ?? 0),
+            parentId: json['parentId'] != null
+                ? Value(json['parentId'] as String)
+                : const Value.absent(),
+            remindBeforeMinutes: json['remindBeforeMinutes'] != null
+                ? Value(json['remindBeforeMinutes'] as int)
+                : const Value.absent(),
+            reminderEnabled: json['reminderEnabled'] != null
+                ? Value(json['reminderEnabled'] as int)
+                : const Value.absent(),
+            estimatedMinutes: json['estimatedMinutes'] != null
+                ? Value(json['estimatedMinutes'] as int)
+                : const Value.absent(),
+            updatedAt: Value(now),
+          ),
+        );
+      }
+    } else {
+      // 不存在则插入
+      await _db.into(_db.tasks).insert(TasksCompanion(
+        id: Value(id),
+        projectId: Value(json['projectId'] as String),
+        title: Value(json['title'] as String),
+        description: Value(json['description'] as String? ?? ''),
+        priority: Value(json['priority'] as int? ?? 0),
+        status: Value(json['status'] as int? ?? 0),
+        startDate: json['startDate'] != null
+            ? Value(json['startDate'] as int)
+            : const Value.absent(),
+        dueDate: json['dueDate'] != null
+            ? Value(json['dueDate'] as int)
+            : const Value.absent(),
+        isAllDay: Value(json['isAllDay'] as int? ?? 0),
+        sortOrder: Value(json['sortOrder'] as int? ?? 0),
+        parentId: json['parentId'] != null
+            ? Value(json['parentId'] as String)
+            : const Value.absent(),
+        remindBeforeMinutes: json['remindBeforeMinutes'] != null
+            ? Value(json['remindBeforeMinutes'] as int)
+            : const Value.absent(),
+        reminderEnabled: json['reminderEnabled'] != null
+            ? Value(json['reminderEnabled'] as int)
+            : const Value.absent(),
+        estimatedMinutes: json['estimatedMinutes'] != null
+            ? Value(json['estimatedMinutes'] as int)
+            : const Value.absent(),
+        completedTime: json['completedTime'] != null
+            ? Value(json['completedTime'] as int)
+            : const Value.absent(),
+        createdAt: Value(json['createdAt'] as int? ?? now),
+        updatedAt: Value(now),
+      ));
+    }
   }
 
   Future<void> reorder(String projectId, List<String> orderedIds) async {

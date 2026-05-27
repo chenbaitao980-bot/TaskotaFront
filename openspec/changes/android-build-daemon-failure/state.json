@@ -1,0 +1,52 @@
+{
+  "status": "user_verification_pending",
+  "transitions": [
+    {
+      "from": null,
+      "to": "draft",
+      "at": "2026-05-27T12:21:30.288459+00:00",
+      "reason": "change created"
+    },
+    {
+      "from": "draft",
+      "to": "planned",
+      "at": "2026-05-27T12:22:00.649188+00:00",
+      "reason": "四件套已生成，进入已规划状态"
+    },
+    {
+      "from": "planned",
+      "to": "approved",
+      "at": "2026-05-27T12:22:15.348244+00:00",
+      "reason": "用户已确认执行"
+    },
+    {
+      "from": "approved",
+      "to": "implementing",
+      "at": "2026-05-27T12:22:15.489636+00:00",
+      "reason": "开始收集日志并定位问题"
+    },
+    {
+      "from": "implementing",
+      "to": "implemented",
+      "at": "2026-05-27T12:29:30.335500+00:00",
+      "reason": "最小修复已落地，实施任务完成"
+    },
+    {
+      "from": "implemented",
+      "to": "user_verification_pending",
+      "at": "2026-05-27T12:29:46.262158+00:00",
+      "reason": "门禁全部通过"
+    }
+  ],
+  "approved": true,
+  "four_piece_complete": true,
+  "implemented": true,
+  "verified_by_user": false,
+  "archivable": false,
+  "bugfix_precipitated": false,
+  "gitnexus_detect_changes": {
+    "status": "error",
+    "path": "E:\\claude\\project2\\smart_assistant\\openspec\\changes\\android-build-daemon-failure\\gitnexus\\detect-changes.json",
+    "generated_at": "2026-05-27T12:29:35.703467+00:00"
+  }
+}

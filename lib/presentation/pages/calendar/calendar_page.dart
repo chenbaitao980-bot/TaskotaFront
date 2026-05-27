@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -33,6 +34,11 @@ class _CalendarPageState extends State<CalendarPage> {
   static const double _minHourHeight = 32;
   static const double _maxHourHeight = 120;
   static const double _zoomStep = 8;
+  String? _editingTaskId;
+  final Map<int, Offset> _activePointers = {};
+  double? _pinchBaseDistance;
+  double? _pinchBaseHourHeight;
+  final GlobalKey _timelineListenerKey = GlobalKey();
 
   List<Task> _allTasks = [];
   List<Project> _allProjects = [];
@@ -123,12 +129,32 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   bool _isMultiDayTask(Task task) {
+    // 有子任务的"父任务"无条件显示为顶部跨天长条
+    if (_hasChildren(task)) return true;
     final s = task.startDate;
     final d = task.dueDate;
     if (s == null || d == null) return false;
     final start = DateTime.fromMillisecondsSinceEpoch(s);
     final end = DateTime.fromMillisecondsSinceEpoch(d);
     return !_isSameDate(start, end);
+  }
+
+  bool _hasChildren(Task task) {
+    return _allTasks.any((t) => t.parentId == task.id);
+  }
+
+  /// 层级深度：根任务=0，每多一层 +1。用于父任务长条排序（越浅越上）
+  int _depthOf(Task task) {
+    int depth = 0;
+    var cur = task;
+    final visited = <String>{};
+    while (cur.parentId != null && visited.add(cur.id)) {
+      final parent = _allTasks.where((t) => t.id == cur.parentId).firstOrNull;
+      if (parent == null) break;
+      depth++;
+      cur = parent;
+    }
+    return depth;
   }
 
   bool _taskOverlapsDay(Task task, DateTime day) {
@@ -180,24 +206,37 @@ class _CalendarPageState extends State<CalendarPage> {
     });
   }
 
-  void _setHourHeight(double height) {
+  void _setHourHeight(double height, {double? focalPointOffset}) {
     final nextHeight = height.clamp(_minHourHeight, _maxHourHeight).toDouble();
     if (nextHeight == _hourHeight) return;
     final position = _weekScrollController.hasClients
         ? _weekScrollController.position
         : null;
-    final viewportCenterHour = position == null
-        ? null
-        : (position.pixels + position.viewportDimension / 2) / _hourHeight;
+    // 如果提供了焦点偏移，围绕焦点缩放；否则回退到 viewport 中心
+    final double? anchorHour;
+    if (focalPointOffset != null && position != null) {
+      anchorHour = (position.pixels + focalPointOffset) / _hourHeight;
+    } else if (position != null) {
+      anchorHour = (position.pixels + position.viewportDimension / 2) / _hourHeight;
+    } else {
+      anchorHour = null;
+    }
     setState(() => _hourHeight = nextHeight);
-    if (viewportCenterHour == null) return;
+    if (anchorHour == null) return;
+    final capturedAnchor = anchorHour;
+    final capturedFocal = focalPointOffset;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_weekScrollController.hasClients) return;
       final nextPosition = _weekScrollController.position;
-      final nextOffset =
-          viewportCenterHour * _hourHeight - nextPosition.viewportDimension / 2;
+      final double newFocalOffset;
+      if (capturedFocal != null) {
+        newFocalOffset = capturedAnchor * _hourHeight;
+      } else {
+        newFocalOffset =
+            capturedAnchor * _hourHeight - nextPosition.viewportDimension / 2;
+      }
       _weekScrollController.jumpTo(
-        nextOffset.clamp(0.0, nextPosition.maxScrollExtent),
+        newFocalOffset.clamp(0.0, nextPosition.maxScrollExtent),
       );
     });
   }
@@ -212,6 +251,59 @@ class _CalendarPageState extends State<CalendarPage> {
     if (event is! PointerScrollEvent || !_isCtrlPressed) return;
     final delta = event.scrollDelta.dy < 0 ? -_zoomStep : _zoomStep;
     _setHourHeight(_hourHeight + delta);
+  }
+
+  void _onPointerDown(PointerDownEvent e) {
+    _activePointers[e.pointer] = e.position;
+    if (_activePointers.length == 2) {
+      final pts = _activePointers.values.toList();
+      _pinchBaseDistance = (pts[0] - pts[1]).distance;
+      _pinchBaseHourHeight = _hourHeight;
+    }
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    _activePointers[e.pointer] = e.position;
+    if (_activePointers.length == 2 && _pinchBaseDistance != null) {
+      final pts = _activePointers.values.toList();
+      final currentDistance = (pts[0] - pts[1]).distance;
+      final scale = currentDistance / _pinchBaseDistance!;
+
+      // 双指中心的屏幕 Y 坐标
+      final focalScreenY = (pts[0].dy + pts[1].dy) / 2;
+      // Listener 在屏幕上的 Y 坐标
+      final listenerBox =
+          _timelineListenerKey.currentContext?.findRenderObject()
+              as RenderBox?;
+      final listenerScreenY =
+          listenerBox?.localToGlobal(Offset.zero).dy ?? 0.0;
+      // 双指中心相对于 Listener 顶部的偏移 + 当前滚动偏移 = 内容偏移
+      final scrollOffset = _weekScrollController.hasClients
+          ? _weekScrollController.offset
+          : 0.0;
+      final focalPointOffset = focalScreenY - listenerScreenY + scrollOffset;
+
+      _setHourHeight(
+        _pinchBaseHourHeight! * scale,
+        focalPointOffset: focalPointOffset,
+      );
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    _activePointers.remove(e.pointer);
+    if (_activePointers.length < 2) {
+      _pinchBaseDistance = null;
+      _pinchBaseHourHeight = null;
+    }
+  }
+
+  void _onPointerCancel(PointerCancelEvent e) {
+    _activePointers.remove(e.pointer);
+    if (_activePointers.length < 2) {
+      _pinchBaseDistance = null;
+      _pinchBaseHourHeight = null;
+    }
   }
 
   // ── 任务操作 ──
@@ -380,6 +472,7 @@ class _CalendarPageState extends State<CalendarPage> {
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         appBar: _buildAppBar(),
         body: _calendarFormat == CalendarFormat.week
             ? _buildWeekTimeline()
@@ -544,6 +637,9 @@ class _CalendarPageState extends State<CalendarPage> {
           if (v != null) {
             setState(() {
               _displayDayCount = v;
+              if (v <= 3) {
+                _focusedDay = DateTime.now();
+              }
               _didAutoScrollWeek = false;
             });
           }
@@ -595,7 +691,14 @@ class _CalendarPageState extends State<CalendarPage> {
         setState(() => _calendarFormat = newFormat);
       },
       onPageChanged: (focusedDay) {
-        _focusedDay = focusedDay;
+        // 月份切换后，把选中日期同步到新月份中"同号"的那一天，越界则取月末
+        final prev = _selectedDay ?? focusedDay;
+        final lastDay = DateTime(focusedDay.year, focusedDay.month + 1, 0).day;
+        final targetDay = prev.day > lastDay ? lastDay : prev.day;
+        setState(() {
+          _focusedDay = focusedDay;
+          _selectedDay = DateTime(focusedDay.year, focusedDay.month, targetDay);
+        });
       },
       eventLoader: (day) =>
           tasks.where((t) => _taskOverlapsDay(t, day)).toList(),
@@ -741,7 +844,9 @@ class _CalendarPageState extends State<CalendarPage> {
     }
     _scrollWeekToCurrentTime();
 
-    final weekStart = _startOfWeek(_focusedDay);
+    final weekStart = _displayDayCount >= 7
+        ? _startOfWeek(_focusedDay)
+        : DateTime(_focusedDay.year, _focusedDay.month, _focusedDay.day);
     final days = List.generate(
       _displayDayCount,
       (index) => weekStart.add(Duration(days: index)),
@@ -766,44 +871,51 @@ class _CalendarPageState extends State<CalendarPage> {
                 children: [
                   _buildMultiDayLane(days, dayWidth, multiDayTasks),
                   Expanded(
-                    child: Listener(
-                      onPointerSignal: _handleTimelinePointerSignal,
-                      child: SingleChildScrollView(
-                        controller: _weekScrollController,
-                        child: SizedBox(
-                          height: totalHeight,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildTimeColumn(totalHeight),
-                              SizedBox(
-                                width: dayWidth * _displayDayCount,
-                                height: totalHeight,
-                                child: Stack(
-                                  children: [
-                                    for (var i = 0; i < days.length; i++)
-                                      Positioned(
-                                        left: i * dayWidth,
-                                        top: 0,
-                                        width: dayWidth,
-                                        height: totalHeight,
-                                        child: _buildDayDropColumn(
-                                          days[i],
-                                          dayWidth,
+                    child: RepaintBoundary(
+                      child: Listener(
+                        key: _timelineListenerKey,
+                        onPointerSignal: _handleTimelinePointerSignal,
+                        onPointerDown: _onPointerDown,
+                        onPointerMove: _onPointerMove,
+                        onPointerUp: _onPointerUp,
+                        onPointerCancel: _onPointerCancel,
+                        child: SingleChildScrollView(
+                          controller: _weekScrollController,
+                          child: SizedBox(
+                            height: totalHeight,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildTimeColumn(totalHeight),
+                                SizedBox(
+                                  width: dayWidth * _displayDayCount,
+                                  height: totalHeight,
+                                  child: Stack(
+                                    children: [
+                                      for (var i = 0; i < days.length; i++)
+                                        Positioned(
+                                          left: i * dayWidth,
+                                          top: 0,
+                                          width: dayWidth,
+                                          height: totalHeight,
+                                          child: _buildDayDropColumn(
+                                            days[i],
+                                            dayWidth,
+                                          ),
                                         ),
-                                      ),
-                                    for (var i = 0; i < days.length; i++)
-                                      ..._buildTaskBlocksForDay(
-                                        days[i],
-                                        i,
-                                        dayWidth,
-                                        singleDayTasks,
-                                      ),
-                                    _buildCurrentTimeIndicator(days, dayWidth),
-                                  ],
+                                      for (var i = 0; i < days.length; i++)
+                                        ..._buildTaskBlocksForDay(
+                                          days[i],
+                                          i,
+                                          dayWidth,
+                                          singleDayTasks,
+                                        ),
+                                      _buildCurrentTimeIndicator(days, dayWidth),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -858,30 +970,48 @@ class _CalendarPageState extends State<CalendarPage> {
     );
     final weekEnd = weekStart.add(Duration(days: _displayDayCount));
 
-    const laneHeight = 36.0;
-    final height = (tasks.length * laneHeight).clamp(40.0, 144.0);
+    // 排序：层级浅的（根任务）在上，深的在下
+    final sorted = [...tasks]..sort((a, b) {
+      final da = _depthOf(a);
+      final db = _depthOf(b);
+      if (da != db) return da - db;
+      return (a.startDate ?? 0).compareTo(b.startDate ?? 0);
+    });
+
+    const laneHeight = 30.0;
+    const maxVisibleLanes = 6;
+    final visibleLanes = sorted.length.clamp(1, maxVisibleLanes);
+    final contentHeight = sorted.length * laneHeight;
+    final visibleHeight = visibleLanes * laneHeight;
+
     return Container(
-      height: height,
+      height: visibleHeight,
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
       ),
       child: Row(
         children: [
           const SizedBox(width: _timeColumnWidth),
-          SizedBox(
-            width: dayWidth * _displayDayCount,
-            child: Stack(
-              children: [
-                for (var i = 0; i < tasks.length; i++)
-                  _buildMultiDayBar(
-                    tasks[i],
-                    i,
-                    weekStart,
-                    weekEnd,
-                    dayWidth,
-                    laneHeight,
-                  ),
-              ],
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SizedBox(
+                width: dayWidth * _displayDayCount,
+                height: contentHeight,
+                child: Stack(
+                  children: [
+                    for (var i = 0; i < sorted.length; i++)
+                      _buildMultiDayBar(
+                        sorted[i],
+                        i,
+                        weekStart,
+                        weekEnd,
+                        dayWidth,
+                        laneHeight,
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -1040,7 +1170,8 @@ class _CalendarPageState extends State<CalendarPage> {
           top: tr.top + 2,
           width: perLaneWidth - 2, // lane 间留 2px 间隙
           height: (tr.height - 4).clamp(28.0, _hourHeight * 24),
-          child: _buildDraggableTaskBlock(tr.task, tr.start, tr.end, tr.segmentStart),
+          child: _buildDraggableTaskBlock(
+              tr.task, tr.start, tr.end, tr.segmentStart, dayWidth),
         ),
       );
     }
@@ -1052,6 +1183,7 @@ class _CalendarPageState extends State<CalendarPage> {
     DateTime start,
     DateTime end,
     DateTime segmentStart,
+    double dayWidth,
   ) {
     return _ResizableTaskBlock(
       task: task,
@@ -1059,83 +1191,50 @@ class _CalendarPageState extends State<CalendarPage> {
       end: end,
       segmentStart: segmentStart,
       hourHeight: _hourHeight,
+      dayWidth: dayWidth,
       priorityColor: _priorityColor(task.priority),
       isCompleted: task.status == 2,
+      isEditMode: _editingTaskId == task.id,
       timeLabel: _timeLabel,
       parentLabel: _parentLabel(task),
-      onOpenDetail: () => _openTaskDetail(task),
+      onOpenDetail: () {
+        if (_editingTaskId != null) {
+          setState(() => _editingTaskId = null);
+        } else {
+          _openTaskDetail(task);
+        }
+      },
       onToggle: () => _toggleTaskStatus(task),
       onDelete: () => _deleteTask(task),
       onMove: (target) => _moveTask(task, target),
       onResizeStart: (target) => _resizeTaskStart(task, target),
       onResizeEnd: (target) => _resizeTaskEnd(task, target),
+      onEditModeChanged: (editing) {
+        setState(() => _editingTaskId = editing ? task.id : null);
+      },
     );
   }
 
   // ── Drop Column ──
 
   Widget _buildDayDropColumn(DateTime day, double dayWidth) {
+    // 改为纯背景网格 + 右键创建。拖动改由块自身的 Listener 处理（B2）
     return Column(
       children: List.generate(24, (hour) {
-        return Builder(
-          builder: (cellContext) => DragTarget<_TimelineDragData>(
-            onWillAcceptWithDetails: (_) => true,
-            onAcceptWithDetails: (details) {
-              final box = cellContext.findRenderObject() as RenderBox?;
-              final local = box?.globalToLocal(details.offset) ?? Offset.zero;
-              final minuteOffset = (local.dy / _hourHeight * 60).round().clamp(
-                0,
-                59,
-              );
-              final snappedSlot = (minuteOffset / 15)
-                  .round()
-                  .clamp(0, 3)
-                  .toInt();
-              final snappedMinute = snappedSlot * 15;
-              final target = DateTime(
-                day.year,
-                day.month,
-                day.day,
-                hour,
-                snappedMinute,
-              );
-              final task = _allTasks
-                  .where((t) => t.id == details.data.taskId)
-                  .firstOrNull;
-              if (task == null) return;
-              switch (details.data.kind) {
-                case _TimelineDragKind.move:
-                  _moveTask(task, target);
-                case _TimelineDragKind.resizeStart:
-                  _resizeTaskStart(task, target);
-                case _TimelineDragKind.resizeEnd:
-                  _resizeTaskEnd(task, target);
-              }
-            },
-            builder: (context, candidateData, rejectedData) {
-              final hovering = candidateData.isNotEmpty;
-              return GestureDetector(
-                onSecondaryTap: () => _openCreateTaskFromTimeline(day, hour),
-                child: Container(
-                  height: _hourHeight,
-                  width: dayWidth,
-                  decoration: BoxDecoration(
-                    color: hovering
-                        ? Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.08)
-                        : null,
-                    border: Border(
-                      right:
-                          const BorderSide(color: AppTheme.borderSubtle),
-                      bottom:
-                          const BorderSide(color: AppTheme.borderSubtle),
-                    ),
-                  ),
-                ),
-              );
-            },
+        return GestureDetector(
+          onTap: _editingTaskId != null
+              ? () => setState(() => _editingTaskId = null)
+              : null,
+          onSecondaryTap: () => _openCreateTaskFromTimeline(day, hour),
+          child: Container(
+            height: _hourHeight,
+            width: dayWidth,
+            decoration: const BoxDecoration(
+              border: Border(
+                right: BorderSide(color: AppTheme.borderSubtle),
+                bottom: BorderSide(color: AppTheme.borderSubtle),
+              ),
+            ),
           ),
         );
       }),
@@ -1178,23 +1277,17 @@ class _CalendarPageState extends State<CalendarPage> {
 
 // ── 可拖拽调整的时间块组件 ──
 
-enum _TimelineDragKind { move, resizeStart, resizeEnd }
-
-class _TimelineDragData {
-  final _TimelineDragKind kind;
-  final String taskId;
-  const _TimelineDragData(this.kind, this.taskId);
-}
-
-/// 支持实时拖拽预览的任务时间块
+/// 支持实时拖拽预览的任务时间块（纯 Listener 实现，原尺寸跟手 + 5min 吸附 + 跨日）
 class _ResizableTaskBlock extends StatefulWidget {
   final Task task;
   final DateTime start;
   final DateTime end;
   final DateTime segmentStart;
   final double hourHeight;
+  final double dayWidth;
   final Color priorityColor;
   final bool isCompleted;
+  final bool isEditMode;
   final String Function(DateTime) timeLabel;
   final String? parentLabel;
   final VoidCallback onOpenDetail;
@@ -1203,6 +1296,7 @@ class _ResizableTaskBlock extends StatefulWidget {
   final void Function(DateTime target) onMove;
   final void Function(DateTime target) onResizeStart;
   final void Function(DateTime target) onResizeEnd;
+  final ValueChanged<bool> onEditModeChanged;
 
   const _ResizableTaskBlock({
     required this.task,
@@ -1210,8 +1304,10 @@ class _ResizableTaskBlock extends StatefulWidget {
     required this.end,
     required this.segmentStart,
     required this.hourHeight,
+    required this.dayWidth,
     required this.priorityColor,
     required this.isCompleted,
+    required this.isEditMode,
     required this.timeLabel,
     required this.parentLabel,
     required this.onOpenDetail,
@@ -1220,6 +1316,7 @@ class _ResizableTaskBlock extends StatefulWidget {
     required this.onMove,
     required this.onResizeStart,
     required this.onResizeEnd,
+    required this.onEditModeChanged,
   });
 
   @override
@@ -1230,8 +1327,29 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
   double? _resizeTopDelta;
   double? _resizeBottomDelta;
 
+  // 整块移动：拖动偏移
+  Offset? _moveDelta;
+  bool _isDragging = false;
+  Offset? _dragStartGlobal;
+
   double get _currentTopDelta => _resizeTopDelta ?? 0;
   double get _currentBottomDelta => _resizeBottomDelta ?? 0;
+
+  bool get _isMobile => Platform.isAndroid || Platform.isIOS;
+
+  void _exitEditMode() {
+    if (widget.isEditMode) widget.onEditModeChanged(false);
+  }
+
+  /// 把像素 delta(dx, dy) 转成目标时间（5 分钟吸附）
+  DateTime _targetFromDelta(Offset delta) {
+    final w = widget;
+    final dayDelta = (delta.dx / w.dayWidth).round();
+    final minuteDelta = (delta.dy / w.hourHeight * 60 / 5).round() * 5;
+    return w.start
+        .add(Duration(days: dayDelta))
+        .add(Duration(minutes: minuteDelta));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1241,81 +1359,142 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
         ? Colors.white.withValues(alpha: 0.72)
         : Colors.white;
     final effectiveBottom = _currentBottomDelta;
+    final showResize = w.isEditMode || !_isMobile;
+    final move = _moveDelta ?? Offset.zero;
 
     return SizedBox.expand(
       child: Stack(
         clipBehavior: Clip.none,
         fit: StackFit.expand,
         children: [
-          // 任务块主体 - 用 Transform 实现实时预览
+          // 主体：Transform.translate 让块跟手平移，保持原尺寸
           Positioned(
             left: 0,
             right: 0,
             top: _currentTopDelta,
             bottom: -effectiveBottom,
-            child: Draggable<_TimelineDragData>(
-              data: _TimelineDragData(_TimelineDragKind.move, widget.task.id),
-              feedback: SizedBox(
-                width: 120,
-                height: 48,
-                child: _buildBlockContent(color, textColor),
+            child: Transform.translate(
+              offset: move,
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (e) {
+                  if (w.isEditMode) return; // 编辑模式只允许 resize
+                  _dragStartGlobal = e.position;
+                  _isDragging = false;
+                },
+                onPointerMove: (e) {
+                  if (_dragStartGlobal == null) return;
+                  final delta = e.position - _dragStartGlobal!;
+                  // 启动阈值
+                  if (!_isDragging && delta.distance < 6) return;
+                  if (!_isDragging) {
+                    setState(() => _isDragging = true);
+                  }
+                  setState(() => _moveDelta = delta);
+                },
+                onPointerUp: (e) {
+                  final wasDragging = _isDragging;
+                  final delta = _moveDelta;
+                  setState(() {
+                    _isDragging = false;
+                    _moveDelta = null;
+                    _dragStartGlobal = null;
+                  });
+                  if (wasDragging && delta != null && delta.distance >= 6) {
+                    final target = _targetFromDelta(delta);
+                    if (target != w.start) {
+                      w.onMove(target);
+                    }
+                  } else {
+                    // 等同于点击
+                    w.onOpenDetail();
+                  }
+                },
+                onPointerCancel: (_) {
+                  setState(() {
+                    _isDragging = false;
+                    _moveDelta = null;
+                    _dragStartGlobal = null;
+                  });
+                },
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onLongPress: _isMobile && !w.isEditMode
+                      ? () => w.onEditModeChanged(true)
+                      : null,
+                  onSecondaryTap: w.onDelete,
+                  child: _buildBlockContent(color, textColor),
+                ),
               ),
-              childWhenDragging: _buildBlockContent(color, textColor),
-              child: _buildBlockContent(color, textColor),
             ),
           ),
-          // 顶部拖拽热区（拉开始时间）
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            height: 8,
-            child: _ResizeHotZone(
-              alignment: Alignment.topCenter,
-              onPanUpdate: (delta) {
-                setState(() {
-                  _resizeTopDelta = (_resizeTopDelta ?? 0) + delta.dy;
-                });
-              },
-              onPanEnd: () {
-                final delta = _resizeTopDelta;
-                if (delta == null) return;
-                setState(() => _resizeTopDelta = null);
-                if (delta == 0) return;
-                final minuteDelta = (delta / w.hourHeight * 60).round();
-                final snapped = (minuteDelta / 15).round() * 15;
-                if (snapped == 0) return;
-                final target = w.segmentStart.add(Duration(minutes: snapped));
-                w.onResizeStart(target);
-              },
+          // resize hot zones（在 Stack 顶层）
+          if (showResize) ...[
+            Positioned(
+              left: 0,
+              right: 0,
+              top: _isMobile ? -16 : 0,
+              height: _isMobile ? 32 : 8,
+              child: _ResizeHotZone(
+                isMobileEditMode: _isMobile && w.isEditMode,
+                onPanUpdate: (delta) {
+                  setState(() {
+                    _resizeTopDelta = (_resizeTopDelta ?? 0) + delta.dy;
+                  });
+                },
+                onPanEnd: () {
+                  final delta = _resizeTopDelta;
+                  if (delta == null) return;
+                  setState(() => _resizeTopDelta = null);
+                  _exitEditMode();
+                  if (delta == 0) return;
+                  final minuteDelta =
+                      (delta / w.hourHeight * 60 / 5).round() * 5;
+                  if (minuteDelta == 0) return;
+                  final target =
+                      w.segmentStart.add(Duration(minutes: minuteDelta));
+                  w.onResizeStart(target);
+                },
+              ),
             ),
-          ),
-          // 底部拖拽热区（拉结束时间）
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 8,
-            child: _ResizeHotZone(
-              alignment: Alignment.bottomCenter,
-              onPanUpdate: (delta) {
-                setState(() {
-                  _resizeBottomDelta = (_resizeBottomDelta ?? 0) + delta.dy;
-                });
-              },
-              onPanEnd: () {
-                final delta = _resizeBottomDelta;
-                if (delta == null) return;
-                setState(() => _resizeBottomDelta = null);
-                if (delta == 0) return;
-                final minuteDelta = (delta / w.hourHeight * 60).round();
-                final snapped = (minuteDelta / 15).round() * 15;
-                if (snapped == 0) return;
-                final target = w.end.add(Duration(minutes: snapped));
-                w.onResizeEnd(target);
-              },
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: _isMobile ? -16 : -8,
+              height: _isMobile ? 32 : 16,
+              child: _ResizeHotZone(
+                isMobileEditMode: _isMobile && w.isEditMode,
+                onPanUpdate: (delta) {
+                  setState(() {
+                    _resizeBottomDelta = (_resizeBottomDelta ?? 0) + delta.dy;
+                  });
+                },
+                onPanEnd: () {
+                  final delta = _resizeBottomDelta;
+                  if (delta == null) return;
+                  setState(() => _resizeBottomDelta = null);
+                  _exitEditMode();
+                  if (delta == 0) return;
+                  final minuteDelta =
+                      (delta / w.hourHeight * 60 / 5).round() * 5;
+                  if (minuteDelta == 0) return;
+                  final target = w.end.add(Duration(minutes: minuteDelta));
+                  w.onResizeEnd(target);
+                },
+              ),
             ),
-          ),
+          ],
+          if (w.isEditMode)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppTheme.primaryColor, width: 2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1327,15 +1506,12 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
       color: color.withValues(alpha: w.isCompleted ? 0.62 : 0.88),
       elevation: w.isCompleted ? 0 : 2,
       borderRadius: BorderRadius.circular(6),
-      child: InkWell(
-        onTap: w.onOpenDetail,
-        onSecondaryTap: w.onDelete,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+      clipBehavior: Clip.hardEdge,
+      // 注意：外层 Listener 已处理 tap → onOpenDetail，这里不再设 onTap，避免双触发
+      child: Padding(
+          padding: const EdgeInsets.fromLTRB(6, 3, 6, 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
               if (w.parentLabel != null)
                 Text(
@@ -1348,55 +1524,55 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-              Row(
-                children: [
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: Checkbox(
-                      value: w.isCompleted,
-                      onChanged: (_) => w.onToggle(),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      side: const BorderSide(color: Colors.white, width: 1.4),
-                      checkColor: Colors.grey,
-                      fillColor: WidgetStateProperty.resolveWith(
-                        (states) => states.contains(WidgetState.selected)
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.16),
+              Expanded(
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: Checkbox(
+                        value: w.isCompleted,
+                        onChanged: (_) => w.onToggle(),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: const BorderSide(color: Colors.white, width: 1.4),
+                        checkColor: Colors.grey,
+                        fillColor: WidgetStateProperty.resolveWith(
+                          (states) => states.contains(WidgetState.selected)
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.16),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      w.task.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        decoration: w.isCompleted
-                            ? TextDecoration.lineThrough
-                            : null,
-                        decorationColor: textColor,
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        w.task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          decoration: w.isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
+                          decorationColor: textColor,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 2),
               Text(
                 '${w.timeLabel(w.start)} - ${w.timeLabel(w.end)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: textColor, fontSize: 10),
+                style: TextStyle(color: textColor, fontSize: 9),
               ),
             ],
           ),
         ),
-      ),
     );
   }
 }
@@ -1424,38 +1600,43 @@ class _DayTaskRange {
 
 /// 拖拽热区：响应 pan 手势，显示细线
 class _ResizeHotZone extends StatelessWidget {
-  final Alignment alignment;
   final void Function(Offset delta) onPanUpdate;
   final VoidCallback onPanEnd;
+  final bool isMobileEditMode;
 
   const _ResizeHotZone({
-    required this.alignment,
     required this.onPanUpdate,
     required this.onPanEnd,
+    this.isMobileEditMode = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onPanUpdate: (details) => onPanUpdate(details.delta),
-        onPanEnd: (_) => onPanEnd(),
-        child: SizedBox(
-          width: 44,
-          height: 8,
-          child: Center(
-            child: Container(
-              width: 32,
-              height: 3,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.75),
-                borderRadius: BorderRadius.circular(999),
+    return GestureDetector(
+      behavior: isMobileEditMode
+          ? HitTestBehavior.opaque
+          : HitTestBehavior.translucent,
+      onPanUpdate: (details) => onPanUpdate(details.delta),
+      onPanEnd: (_) => onPanEnd(),
+      child: Center(
+        child: isMobileEditMode
+            ? Container(
+                width: 40,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: BorderRadius.circular(3),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                ),
+              )
+            : Container(
+                width: 32,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1494,6 +1675,8 @@ class _EditableMultiDayBar extends StatefulWidget {
 class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
   double? _startDayDelta;
   double? _endDayDelta;
+  double? _moveDeltaX;
+  double? _moveStartX;
   final double _handleWidth = 18.0;
 
   @override
@@ -1507,21 +1690,46 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
         clipBehavior: Clip.none,
         fit: StackFit.expand,
         children: [
-          // 主体（可拖拽移动）
+          // 主体（横向拖动按整天移动；保持原尺寸跟手）
           Positioned(
-            left: (_startDayDelta ?? 0),
-            right: (_endDayDelta != null ? -(_endDayDelta!) : 0),
-            child: Draggable<_TimelineDragData>(
-              data: _TimelineDragData(_TimelineDragKind.move, w.task.id),
-              feedback: SizedBox(
-                width: w.dayWidth * 2,
-                height: w.laneHeight - 8,
-                child: _buildBar(color, isCompleted),
-              ),
-              childWhenDragging: Opacity(
-                opacity: 0.35,
-                child: _buildBar(color, isCompleted),
-              ),
+            left: (_startDayDelta ?? 0) + (_moveDeltaX ?? 0),
+            right: (_endDayDelta != null ? -(_endDayDelta!) : 0)
+                + (_moveDeltaX != null ? -(_moveDeltaX!) : 0),
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: (e) {
+                _moveStartX = e.position.dx;
+              },
+              onPointerMove: (e) {
+                if (_moveStartX == null) return;
+                setState(() {
+                  _moveDeltaX = e.position.dx - _moveStartX!;
+                });
+              },
+              onPointerUp: (e) {
+                final dx = _moveDeltaX;
+                final startX = _moveStartX;
+                setState(() {
+                  _moveDeltaX = null;
+                  _moveStartX = null;
+                });
+                if (dx == null || startX == null) {
+                  w.onTap();
+                  return;
+                }
+                if (dx.abs() < 6) {
+                  w.onTap();
+                  return;
+                }
+                final days = (dx / w.dayWidth).round();
+                if (days != 0) w.onMoveDay(days);
+              },
+              onPointerCancel: (_) {
+                setState(() {
+                  _moveDeltaX = null;
+                  _moveStartX = null;
+                });
+              },
               child: _buildBar(color, isCompleted),
             ),
           ),

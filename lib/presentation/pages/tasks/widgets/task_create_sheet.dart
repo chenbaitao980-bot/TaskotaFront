@@ -42,10 +42,14 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     if (widget.initialStartDateMillis != null) {
       _startDate =
           DateTime.fromMillisecondsSinceEpoch(widget.initialStartDateMillis!);
+    } else {
+      _startDate = DateTime.now();
     }
     if (widget.initialDueDateMillis != null) {
       _dueDate =
           DateTime.fromMillisecondsSinceEpoch(widget.initialDueDateMillis!);
+    } else {
+      _dueDate = _startDate!.add(const Duration(hours: 1));
     }
     _projectsFuture = widget.projectRepository.getActive();
   }
@@ -59,23 +63,24 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final maxSheetHeight = MediaQuery.of(context).size.height * 0.85;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxSheetHeight),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
         decoration: const BoxDecoration(
           color: AppTheme.bgCard,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
                 child: Container(
                   width: 40,
                   height: 4,
@@ -221,6 +226,7 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
           ),
         ),
       ),
+    ),
     );
   }
 

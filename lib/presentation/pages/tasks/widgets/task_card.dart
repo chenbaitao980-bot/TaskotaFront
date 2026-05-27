@@ -118,21 +118,18 @@ class TaskCard extends StatelessWidget {
                 else
                   const SizedBox(width: 24),
 
-                // 优先级色条（点击循环切换优先级）
-                GestureDetector(
-                  onTap: () => _cyclePriority(context, task),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Container(
-                      width: 4, height: 32,
-                      decoration: BoxDecoration(
-                        color: isCompleted ? AppTheme.textHint : priorityColor,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
+                // 优先级胶囊（下拉切换）
+                _PriorityPill(
+                  priority: task.priority,
+                  color: isCompleted ? AppTheme.textHint : priorityColor,
+                  label: _priorityShortLabel(task.priority),
+                  onSelected: (p) {
+                    context.read<TaskNewBloc>().add(
+                          UpdateTask(id: task.id, priority: p),
+                        );
+                  },
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
 
                 // 复选框
                 GestureDetector(
@@ -259,29 +256,13 @@ class TaskCard extends StatelessWidget {
     );
   }
 
-  String _priorityLabel(int p) {
+  String _priorityShortLabel(int p) {
     switch (p) {
-      case 5: return '紧急';
-      case 3: return '重要';
-      case 1: return '普通';
-      default: return '低';
+      case 5: return '高';
+      case 3: return '中';
+      case 1: return '低';
+      default: return '无';
     }
-  }
-
-  Color _priorityColor(String label) {
-    switch (label) {
-      case '紧急': return AppTheme.priorityP0;
-      case '重要': return AppTheme.priorityP1;
-      case '普通': return AppTheme.priorityP2;
-      default: return AppTheme.priorityP3;
-    }
-  }
-
-  void _cyclePriority(BuildContext context, Task task) {
-    final values = [0, 1, 3, 5];
-    final idx = values.indexOf(task.priority);
-    final next = values[(idx + 1) % values.length];
-    context.read<TaskNewBloc>().add(UpdateTask(id: task.id, priority: next));
   }
 
   Future<void> _editDate(BuildContext context, Task task) async {
@@ -334,5 +315,86 @@ class TaskCard extends StatelessWidget {
     if (target == today.add(const Duration(days: 1))) return '明天 $time';
     if (target == today.subtract(const Duration(days: 1))) return '昨天 $time';
     return '${date.month}/${date.day} $time';
+  }
+}
+
+class _PriorityPill extends StatelessWidget {
+  final int priority;
+  final Color color;
+  final String label;
+  final ValueChanged<int> onSelected;
+
+  const _PriorityPill({
+    required this.priority,
+    required this.color,
+    required this.label,
+    required this.onSelected,
+  });
+
+  static const _options = [
+    (0, '无', AppTheme.textHint),
+    (1, '低', AppTheme.priorityP3),
+    (3, '中', AppTheme.priorityP1),
+    (5, '高', AppTheme.priorityP0),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<int>(
+      tooltip: '优先级',
+      padding: EdgeInsets.zero,
+      onSelected: onSelected,
+      itemBuilder: (_) => _options.map((o) {
+        return PopupMenuItem<int>(
+          value: o.$1,
+          height: 36,
+          child: Row(
+            children: [
+              Container(
+                width: 10, height: 10,
+                decoration: BoxDecoration(
+                  color: o.$3,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(o.$2, style: const TextStyle(fontSize: 13)),
+              if (priority == o.$1) ...[
+                const Spacer(),
+                const Icon(Icons.check, size: 14, color: AppTheme.primaryColor),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.arrow_drop_down, size: 14, color: color),
+          ],
+        ),
+      ),
+    );
   }
 }

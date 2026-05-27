@@ -37,6 +37,8 @@ mixin _$TaskBreakdown {
   bool get focusRequired => throw _privateConstructorUsedError;
   bool get isParent => throw _privateConstructorUsedError;
   List<String>? get dependencies => throw _privateConstructorUsedError;
+  int get remindBeforeMinutes => throw _privateConstructorUsedError;
+  bool get reminderEnabled => throw _privateConstructorUsedError;
   DateTime get createdAt => throw _privateConstructorUsedError;
   DateTime get updatedAt => throw _privateConstructorUsedError;
 
@@ -74,6 +76,8 @@ abstract class $TaskBreakdownCopyWith<$Res> {
     bool focusRequired,
     bool isParent,
     List<String>? dependencies,
+    int remindBeforeMinutes,
+    bool reminderEnabled,
     DateTime createdAt,
     DateTime updatedAt,
   });
@@ -110,6 +114,8 @@ class _$TaskBreakdownCopyWithImpl<$Res, $Val extends TaskBreakdown>
     Object? focusRequired = null,
     Object? isParent = null,
     Object? dependencies = freezed,
+    Object? remindBeforeMinutes = null,
+    Object? reminderEnabled = null,
     Object? createdAt = null,
     Object? updatedAt = null,
   }) {
@@ -179,6 +185,14 @@ class _$TaskBreakdownCopyWithImpl<$Res, $Val extends TaskBreakdown>
                 ? _value.dependencies
                 : dependencies // ignore: cast_nullable_to_non_nullable
                       as List<String>?,
+            remindBeforeMinutes: null == remindBeforeMinutes
+                ? _value.remindBeforeMinutes
+                : remindBeforeMinutes // ignore: cast_nullable_to_non_nullable
+                      as int,
+            reminderEnabled: null == reminderEnabled
+                ? _value.reminderEnabled
+                : reminderEnabled // ignore: cast_nullable_to_non_nullable
+                      as bool,
             createdAt: null == createdAt
                 ? _value.createdAt
                 : createdAt // ignore: cast_nullable_to_non_nullable
@@ -219,6 +233,8 @@ abstract class _$$TaskBreakdownImplCopyWith<$Res>
     bool focusRequired,
     bool isParent,
     List<String>? dependencies,
+    int remindBeforeMinutes,
+    bool reminderEnabled,
     DateTime createdAt,
     DateTime updatedAt,
   });
@@ -254,6 +270,8 @@ class __$$TaskBreakdownImplCopyWithImpl<$Res>
     Object? focusRequired = null,
     Object? isParent = null,
     Object? dependencies = freezed,
+    Object? remindBeforeMinutes = null,
+    Object? reminderEnabled = null,
     Object? createdAt = null,
     Object? updatedAt = null,
   }) {
@@ -323,6 +341,14 @@ class __$$TaskBreakdownImplCopyWithImpl<$Res>
             ? _value._dependencies
             : dependencies // ignore: cast_nullable_to_non_nullable
                   as List<String>?,
+        remindBeforeMinutes: null == remindBeforeMinutes
+            ? _value.remindBeforeMinutes
+            : remindBeforeMinutes // ignore: cast_nullable_to_non_nullable
+                  as int,
+        reminderEnabled: null == reminderEnabled
+            ? _value.reminderEnabled
+            : reminderEnabled // ignore: cast_nullable_to_non_nullable
+                  as bool,
         createdAt: null == createdAt
             ? _value.createdAt
             : createdAt // ignore: cast_nullable_to_non_nullable
@@ -356,6 +382,8 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
     this.focusRequired = false,
     this.isParent = false,
     final List<String>? dependencies,
+    this.remindBeforeMinutes = 15,
+    this.reminderEnabled = true,
     required this.createdAt,
     required this.updatedAt,
   }) : _dependencies = dependencies;
@@ -409,13 +437,19 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
   }
 
   @override
+  @JsonKey()
+  final int remindBeforeMinutes;
+  @override
+  @JsonKey()
+  final bool reminderEnabled;
+  @override
   final DateTime createdAt;
   @override
   final DateTime updatedAt;
 
   @override
   String toString() {
-    return 'TaskBreakdown(id: $id, userId: $userId, parentGoalId: $parentGoalId, parentTaskId: $parentTaskId, parentScheduleId: $parentScheduleId, title: $title, description: $description, level: $level, startDate: $startDate, endDate: $endDate, status: $status, progress: $progress, priority: $priority, focusRequired: $focusRequired, isParent: $isParent, dependencies: $dependencies, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'TaskBreakdown(id: $id, userId: $userId, parentGoalId: $parentGoalId, parentTaskId: $parentTaskId, parentScheduleId: $parentScheduleId, title: $title, description: $description, level: $level, startDate: $startDate, endDate: $endDate, status: $status, progress: $progress, priority: $priority, focusRequired: $focusRequired, isParent: $isParent, dependencies: $dependencies, remindBeforeMinutes: $remindBeforeMinutes, reminderEnabled: $reminderEnabled, createdAt: $createdAt, updatedAt: $updatedAt)';
   }
 
   @override
@@ -451,6 +485,10 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
               other._dependencies,
               _dependencies,
             ) &&
+            (identical(other.remindBeforeMinutes, remindBeforeMinutes) ||
+                other.remindBeforeMinutes == remindBeforeMinutes) &&
+            (identical(other.reminderEnabled, reminderEnabled) ||
+                other.reminderEnabled == reminderEnabled) &&
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
@@ -459,7 +497,7 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     runtimeType,
     id,
     userId,
@@ -477,9 +515,11 @@ class _$TaskBreakdownImpl implements _TaskBreakdown {
     focusRequired,
     isParent,
     const DeepCollectionEquality().hash(_dependencies),
+    remindBeforeMinutes,
+    reminderEnabled,
     createdAt,
     updatedAt,
-  );
+  ]);
 
   /// Create a copy of TaskBreakdown
   /// with the given fields replaced by the non-null parameter values.
@@ -513,6 +553,8 @@ abstract class _TaskBreakdown implements TaskBreakdown {
     final bool focusRequired,
     final bool isParent,
     final List<String>? dependencies,
+    final int remindBeforeMinutes,
+    final bool reminderEnabled,
     required final DateTime createdAt,
     required final DateTime updatedAt,
   }) = _$TaskBreakdownImpl;
@@ -552,6 +594,10 @@ abstract class _TaskBreakdown implements TaskBreakdown {
   bool get isParent;
   @override
   List<String>? get dependencies;
+  @override
+  int get remindBeforeMinutes;
+  @override
+  bool get reminderEnabled;
   @override
   DateTime get createdAt;
   @override

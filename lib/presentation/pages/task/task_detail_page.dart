@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/entities/task_breakdown.dart';
 import '../../../services/local_storage_service.dart';
+import '../../../services/notification_service.dart';
 import 'create_task_page.dart';
 
 class TaskDetailPage extends StatefulWidget {
@@ -20,6 +21,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   TaskBreakdown? _parentTask;
   List<TaskBreakdown> _children = [];
   bool _loaded = false;
+  int _remindBeforeMinutes = 15;
+  bool _reminderEnabled = true;
 
   @override
   void initState() {
@@ -40,6 +43,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       _parentTask = parent;
       _children = task == null ? [] : _storage.getTasks(parentTaskId: task.id);
       _loaded = true;
+      if (task != null) {
+        _remindBeforeMinutes = task.remindBeforeMinutes;
+        _reminderEnabled = task.reminderEnabled;
+      }
     });
   }
 
@@ -80,6 +87,26 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   void _backToCalendar() {
     Navigator.popUntil(context, (route) => route.isFirst);
+  }
+
+  Future<void> _updateReminderSettings() async {
+    if (_task == null) return;
+    final updated = _task!.copyWith(
+      remindBeforeMinutes: _remindBeforeMinutes,
+      reminderEnabled: _reminderEnabled,
+      updatedAt: DateTime.now(),
+    );
+    await _storage.updateTask(updated);
+    _task = updated;
+    if (_reminderEnabled && _task!.startDate != null) {
+      NotificationService().scheduleReminderForSchedule(
+        scheduleId: _task!.id,
+        title: _task!.title,
+        startTime: _task!.startDate!,
+        description: _task!.description,
+        remindBeforeMinutes: _remindBeforeMinutes,
+      );
+    }
   }
 
   Future<void> _deleteTask() async {
@@ -359,6 +386,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             const SizedBox(height: 28),
 
+            // 提醒设置
+            _buildReminderSection(),
+            const SizedBox(height: 28),
+
             // Progress
             Text('进度', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
@@ -542,6 +573,101 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildReminderSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            isThreeLine: true,
+            secondary: Icon(
+              Icons.notifications_active,
+              size: 20,
+              color: _reminderEnabled ? AppTheme.primaryColor : AppTheme.textHint,
+            ),
+            title: const Text('启用提醒',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            subtitle: Text(
+              _reminderEnabled ? '将在任务开始前通知您' : '不会发送提醒',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            value: _reminderEnabled,
+            onChanged: (v) {
+              setState(() => _reminderEnabled = v);
+              _updateReminderSettings();
+            },
+          ),
+          if (_reminderEnabled) ...[
+            const Divider(height: 0.5, color: AppTheme.borderSubtle),
+            _remindDropdownTile(
+              icon: Icons.timer_outlined,
+              label: '提前提醒',
+              value: _remindBeforeMinutes,
+              options: const [5, 10, 15, 30, 60, 120, 1440],
+              optionLabels: const ['5分钟', '10分钟', '15分钟', '30分钟', '1小时', '2小时', '1天'],
+              onChanged: (v) {
+                setState(() => _remindBeforeMinutes = v);
+                _updateReminderSettings();
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _remindDropdownTile({
+    required IconData icon,
+    required String label,
+    required int value,
+    required List<int> options,
+    required List<String> optionLabels,
+    required ValueChanged<int> onChanged,
+  }) {
+    final idx = options.indexOf(value);
+    final displayLabel = idx >= 0 ? optionLabels[idx] : '$value分钟';
+    return ListTile(
+      minVerticalPadding: 8,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
+      title: Text(label,
+          style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
+      subtitle: Text(displayLabel,
+          style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+      trailing: const Icon(Icons.arrow_drop_down, size: 20, color: AppTheme.textHint),
+      onTap: () => _showRemindPicker(options, optionLabels, value, onChanged),
+    );
+  }
+
+  void _showRemindPicker(List<int> options, List<String> labels, int current, ValueChanged<int> onChanged) {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('提前提醒'),
+        children: List.generate(options.length, (i) {
+          return RadioListTile<int>(
+            title: Text(labels[i]),
+            value: options[i],
+            groupValue: current,
+            onChanged: (v) {
+              if (v != null) {
+                onChanged(v);
+                Navigator.pop(ctx);
+              }
+            },
+          );
+        }),
       ),
     );
   }

@@ -37,6 +37,17 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
     $customConstraints: 'NOT NULL DEFAULT \'#4772FA\'',
     defaultValue: const CustomExpression('\'#4772FA\''),
   );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _sortOrderMeta = const VerificationMeta(
     'sortOrder',
   );
@@ -90,6 +101,7 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
     id,
     name,
     color,
+    groupId,
     sortOrder,
     archived,
     createdAt,
@@ -124,6 +136,12 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
       context.handle(
         _colorMeta,
         color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
       );
     }
     if (data.containsKey('sort_order')) {
@@ -175,6 +193,10 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
         DriftSqlType.string,
         data['${effectivePrefix}color'],
       )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      ),
       sortOrder: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
@@ -204,6 +226,7 @@ class Project extends DataClass implements Insertable<Project> {
   final String id;
   final String name;
   final String color;
+  final String? groupId;
   final int sortOrder;
   final int archived;
   final int createdAt;
@@ -212,6 +235,7 @@ class Project extends DataClass implements Insertable<Project> {
     required this.id,
     required this.name,
     required this.color,
+    this.groupId,
     required this.sortOrder,
     required this.archived,
     required this.createdAt,
@@ -223,6 +247,9 @@ class Project extends DataClass implements Insertable<Project> {
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
     map['color'] = Variable<String>(color);
+    if (!nullToAbsent || groupId != null) {
+      map['group_id'] = Variable<String>(groupId);
+    }
     map['sort_order'] = Variable<int>(sortOrder);
     map['archived'] = Variable<int>(archived);
     map['created_at'] = Variable<int>(createdAt);
@@ -235,6 +262,9 @@ class Project extends DataClass implements Insertable<Project> {
       id: Value(id),
       name: Value(name),
       color: Value(color),
+      groupId: groupId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(groupId),
       sortOrder: Value(sortOrder),
       archived: Value(archived),
       createdAt: Value(createdAt),
@@ -251,6 +281,7 @@ class Project extends DataClass implements Insertable<Project> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       color: serializer.fromJson<String>(json['color']),
+      groupId: serializer.fromJson<String?>(json['groupId']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       archived: serializer.fromJson<int>(json['archived']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
@@ -264,6 +295,7 @@ class Project extends DataClass implements Insertable<Project> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'color': serializer.toJson<String>(color),
+      'groupId': serializer.toJson<String?>(groupId),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'archived': serializer.toJson<int>(archived),
       'createdAt': serializer.toJson<int>(createdAt),
@@ -275,6 +307,7 @@ class Project extends DataClass implements Insertable<Project> {
     String? id,
     String? name,
     String? color,
+    Value<String?> groupId = const Value.absent(),
     int? sortOrder,
     int? archived,
     int? createdAt,
@@ -283,6 +316,7 @@ class Project extends DataClass implements Insertable<Project> {
     id: id ?? this.id,
     name: name ?? this.name,
     color: color ?? this.color,
+    groupId: groupId.present ? groupId.value : this.groupId,
     sortOrder: sortOrder ?? this.sortOrder,
     archived: archived ?? this.archived,
     createdAt: createdAt ?? this.createdAt,
@@ -293,6 +327,7 @@ class Project extends DataClass implements Insertable<Project> {
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       color: data.color.present ? data.color.value : this.color,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       archived: data.archived.present ? data.archived.value : this.archived,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -306,6 +341,7 @@ class Project extends DataClass implements Insertable<Project> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
+          ..write('groupId: $groupId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('archived: $archived, ')
           ..write('createdAt: $createdAt, ')
@@ -315,8 +351,16 @@ class Project extends DataClass implements Insertable<Project> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, color, sortOrder, archived, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    color,
+    groupId,
+    sortOrder,
+    archived,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -324,6 +368,7 @@ class Project extends DataClass implements Insertable<Project> {
           other.id == this.id &&
           other.name == this.name &&
           other.color == this.color &&
+          other.groupId == this.groupId &&
           other.sortOrder == this.sortOrder &&
           other.archived == this.archived &&
           other.createdAt == this.createdAt &&
@@ -334,6 +379,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
   final Value<String> id;
   final Value<String> name;
   final Value<String> color;
+  final Value<String?> groupId;
   final Value<int> sortOrder;
   final Value<int> archived;
   final Value<int> createdAt;
@@ -343,6 +389,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.color = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.archived = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -353,6 +400,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     required String id,
     required String name,
     this.color = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.archived = const Value.absent(),
     required int createdAt,
@@ -366,6 +414,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<String>? color,
+    Expression<String>? groupId,
     Expression<int>? sortOrder,
     Expression<int>? archived,
     Expression<int>? createdAt,
@@ -376,6 +425,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (color != null) 'color': color,
+      if (groupId != null) 'group_id': groupId,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (archived != null) 'archived': archived,
       if (createdAt != null) 'created_at': createdAt,
@@ -388,6 +438,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     Value<String>? id,
     Value<String>? name,
     Value<String>? color,
+    Value<String?>? groupId,
     Value<int>? sortOrder,
     Value<int>? archived,
     Value<int>? createdAt,
@@ -398,6 +449,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
       id: id ?? this.id,
       name: name ?? this.name,
       color: color ?? this.color,
+      groupId: groupId ?? this.groupId,
       sortOrder: sortOrder ?? this.sortOrder,
       archived: archived ?? this.archived,
       createdAt: createdAt ?? this.createdAt,
@@ -417,6 +469,9 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     }
     if (color.present) {
       map['color'] = Variable<String>(color.value);
+    }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
     }
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
@@ -442,6 +497,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
+          ..write('groupId: $groupId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('archived: $archived, ')
           ..write('createdAt: $createdAt, ')
@@ -618,6 +674,42 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _remindBeforeMinutesMeta =
+      const VerificationMeta('remindBeforeMinutes');
+  @override
+  late final GeneratedColumn<int> remindBeforeMinutes = GeneratedColumn<int>(
+    'remind_before_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 15',
+    defaultValue: const CustomExpression('15'),
+  );
+  static const VerificationMeta _reminderEnabledMeta = const VerificationMeta(
+    'reminderEnabled',
+  );
+  @override
+  late final GeneratedColumn<int> reminderEnabled = GeneratedColumn<int>(
+    'reminder_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 1',
+    defaultValue: const CustomExpression('1'),
+  );
+  static const VerificationMeta _estimatedMinutesMeta = const VerificationMeta(
+    'estimatedMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> estimatedMinutes = GeneratedColumn<int>(
+    'estimated_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -634,6 +726,9 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     sortOrder,
     createdAt,
     updatedAt,
+    remindBeforeMinutes,
+    reminderEnabled,
+    estimatedMinutes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -744,6 +839,33 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('remind_before_minutes')) {
+      context.handle(
+        _remindBeforeMinutesMeta,
+        remindBeforeMinutes.isAcceptableOrUnknown(
+          data['remind_before_minutes']!,
+          _remindBeforeMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_enabled')) {
+      context.handle(
+        _reminderEnabledMeta,
+        reminderEnabled.isAcceptableOrUnknown(
+          data['reminder_enabled']!,
+          _reminderEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('estimated_minutes')) {
+      context.handle(
+        _estimatedMinutesMeta,
+        estimatedMinutes.isAcceptableOrUnknown(
+          data['estimated_minutes']!,
+          _estimatedMinutesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -809,6 +931,18 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.int,
         data['${effectivePrefix}updated_at'],
       )!,
+      remindBeforeMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}remind_before_minutes'],
+      )!,
+      reminderEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reminder_enabled'],
+      )!,
+      estimatedMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}estimated_minutes'],
+      ),
     );
   }
 
@@ -833,6 +967,9 @@ class Task extends DataClass implements Insertable<Task> {
   final int sortOrder;
   final int createdAt;
   final int updatedAt;
+  final int remindBeforeMinutes;
+  final int reminderEnabled;
+  final int? estimatedMinutes;
   const Task({
     required this.id,
     required this.projectId,
@@ -848,6 +985,9 @@ class Task extends DataClass implements Insertable<Task> {
     required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
+    required this.remindBeforeMinutes,
+    required this.reminderEnabled,
+    this.estimatedMinutes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -874,6 +1014,11 @@ class Task extends DataClass implements Insertable<Task> {
     map['sort_order'] = Variable<int>(sortOrder);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
+    map['remind_before_minutes'] = Variable<int>(remindBeforeMinutes);
+    map['reminder_enabled'] = Variable<int>(reminderEnabled);
+    if (!nullToAbsent || estimatedMinutes != null) {
+      map['estimated_minutes'] = Variable<int>(estimatedMinutes);
+    }
     return map;
   }
 
@@ -901,6 +1046,11 @@ class Task extends DataClass implements Insertable<Task> {
       sortOrder: Value(sortOrder),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      remindBeforeMinutes: Value(remindBeforeMinutes),
+      reminderEnabled: Value(reminderEnabled),
+      estimatedMinutes: estimatedMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(estimatedMinutes),
     );
   }
 
@@ -924,6 +1074,11 @@ class Task extends DataClass implements Insertable<Task> {
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      remindBeforeMinutes: serializer.fromJson<int>(
+        json['remindBeforeMinutes'],
+      ),
+      reminderEnabled: serializer.fromJson<int>(json['reminderEnabled']),
+      estimatedMinutes: serializer.fromJson<int?>(json['estimatedMinutes']),
     );
   }
   @override
@@ -944,6 +1099,9 @@ class Task extends DataClass implements Insertable<Task> {
       'sortOrder': serializer.toJson<int>(sortOrder),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
+      'remindBeforeMinutes': serializer.toJson<int>(remindBeforeMinutes),
+      'reminderEnabled': serializer.toJson<int>(reminderEnabled),
+      'estimatedMinutes': serializer.toJson<int?>(estimatedMinutes),
     };
   }
 
@@ -962,6 +1120,9 @@ class Task extends DataClass implements Insertable<Task> {
     int? sortOrder,
     int? createdAt,
     int? updatedAt,
+    int? remindBeforeMinutes,
+    int? reminderEnabled,
+    Value<int?> estimatedMinutes = const Value.absent(),
   }) => Task(
     id: id ?? this.id,
     projectId: projectId ?? this.projectId,
@@ -979,6 +1140,11 @@ class Task extends DataClass implements Insertable<Task> {
     sortOrder: sortOrder ?? this.sortOrder,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    remindBeforeMinutes: remindBeforeMinutes ?? this.remindBeforeMinutes,
+    reminderEnabled: reminderEnabled ?? this.reminderEnabled,
+    estimatedMinutes: estimatedMinutes.present
+        ? estimatedMinutes.value
+        : this.estimatedMinutes,
   );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -1000,6 +1166,15 @@ class Task extends DataClass implements Insertable<Task> {
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      remindBeforeMinutes: data.remindBeforeMinutes.present
+          ? data.remindBeforeMinutes.value
+          : this.remindBeforeMinutes,
+      reminderEnabled: data.reminderEnabled.present
+          ? data.reminderEnabled.value
+          : this.reminderEnabled,
+      estimatedMinutes: data.estimatedMinutes.present
+          ? data.estimatedMinutes.value
+          : this.estimatedMinutes,
     );
   }
 
@@ -1019,7 +1194,10 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('completedTime: $completedTime, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('remindBeforeMinutes: $remindBeforeMinutes, ')
+          ..write('reminderEnabled: $reminderEnabled, ')
+          ..write('estimatedMinutes: $estimatedMinutes')
           ..write(')'))
         .toString();
   }
@@ -1040,6 +1218,9 @@ class Task extends DataClass implements Insertable<Task> {
     sortOrder,
     createdAt,
     updatedAt,
+    remindBeforeMinutes,
+    reminderEnabled,
+    estimatedMinutes,
   );
   @override
   bool operator ==(Object other) =>
@@ -1058,7 +1239,10 @@ class Task extends DataClass implements Insertable<Task> {
           other.completedTime == this.completedTime &&
           other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.remindBeforeMinutes == this.remindBeforeMinutes &&
+          other.reminderEnabled == this.reminderEnabled &&
+          other.estimatedMinutes == this.estimatedMinutes);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -1076,6 +1260,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<int> sortOrder;
   final Value<int> createdAt;
   final Value<int> updatedAt;
+  final Value<int> remindBeforeMinutes;
+  final Value<int> reminderEnabled;
+  final Value<int?> estimatedMinutes;
   final Value<int> rowid;
   const TasksCompanion({
     this.id = const Value.absent(),
@@ -1092,6 +1279,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.remindBeforeMinutes = const Value.absent(),
+    this.reminderEnabled = const Value.absent(),
+    this.estimatedMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TasksCompanion.insert({
@@ -1109,6 +1299,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.sortOrder = const Value.absent(),
     required int createdAt,
     required int updatedAt,
+    this.remindBeforeMinutes = const Value.absent(),
+    this.reminderEnabled = const Value.absent(),
+    this.estimatedMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        projectId = Value(projectId),
@@ -1130,6 +1323,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<int>? sortOrder,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
+    Expression<int>? remindBeforeMinutes,
+    Expression<int>? reminderEnabled,
+    Expression<int>? estimatedMinutes,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1147,6 +1343,10 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (sortOrder != null) 'sort_order': sortOrder,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (remindBeforeMinutes != null)
+        'remind_before_minutes': remindBeforeMinutes,
+      if (reminderEnabled != null) 'reminder_enabled': reminderEnabled,
+      if (estimatedMinutes != null) 'estimated_minutes': estimatedMinutes,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1166,6 +1366,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<int>? sortOrder,
     Value<int>? createdAt,
     Value<int>? updatedAt,
+    Value<int>? remindBeforeMinutes,
+    Value<int>? reminderEnabled,
+    Value<int?>? estimatedMinutes,
     Value<int>? rowid,
   }) {
     return TasksCompanion(
@@ -1183,6 +1386,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      remindBeforeMinutes: remindBeforeMinutes ?? this.remindBeforeMinutes,
+      reminderEnabled: reminderEnabled ?? this.reminderEnabled,
+      estimatedMinutes: estimatedMinutes ?? this.estimatedMinutes,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1232,6 +1438,15 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<int>(updatedAt.value);
     }
+    if (remindBeforeMinutes.present) {
+      map['remind_before_minutes'] = Variable<int>(remindBeforeMinutes.value);
+    }
+    if (reminderEnabled.present) {
+      map['reminder_enabled'] = Variable<int>(reminderEnabled.value);
+    }
+    if (estimatedMinutes.present) {
+      map['estimated_minutes'] = Variable<int>(estimatedMinutes.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1255,6 +1470,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('remindBeforeMinutes: $remindBeforeMinutes, ')
+          ..write('reminderEnabled: $reminderEnabled, ')
+          ..write('estimatedMinutes: $estimatedMinutes, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1830,12 +2048,417 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
   }
 }
 
+class $ProjectGroupsTable extends ProjectGroups
+    with TableInfo<$ProjectGroupsTable, ProjectGroup> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProjectGroupsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'#4772FA\'',
+    defaultValue: const CustomExpression('\'#4772FA\''),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    color,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'project_groups';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProjectGroup> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProjectGroup map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProjectGroup(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ProjectGroupsTable createAlias(String alias) {
+    return $ProjectGroupsTable(attachedDatabase, alias);
+  }
+}
+
+class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
+  final String id;
+  final String name;
+  final String color;
+  final int sortOrder;
+  final int createdAt;
+  final int updatedAt;
+  const ProjectGroup({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['color'] = Variable<String>(color);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  ProjectGroupsCompanion toCompanion(bool nullToAbsent) {
+    return ProjectGroupsCompanion(
+      id: Value(id),
+      name: Value(name),
+      color: Value(color),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ProjectGroup.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProjectGroup(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      color: serializer.fromJson<String>(json['color']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'color': serializer.toJson<String>(color),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  ProjectGroup copyWith({
+    String? id,
+    String? name,
+    String? color,
+    int? sortOrder,
+    int? createdAt,
+    int? updatedAt,
+  }) => ProjectGroup(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    color: color ?? this.color,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ProjectGroup copyWithCompanion(ProjectGroupsCompanion data) {
+    return ProjectGroup(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      color: data.color.present ? data.color.value : this.color,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProjectGroup(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, name, color, sortOrder, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProjectGroup &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.color == this.color &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> color;
+  final Value<int> sortOrder;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const ProjectGroupsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.color = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProjectGroupsCompanion.insert({
+    required String id,
+    required String name,
+    this.color = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ProjectGroup> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? color,
+    Expression<int>? sortOrder,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (color != null) 'color': color,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProjectGroupsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? color,
+    Value<int>? sortOrder,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ProjectGroupsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProjectGroupsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $ProjectsTable projects = $ProjectsTable(this);
   late final $TasksTable tasks = $TasksTable(this);
   late final $ChecklistItemsTable checklistItems = $ChecklistItemsTable(this);
+  late final $ProjectGroupsTable projectGroups = $ProjectGroupsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1844,6 +2467,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     projects,
     tasks,
     checklistItems,
+    projectGroups,
   ];
 }
 
@@ -1852,6 +2476,7 @@ typedef $$ProjectsTableCreateCompanionBuilder =
       required String id,
       required String name,
       Value<String> color,
+      Value<String?> groupId,
       Value<int> sortOrder,
       Value<int> archived,
       required int createdAt,
@@ -1863,6 +2488,7 @@ typedef $$ProjectsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> name,
       Value<String> color,
+      Value<String?> groupId,
       Value<int> sortOrder,
       Value<int> archived,
       Value<int> createdAt,
@@ -1915,6 +2541,11 @@ class $$ProjectsTableFilterComposer
 
   ColumnFilters<String> get color => $composableBuilder(
     column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1988,6 +2619,11 @@ class $$ProjectsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
@@ -2026,6 +2662,9 @@ class $$ProjectsTableAnnotationComposer
 
   GeneratedColumn<String> get color =>
       $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
@@ -2096,6 +2735,7 @@ class $$ProjectsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> color = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<int> archived = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
@@ -2105,6 +2745,7 @@ class $$ProjectsTableTableManager
                 id: id,
                 name: name,
                 color: color,
+                groupId: groupId,
                 sortOrder: sortOrder,
                 archived: archived,
                 createdAt: createdAt,
@@ -2116,6 +2757,7 @@ class $$ProjectsTableTableManager
                 required String id,
                 required String name,
                 Value<String> color = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<int> archived = const Value.absent(),
                 required int createdAt,
@@ -2125,6 +2767,7 @@ class $$ProjectsTableTableManager
                 id: id,
                 name: name,
                 color: color,
+                groupId: groupId,
                 sortOrder: sortOrder,
                 archived: archived,
                 createdAt: createdAt,
@@ -2195,6 +2838,9 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<int> sortOrder,
       required int createdAt,
       required int updatedAt,
+      Value<int> remindBeforeMinutes,
+      Value<int> reminderEnabled,
+      Value<int?> estimatedMinutes,
       Value<int> rowid,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
@@ -2213,6 +2859,9 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<int> sortOrder,
       Value<int> createdAt,
       Value<int> updatedAt,
+      Value<int> remindBeforeMinutes,
+      Value<int> reminderEnabled,
+      Value<int?> estimatedMinutes,
       Value<int> rowid,
     });
 
@@ -2326,6 +2975,21 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<int> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get remindBeforeMinutes => $composableBuilder(
+    column: $table.remindBeforeMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reminderEnabled => $composableBuilder(
+    column: $table.reminderEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2452,6 +3116,21 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get remindBeforeMinutes => $composableBuilder(
+    column: $table.remindBeforeMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reminderEnabled => $composableBuilder(
+    column: $table.reminderEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProjectsTableOrderingComposer get projectId {
     final $$ProjectsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2527,6 +3206,21 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<int> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get remindBeforeMinutes => $composableBuilder(
+    column: $table.remindBeforeMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reminderEnabled => $composableBuilder(
+    column: $table.reminderEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get estimatedMinutes => $composableBuilder(
+    column: $table.estimatedMinutes,
+    builder: (column) => column,
+  );
 
   $$ProjectsTableAnnotationComposer get projectId {
     final $$ProjectsTableAnnotationComposer composer = $composerBuilder(
@@ -2619,6 +3313,9 @@ class $$TasksTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
+                Value<int> remindBeforeMinutes = const Value.absent(),
+                Value<int> reminderEnabled = const Value.absent(),
+                Value<int?> estimatedMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
@@ -2635,6 +3332,9 @@ class $$TasksTableTableManager
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                remindBeforeMinutes: remindBeforeMinutes,
+                reminderEnabled: reminderEnabled,
+                estimatedMinutes: estimatedMinutes,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2653,6 +3353,9 @@ class $$TasksTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
+                Value<int> remindBeforeMinutes = const Value.absent(),
+                Value<int> reminderEnabled = const Value.absent(),
+                Value<int?> estimatedMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
@@ -2669,6 +3372,9 @@ class $$TasksTableTableManager
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                remindBeforeMinutes: remindBeforeMinutes,
+                reminderEnabled: reminderEnabled,
+                estimatedMinutes: estimatedMinutes,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -3166,6 +3872,225 @@ typedef $$ChecklistItemsTableProcessedTableManager =
       ChecklistItem,
       PrefetchHooks Function({bool taskId})
     >;
+typedef $$ProjectGroupsTableCreateCompanionBuilder =
+    ProjectGroupsCompanion Function({
+      required String id,
+      required String name,
+      Value<String> color,
+      Value<int> sortOrder,
+      required int createdAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ProjectGroupsTableUpdateCompanionBuilder =
+    ProjectGroupsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> color,
+      Value<int> sortOrder,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$ProjectGroupsTableFilterComposer
+    extends Composer<_$AppDatabase, $ProjectGroupsTable> {
+  $$ProjectGroupsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ProjectGroupsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ProjectGroupsTable> {
+  $$ProjectGroupsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ProjectGroupsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ProjectGroupsTable> {
+  $$ProjectGroupsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ProjectGroupsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ProjectGroupsTable,
+          ProjectGroup,
+          $$ProjectGroupsTableFilterComposer,
+          $$ProjectGroupsTableOrderingComposer,
+          $$ProjectGroupsTableAnnotationComposer,
+          $$ProjectGroupsTableCreateCompanionBuilder,
+          $$ProjectGroupsTableUpdateCompanionBuilder,
+          (
+            ProjectGroup,
+            BaseReferences<_$AppDatabase, $ProjectGroupsTable, ProjectGroup>,
+          ),
+          ProjectGroup,
+          PrefetchHooks Function()
+        > {
+  $$ProjectGroupsTableTableManager(_$AppDatabase db, $ProjectGroupsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProjectGroupsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProjectGroupsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProjectGroupsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProjectGroupsCompanion(
+                id: id,
+                name: name,
+                color: color,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<String> color = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ProjectGroupsCompanion.insert(
+                id: id,
+                name: name,
+                color: color,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ProjectGroupsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ProjectGroupsTable,
+      ProjectGroup,
+      $$ProjectGroupsTableFilterComposer,
+      $$ProjectGroupsTableOrderingComposer,
+      $$ProjectGroupsTableAnnotationComposer,
+      $$ProjectGroupsTableCreateCompanionBuilder,
+      $$ProjectGroupsTableUpdateCompanionBuilder,
+      (
+        ProjectGroup,
+        BaseReferences<_$AppDatabase, $ProjectGroupsTable, ProjectGroup>,
+      ),
+      ProjectGroup,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3176,4 +4101,6 @@ class $AppDatabaseManager {
       $$TasksTableTableManager(_db, _db.tasks);
   $$ChecklistItemsTableTableManager get checklistItems =>
       $$ChecklistItemsTableTableManager(_db, _db.checklistItems);
+  $$ProjectGroupsTableTableManager get projectGroups =>
+      $$ProjectGroupsTableTableManager(_db, _db.projectGroups);
 }

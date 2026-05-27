@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:smart_assistant/core/constants/app_constants.dart';
 import 'package:smart_assistant/data/database/app_database.dart';
 import 'package:smart_assistant/data/repositories/project_repository.dart';
+import 'package:smart_assistant/data/repositories/project_group_repository.dart';
 import 'package:smart_assistant/data/repositories/task_repository.dart';
 import 'package:smart_assistant/data/repositories/checklist_repository.dart';
 import 'package:smart_assistant/main.dart';
@@ -13,6 +14,7 @@ import 'package:smart_assistant/main.dart';
 void main() {
   late AppDatabase database;
   late ProjectRepository projectRepository;
+  late ProjectGroupRepository projectGroupRepository;
   late TaskRepository taskRepository;
   late ChecklistRepository checklistRepository;
 
@@ -27,6 +29,7 @@ void main() {
 
     database = AppDatabase();
     projectRepository = ProjectRepository(database);
+    projectGroupRepository = ProjectGroupRepository(database);
     taskRepository = TaskRepository(database);
     checklistRepository = ChecklistRepository(database);
   });
@@ -41,6 +44,7 @@ void main() {
     await tester.pumpWidget(MyApp(
       database: database,
       projectRepository: projectRepository,
+      projectGroupRepository: projectGroupRepository,
       taskRepository: taskRepository,
       checklistRepository: checklistRepository,
     ));

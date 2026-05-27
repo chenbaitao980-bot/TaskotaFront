@@ -12,6 +12,7 @@ class TaskNewLoading extends TaskNewState {}
 
 class TaskNewLoaded extends TaskNewState {
   final List<Project> projects;
+  final List<ProjectGroup> groups;
   final List<Task> tasks;
   final String? selectedProjectId;
   final String? selectedFilter;
@@ -20,9 +21,11 @@ class TaskNewLoaded extends TaskNewState {
   final Map<String, Set<String>> expandedNodes;
   final Map<String, int> taskProgress;
   final Map<String, int> projectProgress;
+  final Map<String, int> groupProgress;
 
   TaskNewLoaded({
     this.projects = const [],
+    this.groups = const [],
     this.tasks = const [],
     this.selectedProjectId,
     this.selectedFilter = 'all',
@@ -31,10 +34,12 @@ class TaskNewLoaded extends TaskNewState {
     this.expandedNodes = const {},
     this.taskProgress = const {},
     this.projectProgress = const {},
+    this.groupProgress = const {},
   });
 
   TaskNewLoaded copyWith({
     List<Project>? projects,
+    List<ProjectGroup>? groups,
     List<Task>? tasks,
     String? selectedProjectId,
     String? selectedFilter,
@@ -43,9 +48,11 @@ class TaskNewLoaded extends TaskNewState {
     Map<String, Set<String>>? expandedNodes,
     Map<String, int>? taskProgress,
     Map<String, int>? projectProgress,
+    Map<String, int>? groupProgress,
   }) {
     return TaskNewLoaded(
       projects: projects ?? this.projects,
+      groups: groups ?? this.groups,
       tasks: tasks ?? this.tasks,
       selectedProjectId: selectedProjectId ?? this.selectedProjectId,
       selectedFilter: selectedFilter ?? this.selectedFilter,
@@ -54,12 +61,14 @@ class TaskNewLoaded extends TaskNewState {
       expandedNodes: expandedNodes ?? this.expandedNodes,
       taskProgress: taskProgress ?? this.taskProgress,
       projectProgress: projectProgress ?? this.projectProgress,
+      groupProgress: groupProgress ?? this.groupProgress,
     );
   }
 
   @override
   List<Object?> get props => [
     projects,
+    groups,
     tasks,
     selectedProjectId,
     selectedFilter,
@@ -68,6 +77,7 @@ class TaskNewLoaded extends TaskNewState {
     expandedNodes,
     taskProgress,
     projectProgress,
+    groupProgress,
   ];
 }
 

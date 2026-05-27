@@ -36,7 +36,9 @@ dependencies:
   # 语音录入
   speech_to_text: ^7.0.0
   
-  # 通知（用本地计划；flutter_local_notifications_windows 在 Dart 3.11+ AOT 编译时有 FFI 崩溃，仅在 Android/iOS/macOS 启用）
+  # 本地通知（用于桌面端和移动端提醒）
+  flutter_local_notifications: ^19.5.0
+  flutter_local_notifications_windows: ^1.0.3
   
   # 自定义字体
   google_fonts: ^6.2.1
@@ -60,6 +62,8 @@ dependencies:
   sqlite3_flutter_libs: ^0.5.28
   path_provider: ^2.1.5
   path: ^1.9.1
+  system_tray: ^0.1.1
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:

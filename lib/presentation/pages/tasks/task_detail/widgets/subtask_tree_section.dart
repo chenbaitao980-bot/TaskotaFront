@@ -37,6 +37,12 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<TaskNewBloc, TaskNewState>(
+      buildWhen: (prev, curr) {
+        if (prev is! TaskNewLoaded || curr is! TaskNewLoaded) return true;
+        final rootId = widget.task.id;
+        return prev.subTrees[rootId] != curr.subTrees[rootId] ||
+            prev.expandedNodes[rootId] != curr.expandedNodes[rootId];
+      },
       builder: (context, state) {
         if (state is! TaskNewLoaded) return const SizedBox.shrink();
         final rootId = widget.task.id;

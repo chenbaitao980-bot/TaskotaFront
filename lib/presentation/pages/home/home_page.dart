@@ -9,7 +9,10 @@ import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/project_sync_service.dart';
+import '../../../services/task_sync_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
+import '../../blocs/schedule/schedule_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
 import '../../blocs/task_new/task_state.dart';
@@ -86,8 +89,22 @@ class _HomePageState extends State<HomePage> {
   Future<void> _initStorage() async {
     await _storage.init();
     _storageReady = true;
+    await _storage.fetchAndMergeFromCloud();
+    // Supabase 云端任务同步
+    TaskSyncService.instance.pullAll().then((_) {
+      if (mounted) {
+        context.read<TaskNewBloc>().add(LoadTasks());
+      }
+    });
+    TaskSyncService.instance.subscribe();
+    // 项目与分组的云同步
+    ProjectSyncService.instance.pullAll().then((_) {
+      if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+    });
+    ProjectSyncService.instance.subscribe();
     _loadStats();
     _checkOnboarding();
+    if (mounted) setState(() {});
   }
 
   Future<void> _ensureStorageReady() async {
@@ -125,13 +142,32 @@ class _HomePageState extends State<HomePage> {
           startTime: result['startTime'] as DateTime,
           endTime: result['endTime'] as DateTime,
           priority: result['priority'] as String,
+          remindBeforeMinutes: result['remindBeforeMinutes'] as int? ?? 15,
+          reminderEnabled: result['reminderEnabled'] as bool? ?? true,
+          isRepeating: result['isRepeating'] as bool? ?? false,
+          repeatInterval: result['repeatInterval'] as int?,
         );
-        await NotificationService().scheduleReminderForSchedule(
-          scheduleId: newSchedule.id,
-          title: newSchedule.title,
-          startTime: newSchedule.startTime,
-          description: newSchedule.description,
-        );
+        if (newSchedule.reminderEnabled) {
+          await NotificationService().scheduleReminderForSchedule(
+            scheduleId: newSchedule.id,
+            title: newSchedule.title,
+            startTime: newSchedule.startTime,
+            description: newSchedule.description,
+            remindBeforeMinutes: newSchedule.remindBeforeMinutes,
+            isRepeating: newSchedule.isRepeating,
+            repeatInterval: newSchedule.repeatInterval,
+          );
+        }
+        // 同步到 Supabase 云端
+        try {
+          if (context.mounted) {
+            context.read<ScheduleBloc>().add(
+              CreateSchedule(schedule: newSchedule.copyWith(syncStatus: 'synced')),
+            );
+          }
+        } catch (_) {
+          // 云端同步失败不影响本地使用
+        }
         _loadStats();
         if (mounted) {
           ScaffoldMessenger.of(
@@ -168,6 +204,10 @@ class _HomePageState extends State<HomePage> {
         initialStartTime: schedule.startTime as DateTime,
         initialEndTime: schedule.endTime as DateTime,
         initialPriority: schedule.priority as String,
+        initialRemindBeforeMinutes: schedule.remindBeforeMinutes as int? ?? 15,
+        initialReminderEnabled: schedule.reminderEnabled as bool? ?? true,
+        initialIsRepeating: schedule.isRepeating as bool? ?? false,
+        initialRepeatInterval: schedule.repeatInterval as int?,
         isEditing: true,
       ),
     );
@@ -189,8 +229,33 @@ class _HomePageState extends State<HomePage> {
         startTime: result['startTime'] as DateTime,
         endTime: result['endTime'] as DateTime,
         priority: result['priority'] as String,
+        remindBeforeMinutes: result['remindBeforeMinutes'] as int? ?? 15,
+        reminderEnabled: result['reminderEnabled'] as bool? ?? true,
+        isRepeating: result['isRepeating'] as bool? ?? false,
+        repeatInterval: result['repeatInterval'] as int?,
       );
       await _storage.updateSchedule(updated);
+      if (updated.reminderEnabled) {
+        await NotificationService().scheduleReminderForSchedule(
+          scheduleId: updated.id,
+          title: updated.title,
+          startTime: updated.startTime,
+          description: updated.description,
+          remindBeforeMinutes: updated.remindBeforeMinutes,
+          isRepeating: updated.isRepeating,
+          repeatInterval: updated.repeatInterval,
+        );
+      } else {
+        await NotificationService().cancelNotification(updated.id.hashCode);
+      }
+      // 同步更新到 Supabase 云端
+      try {
+        if (context.mounted) {
+          context.read<ScheduleBloc>().add(
+            UpdateSchedule(schedule: updated.copyWith(syncStatus: 'synced')),
+          );
+        }
+      } catch (_) {}
       _loadStats();
       if (mounted) {
         ScaffoldMessenger.of(
@@ -239,6 +304,14 @@ class _HomePageState extends State<HomePage> {
 
     if (confirm == true) {
       await _storage.deleteSchedule(schedule.id as String);
+      // 同步删除到 Supabase 云端
+      try {
+        if (context.mounted) {
+          context.read<ScheduleBloc>().add(
+            DeleteSchedule(id: schedule.id as String),
+          );
+        }
+      } catch (_) {}
       _loadStats();
       if (mounted) {
         ScaffoldMessenger.of(
@@ -931,6 +1004,34 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
+  /// 根据当前可见列里 dayTasks 的最大数量动态算时间轴高度
+  double _timelineHeight() {
+    int maxInCol = 1;
+    if (_timelineMode == 'hour') {
+      for (int h = 0; h < 24; h++) {
+        final n = _filteredTasks
+            .where((t) =>
+                _isSameDayDate(t.date, DateTime.now()) && t.date.hour == h)
+            .length;
+        if (n > maxInCol) maxInCol = n;
+      }
+    } else {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final base = today.subtract(Duration(days: _daysBefore));
+      for (int d = 0; d < _daysBefore + _daysAfter; d++) {
+        final day = base.add(Duration(days: d));
+        final n = _filteredTasks
+            .where((t) => _isSameDayDate(t.date, day))
+            .length;
+        if (n > maxInCol) maxInCol = n;
+      }
+    }
+    // 基础 80，每多一个任务多 26，最多 6 个高度（之上靠节点内滚动）
+    final h = 80.0 + (maxInCol.clamp(1, 6) - 1) * 26.0;
+    return h.clamp(80.0, 80.0 + 5 * 26.0);
+  }
+
   Widget _buildTimeline() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -992,7 +1093,7 @@ class _HomeContentState extends State<_HomeContent> {
                 const SizedBox(width: 4),
                 Expanded(
                   child: SizedBox(
-                    height: 80,
+                    height: _timelineHeight(),
                     child: ListView.builder(
                       controller: _timelineController,
                       scrollDirection: Axis.horizontal,
@@ -1263,15 +1364,11 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   Widget _buildTaskDots(List<_TimelineTask> tasks) {
-    // Show up to 3 dots, with a +N indicator if more
-    final displayCount = min(tasks.length, 3);
-    final hasMore = tasks.length > 3;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ...List.generate(displayCount, (i) {
-          final task = tasks[i];
+    // 单列内允许上下滚动（任务多时）
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: tasks.map((task) {
           final isSelected = task.id == _selectedTaskId;
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
@@ -1319,17 +1416,8 @@ class _HomeContentState extends State<_HomeContent> {
               ],
             ),
           );
-        }),
-        if (hasMore)
-          Text(
-            '+${tasks.length - 3}',
-            style: const TextStyle(
-              fontSize: 9,
-              color: AppTheme.textHint,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-      ],
+        }).toList(),
+      ),
     );
   }
 
@@ -1514,26 +1602,11 @@ class _HomeContentState extends State<_HomeContent> {
                   const SizedBox(height: 10),
                   _buildProjectBadge(task.projectId!),
                 ],
-                // Description
+                // Description（固定高度可滚动；超过 1000 字截断+"展开全文"）
                 if (task.description != null &&
                     task.description!.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.bgInput,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      task.description!,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
+                  _buildDescriptionBox(task),
                 ],
                 // Checklist items (DB only)
                 const SizedBox(height: 12),
@@ -1545,6 +1618,58 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDescriptionBox(_TimelineTask task) {
+    final full = task.description ?? '';
+    const maxChars = 1000;
+    final isTruncated = full.length > maxChars;
+    final shown = isTruncated ? full.substring(0, maxChars) : full;
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 240),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgInput,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Scrollbar(
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                shown,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+              ),
+              if (isTruncated) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () => _navigateToEdit(task),
+                  child: Text(
+                    '展开全文（共 ${full.length} 字）',
+                    style: TextStyle(
+                      color: AppTheme.primaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                      decorationColor:
+                          AppTheme.primaryColor.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1662,6 +1787,8 @@ class _HomeContentState extends State<_HomeContent> {
                           sortOrder: st.sortOrder,
                           createdAt: st.createdAt,
                           updatedAt: DateTime.now().millisecondsSinceEpoch,
+                          remindBeforeMinutes: st.remindBeforeMinutes,
+                          reminderEnabled: st.reminderEnabled,
                         );
                         _subtaskCache[taskId] = updated;
                         setState(() {});

@@ -19,6 +19,12 @@ class Schedule with _$Schedule {
     Map<String, dynamic>? metadata,
     @Default('manual') String source,
     String? parentTaskId,
+    @Default(15) int remindBeforeMinutes,
+    @Default(true) bool reminderEnabled,
+    @Default(false) bool isRepeating,
+    int? repeatInterval,
+    @Default('once') String reminderType,
+    @Default('local') String syncStatus,
     required DateTime createdAt,
     required DateTime updatedAt,
   }) = _Schedule;

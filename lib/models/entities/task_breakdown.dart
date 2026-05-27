@@ -22,6 +22,8 @@ class TaskBreakdown with _$TaskBreakdown {
     @Default(false) bool focusRequired,
     @Default(false) bool isParent,
     List<String>? dependencies,
+    @Default(15) int remindBeforeMinutes,
+    @Default(true) bool reminderEnabled,
     required DateTime createdAt,
     required DateTime updatedAt,
   }) = _TaskBreakdown;

@@ -62,6 +62,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_CLOSE:
+      // 拦截关闭：隐藏窗口而非销毁，保持后台运行
+      ShowWindow(hwnd, SW_HIDE);
+      return 0;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;

@@ -4,9 +4,11 @@ import '../../../../data/database/app_database.dart';
 
 class ProjectSidebar extends StatelessWidget {
   final List<Project> projects;
+  final List<ProjectGroup> groups;
   final String? selectedProjectId;
   final String? selectedFilter;
   final Map<String, int> projectProgress;
+  final Map<String, int> groupProgress;
   final ValueChanged<String?> onProjectSelected;
   final ValueChanged<String> onFilterSelected;
   final VoidCallback onCreateProject;
@@ -16,9 +18,11 @@ class ProjectSidebar extends StatelessWidget {
   const ProjectSidebar({
     super.key,
     required this.projects,
+    this.groups = const [],
     this.selectedProjectId,
     this.selectedFilter,
     this.projectProgress = const {},
+    this.groupProgress = const {},
     required this.onProjectSelected,
     required this.onFilterSelected,
     required this.onCreateProject,
@@ -112,7 +116,7 @@ class ProjectSidebar extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            // 项目列表
+            // 项目列表（按分组）
             Expanded(
               child: projects.isEmpty
                   ? const Center(
@@ -121,24 +125,91 @@ class ProjectSidebar extends StatelessWidget {
                         style: TextStyle(color: AppTheme.textHint),
                       ),
                     )
-                  : ListView.builder(
-                      itemCount: projects.length,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      itemBuilder: (context, index) {
-                        final project = projects[index];
-                        final isSelected = project.id == selectedProjectId;
-                        return _buildProjectItem(
-                          context,
-                          project: project,
-                          isSelected: isSelected,
-                        );
-                      },
-                    ),
+                  : _buildGroupedProjects(),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildGroupedProjects() {
+    return Builder(builder: (ctx) {
+      // 把项目按 groupId 分桶
+      final Map<String?, List<Project>> buckets = {};
+      for (final p in projects) {
+        buckets.putIfAbsent(p.groupId, () => []).add(p);
+      }
+      final ungrouped = buckets.remove(null) ?? <Project>[];
+
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        children: [
+          ...groups.map((g) {
+            final items = buckets[g.id] ?? const <Project>[];
+            if (items.isEmpty) return const SizedBox.shrink();
+            final prog = (groupProgress[g.id] ?? 0).clamp(0, 100).toInt();
+            return Theme(
+              data: Theme.of(ctx).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: PageStorageKey('group_${g.id}'),
+                initiallyExpanded: true,
+                tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+                childrenPadding: EdgeInsets.zero,
+                leading: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Color(int.parse(g.color.replaceFirst('#', '0xFF'))),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                title: Text(
+                  g.name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                trailing: Text(
+                  '$prog%',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textHint,
+                      fontWeight: FontWeight.w600),
+                ),
+                children: items.map((p) {
+                  final isSelected = p.id == selectedProjectId;
+                  return _buildProjectItem(ctx,
+                      project: p, isSelected: isSelected);
+                }).toList(),
+              ),
+            );
+          }),
+          if (ungrouped.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            if (groups.isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Text(
+                  '未分组',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.textHint,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ...ungrouped.map((p) {
+              final isSelected = p.id == selectedProjectId;
+              return _buildProjectItem(ctx,
+                  project: p, isSelected: isSelected);
+            }),
+          ],
+        ],
+      );
+    });
   }
 
   Widget _buildFilterItem(
