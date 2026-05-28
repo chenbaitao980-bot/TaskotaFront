@@ -57,6 +57,21 @@ class Tasks extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class TaskAttachments extends Table {
+  TextColumn get id => text()();
+  TextColumn get taskId => text()();
+  TextColumn get fileName => text()();
+  TextColumn? get localPath => text().nullable()();
+  TextColumn get storagePath => text()();
+  IntColumn? get sizeBytes => integer().nullable()();
+  TextColumn? get mimeType => text().nullable()();
+  IntColumn get addedAt => integer()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class ChecklistItems extends Table {
   TextColumn get id => text()();
   TextColumn get taskId => text().references(Tasks, #id)();
@@ -74,12 +89,12 @@ class ChecklistItems extends Table {
 
 // --- 数据库 ---
 
-@DriftDatabase(tables: [Projects, Tasks, ChecklistItems, ProjectGroups])
+@DriftDatabase(tables: [Projects, Tasks, ChecklistItems, ProjectGroups, TaskAttachments])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration {
@@ -109,6 +124,9 @@ class AppDatabase extends _$AppDatabase {
           await m.createTable(projectGroups);
           await m.addColumn(projects, projects.groupId);
           await m.addColumn(tasks, tasks.estimatedMinutes);
+        }
+        if (from < 6) {
+          await m.createTable(taskAttachments);
         }
       },
     );

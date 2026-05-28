@@ -43,61 +43,59 @@ class _ChecklistSectionState extends State<ChecklistSection> {
     final total = widget.items.length;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 标题
+          // 紧凑头部
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
             child: Row(
               children: [
                 const Icon(Icons.checklist_rounded,
-                    size: 20, color: AppTheme.textPrimary),
-                const SizedBox(width: 8),
+                    size: 14, color: AppTheme.textSecondary),
+                const SizedBox(width: 4),
                 Text(
-                  '检查项',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-                const Spacer(),
-                if (total > 0)
-                  Text(
-                    '$completed/$total',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.textHint,
-                    ),
+                  '检查项 ${total > 0 ? '($completed/$total)' : ''}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
                   ),
+                ),
               ],
             ),
           ),
-          // 进度条
           if (total > 0)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(3),
                 child: LinearProgressIndicator(
                   value: completed / total,
                   backgroundColor: AppTheme.borderSubtle,
                   color: AppTheme.success,
-                  minHeight: 4,
+                  minHeight: 3,
                 ),
               ),
             ),
-          const SizedBox(height: 4),
-          // 列表
-          ...widget.items.map((item) => _buildItem(item)),
+          // 列表（限高+滚动）
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: widget.items.map((item) => _buildItem(item)).toList(),
+              ),
+            ),
+          ),
           // 添加输入框
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
             child: Row(
               children: [
                 const SizedBox(width: 36),

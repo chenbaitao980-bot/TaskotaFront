@@ -23,9 +23,11 @@ import 'presentation/blocs/task/task_bloc.dart';
 import 'presentation/blocs/task_new/task_bloc.dart' as task_new;
 import 'presentation/pages/auth/login_page.dart';
 import 'presentation/pages/home/home_page.dart';
+import 'services/attachment_sync_service.dart';
 import 'services/notification_service.dart';
 import 'services/project_sync_service.dart';
 import 'services/supabase_service.dart';
+import 'services/task_attachment_service.dart';
 import 'services/task_sync_service.dart';
 
 final SystemTray systemTray = SystemTray();
@@ -53,6 +55,8 @@ void main() async {
   final taskRepository = TaskRepository(database, syncService: TaskSyncService.instance);
   final checklistRepository = ChecklistRepository(database);
   TaskSyncService.instance.bind(taskRepository);
+  TaskAttachmentService().bind(database);
+  AttachmentSyncService.instance.bind(database);
   ProjectSyncService.instance.bind(
     db: database,
     projectRepo: projectRepository,

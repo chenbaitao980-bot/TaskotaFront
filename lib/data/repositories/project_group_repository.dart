@@ -59,10 +59,14 @@ class ProjectGroupRepository {
 
   /// 删除分组：所属项目的 group_id 改为 null，不级联删除项目
   Future<void> delete(String id) async {
-    await (_db.update(_db.projects)..where((p) => p.groupId.equals(id))).write(
-      const ProjectsCompanion(groupId: Value(null)),
-    );
-    await (_db.delete(_db.projectGroups)..where((g) => g.id.equals(id))).go();
+    // 用事务原子完成本地两步，避免被 Realtime 回调中途抢锁
+    await _db.transaction(() async {
+      await (_db.update(_db.projects)..where((p) => p.groupId.equals(id))).write(
+        const ProjectsCompanion(groupId: Value(null)),
+      );
+      await (_db.delete(_db.projectGroups)..where((g) => g.id.equals(id))).go();
+    });
+    // 网络 IO 放事务外
     _syncService?.removeGroup(id);
   }
 }

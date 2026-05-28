@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/checklist_repository.dart';
@@ -9,6 +11,7 @@ import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/attachment_sync_service.dart';
 import '../../../services/project_sync_service.dart';
 import '../../../services/task_sync_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
@@ -47,11 +50,23 @@ class _HomePageState extends State<HomePage> {
   final LocalStorageService _storage = LocalStorageService();
   bool _storageReady = false;
   bool _onboardingPromptChecked = false;
+  StreamSubscription<sb.AuthState>? _authSub;
+  StreamSubscription<void>? _projectChangesSub;
+  Timer? _projectChangesDebounce;
+  bool _projectSyncStarted = false;
 
   @override
   void initState() {
     super.initState();
     _initStorage();
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _projectChangesSub?.cancel();
+    _projectChangesDebounce?.cancel();
+    super.dispose();
   }
 
   void _checkOnboarding() {
@@ -97,14 +112,44 @@ class _HomePageState extends State<HomePage> {
       }
     });
     TaskSyncService.instance.subscribe();
-    // 项目与分组的云同步
-    ProjectSyncService.instance.pullAll().then((_) {
-      if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
-    });
-    ProjectSyncService.instance.subscribe();
+    // 项目与分组：等到 Supabase 登录后再同步
+    _setupProjectSyncOnAuth();
     _loadStats();
     _checkOnboarding();
     if (mounted) setState(() {});
+  }
+
+  /// 监听 Supabase 登录状态：登录后才启动项目/分组同步
+  void _setupProjectSyncOnAuth() {
+    final client = sb.Supabase.instance.client;
+    void startIfReady() {
+      if (_projectSyncStarted) return;
+      if (client.auth.currentUser == null) return;
+      _projectSyncStarted = true;
+      print('[ProjectSync] 检测到登录用户 ${client.auth.currentUser?.id}，启动同步');
+      ProjectSyncService.instance.pullAll().then((_) {
+        if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+      });
+      ProjectSyncService.instance.subscribe();
+      // 附件 metadata 同步
+      AttachmentSyncService.instance.pullAll();
+      AttachmentSyncService.instance.subscribe();
+      // 远端变更（Realtime/拉取）后 debounce 触发 LoadTasks，让 sidebar 实时刷新
+      _projectChangesSub ??= ProjectSyncService.instance.changes.listen((_) {
+        _projectChangesDebounce?.cancel();
+        _projectChangesDebounce =
+            Timer(const Duration(milliseconds: 500), () {
+          if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+        });
+      });
+    }
+    startIfReady();
+    _authSub = client.auth.onAuthStateChange.listen((data) {
+      if (data.event == sb.AuthChangeEvent.signedIn ||
+          data.event == sb.AuthChangeEvent.initialSession) {
+        startIfReady();
+      }
+    });
   }
 
   Future<void> _ensureStorageReady() async {
@@ -481,6 +526,8 @@ class _HomeContentState extends State<_HomeContent> {
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
   String? _filterProjectId;
+  Timer? _timelineScrollDebounce;
+  double _viewportWidth = 0;
 
   // Combined timeline data
   List<_TimelineTask> _timelineTasks = [];
@@ -494,12 +541,21 @@ class _HomeContentState extends State<_HomeContent> {
   @override
   void initState() {
     super.initState();
-    _timelineController = ScrollController();
+    _timelineController = ScrollController()
+      ..addListener(() {
+        // 滚动时 debounce 触发高度重算
+        _timelineScrollDebounce?.cancel();
+        _timelineScrollDebounce =
+            Timer(const Duration(milliseconds: 120), () {
+          if (mounted) setState(() {});
+        });
+      });
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
   @override
   void dispose() {
+    _timelineScrollDebounce?.cancel();
     _timelineController.dispose();
     super.dispose();
   }
@@ -1004,11 +1060,19 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  /// 根据当前可见列里 dayTasks 的最大数量动态算时间轴高度
+  /// 仅看当前视野内列的最大任务数。1 个任务保持 base 高度
   double _timelineHeight() {
-    int maxInCol = 1;
+    final offset =
+        _timelineController.hasClients ? _timelineController.offset : 0.0;
+    final viewport = _viewportWidth > 0
+        ? _viewportWidth
+        : MediaQuery.of(context).size.width;
+    int maxInCol = 0;
     if (_timelineMode == 'hour') {
-      for (int h = 0; h < 24; h++) {
+      final firstHour = (offset / _hourWidth).floor().clamp(0, 23);
+      final lastHour =
+          ((offset + viewport) / _hourWidth).ceil().clamp(0, 24);
+      for (int h = firstHour; h < lastHour; h++) {
         final n = _filteredTasks
             .where((t) =>
                 _isSameDayDate(t.date, DateTime.now()) && t.date.hour == h)
@@ -1019,16 +1083,21 @@ class _HomeContentState extends State<_HomeContent> {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final base = today.subtract(Duration(days: _daysBefore));
-      for (int d = 0; d < _daysBefore + _daysAfter; d++) {
+      final firstCol =
+          (offset / _dayWidth).floor().clamp(0, _daysBefore + _daysAfter - 1);
+      final lastCol = ((offset + viewport) / _dayWidth)
+          .ceil()
+          .clamp(0, _daysBefore + _daysAfter);
+      for (int d = firstCol; d < lastCol; d++) {
         final day = base.add(Duration(days: d));
-        final n = _filteredTasks
-            .where((t) => _isSameDayDate(t.date, day))
-            .length;
+        final n =
+            _filteredTasks.where((t) => _isSameDayDate(t.date, day)).length;
         if (n > maxInCol) maxInCol = n;
       }
     }
-    // 基础 80，每多一个任务多 26，最多 6 个高度（之上靠节点内滚动）
-    final h = 80.0 + (maxInCol.clamp(1, 6) - 1) * 26.0;
+    // 0 或 1 任务保持基础 80px；从 2 个开始按 26px/任务递增；封顶 6 行
+    if (maxInCol <= 1) return 80.0;
+    final h = 80.0 + (maxInCol.clamp(2, 6) - 1) * 26.0;
     return h.clamp(80.0, 80.0 + 5 * 26.0);
   }
 
@@ -1092,16 +1161,21 @@ class _HomeContentState extends State<_HomeContent> {
                 ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: SizedBox(
-                    height: _timelineHeight(),
-                    child: ListView.builder(
-                      controller: _timelineController,
-                      scrollDirection: Axis.horizontal,
-                      itemCount: itemCount,
-                      itemExtent: itemExtent,
-                      itemBuilder: itemBuilder,
-                    ),
-                  ),
+                  child: LayoutBuilder(builder: (ctx, box) {
+                    if (_viewportWidth != box.maxWidth) {
+                      _viewportWidth = box.maxWidth;
+                    }
+                    return SizedBox(
+                      height: _timelineHeight(),
+                      child: ListView.builder(
+                        controller: _timelineController,
+                        scrollDirection: Axis.horizontal,
+                        itemCount: itemCount,
+                        itemExtent: itemExtent,
+                        itemBuilder: itemBuilder,
+                      ),
+                    );
+                  }),
                 ),
                 const SizedBox(width: 4),
                 // Right scroll button

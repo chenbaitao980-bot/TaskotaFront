@@ -285,191 +285,417 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              // 项目、优先级、日期 — 全部可编辑
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgCard,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.borderSubtle),
-                ),
-                child: Column(
-                  children: [
-                    // 项目
-                    _dropdownTile(
-                      icon: Icons.folder_outlined,
-                      label: '项目',
-                      value: _selectedProjectId,
-                      items: projects
-                          .map(
-                            (p) => DropdownMenuItem<String>(
-                              value: p.id,
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                      color: Color(
-                                        int.parse(
-                                          p.color.replaceFirst('#', '0xFF'),
-                                        ),
-                                      ),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(p.name),
-                                ],
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) {
-                        setState(() => _selectedProjectId = v);
-                        _markChanged();
-                      },
-                    ),
-                    _divider(),
-                    // 优先级
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.flag_outlined,
-                            size: 18,
-                            color: AppTheme.textHint,
-                          ),
-                          const SizedBox(width: 10),
-                          const Text(
-                            '优先级',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: AppTheme.textSecondary,
-                            ),
-                          ),
-                          const Spacer(),
-                          _priorityChip(0, '无'),
-                          const SizedBox(width: 6),
-                          _priorityChip(1, '低'),
-                          const SizedBox(width: 6),
-                          _priorityChip(3, '中'),
-                          const SizedBox(width: 6),
-                          _priorityChip(5, '高'),
-                        ],
-                      ),
-                    ),
-                    _divider(),
-                    // 开始时间
-                    _dateTile(
-                      icon: Icons.calendar_today,
-                      label: '开始时间',
-                      dateTime: _startDateTime,
-                      onTap: () => _pickDateTime(true),
-                    ),
-                    _divider(),
-                    // 截止时间
-                    _dateTile(
-                      icon: Icons.event,
-                      label: '截止时间',
-                      dateTime: _endDateTime,
-                      onTap: () => _pickDateTime(false),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 12),
+              // 紧凑 meta 行：项目/优先级/时间/提醒/AI 拆分
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildMetaChipsBar(projects),
               ),
               const SizedBox(height: 12),
-              // 描述 — 可编辑
+              // 主体布局：宽屏左列(描述+检查项) + 右列(子任务) + 底部附件条
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: TextFormField(
-                  controller: _descController,
-                  maxLines: 3,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: AppTheme.textPrimary,
-                    height: 1.5,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: '添加描述...',
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    isDense: true,
-                  ),
-                  onChanged: (_) => _markTextChanged(),
-                  onTapOutside: (_) => _saveTask(),
-                  onEditingComplete: _saveTask,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 提醒设置
-              _buildReminderSection(),
-              const SizedBox(height: 16),
-              // 子任务树
-              RepaintBoundary(
-                child: SubtaskTreeSection(
-                  task: widget.task,
-                  projectId: _selectedProjectId,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 检查项
-              RepaintBoundary(
-                child: ChecklistSection(
-                  items: _checklistItems,
-                  taskId: widget.task.id,
-                  onToggle: (id) {
-                    context.read<TaskNewBloc>().add(
-                      ToggleChecklistItem(id: id, taskId: widget.task.id),
-                    );
-                  },
-                  onDelete: (id) {
-                    context.read<TaskNewBloc>().add(
-                      DeleteChecklistItem(id: id, taskId: widget.task.id),
-                    );
-                  },
-                  onEdit: (id, title) {
-                    context.read<TaskNewBloc>().add(
-                      UpdateChecklistItem(id: id, title: title),
-                    );
-                  },
-                  onAdd: (data) {
-                    final (taskId, title) = data;
-                    context.read<TaskNewBloc>().add(
-                      AddChecklistItem(taskId: taskId, title: title),
-                    );
-                  },
-                  onSetObsidianUri: (id, obsidianUri) {
-                    context.read<TaskNewBloc>().add(
-                      SetChecklistItemObsidianUri(
-                        id: id,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: LayoutBuilder(builder: (ctx, cons) {
+                  final wide = cons.maxWidth >= 720;
+                  final maxH = MediaQuery.of(context).size.height * 0.42;
+
+                  final desc = _buildDescriptionBox();
+
+                  final checklist = ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxH),
+                    child: RepaintBoundary(
+                      child: ChecklistSection(
+                        items: _checklistItems,
                         taskId: widget.task.id,
-                        obsidianUri: obsidianUri,
+                        onToggle: (id) {
+                          context.read<TaskNewBloc>().add(
+                                ToggleChecklistItem(
+                                    id: id, taskId: widget.task.id),
+                              );
+                        },
+                        onDelete: (id) {
+                          context.read<TaskNewBloc>().add(
+                                DeleteChecklistItem(
+                                    id: id, taskId: widget.task.id),
+                              );
+                        },
+                        onEdit: (id, title) {
+                          context.read<TaskNewBloc>().add(
+                                UpdateChecklistItem(id: id, title: title),
+                              );
+                        },
+                        onAdd: (data) {
+                          final (taskId, title) = data;
+                          context.read<TaskNewBloc>().add(
+                                AddChecklistItem(taskId: taskId, title: title),
+                              );
+                        },
+                        onSetObsidianUri: (id, obsidianUri) {
+                          context.read<TaskNewBloc>().add(
+                                SetChecklistItemObsidianUri(
+                                  id: id,
+                                  taskId: widget.task.id,
+                                  obsidianUri: obsidianUri,
+                                ),
+                              );
+                        },
                       ),
+                    ),
+                  );
+
+                  final subtask = ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxH),
+                    child: RepaintBoundary(
+                      child: SubtaskTreeSection(
+                        task: widget.task,
+                        projectId: _selectedProjectId,
+                      ),
+                    ),
+                  );
+
+                  final attach = RepaintBoundary(
+                      child: AttachmentSection(task: widget.task));
+
+                  if (wide) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    desc,
+                                    const SizedBox(height: 12),
+                                    checklist,
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(flex: 2, child: subtask),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 100),
+                          child: attach,
+                        ),
+                      ],
                     );
-                  },
-                ),
+                  }
+
+                  return Column(
+                    children: [
+                      desc,
+                      const SizedBox(height: 8),
+                      checklist,
+                      const SizedBox(height: 8),
+                      subtask,
+                      const SizedBox(height: 8),
+                      attach,
+                    ],
+                  );
+                }),
               ),
-              const SizedBox(height: 16),
-              // 附件
-              RepaintBoundary(
-                child: AttachmentSection(task: widget.task),
-              ),
-              const SizedBox(height: 16),
-              // AI 拆分子任务
-              RepaintBoundary(
-                child: AiDecomposeSection(
-                  task: widget.task,
-                  projectId: _selectedProjectId,
-                  currentDescription: _descController.text,
-                ),
-              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildDescriptionBox() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(Icons.notes_rounded, size: 14, color: AppTheme.textSecondary),
+                SizedBox(width: 4),
+                Text(
+                  '描述',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextFormField(
+            controller: _descController,
+            minLines: 14,
+            maxLines: 30,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppTheme.textPrimary,
+              height: 1.6,
+            ),
+            decoration: const InputDecoration(
+              hintText: '添加描述...',
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+            ),
+            onChanged: (_) => _markTextChanged(),
+            onTapOutside: (_) => _saveTask(),
+            onEditingComplete: _saveTask,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetaChipsBar(List<Project> projects) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _projectChip(projects),
+          const SizedBox(width: 6),
+          _priorityChipPill(),
+          const SizedBox(width: 6),
+          _timeChip(),
+          const SizedBox(width: 6),
+          _reminderChip(),
+          const SizedBox(width: 6),
+          _aiDecomposeChip(),
+        ],
+      ),
+    );
+  }
+
+  Widget _chipContainer({
+    required Widget child,
+    VoidCallback? onTap,
+    Color? bgColor,
+    Color? borderColor,
+  }) {
+    final container = Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor ?? AppTheme.bgInput,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor ?? AppTheme.borderSubtle),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [child],
+      ),
+    );
+    if (onTap == null) return container;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: container,
+    );
+  }
+
+  Widget _projectChip(List<Project> projects) {
+    final p = projects.where((p) => p.id == _selectedProjectId).firstOrNull;
+    final color = p != null
+        ? Color(int.parse(p.color.replaceFirst('#', '0xFF')))
+        : AppTheme.textHint;
+    return PopupMenuButton<String>(
+      tooltip: '项目',
+      onSelected: (v) {
+        setState(() => _selectedProjectId = v);
+        _markChanged();
+      },
+      itemBuilder: (_) => projects
+          .map((proj) => PopupMenuItem(
+                value: proj.id,
+                child: Row(children: [
+                  Container(
+                    width: 10, height: 10,
+                    decoration: BoxDecoration(
+                      color: Color(int.parse(proj.color.replaceFirst('#', '0xFF'))),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(proj.name),
+                ]),
+              ))
+          .toList(),
+      child: _chipContainer(
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            p?.name ?? '未分配',
+            style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+          ),
+          const Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textHint),
+        ]),
+      ),
+    );
+  }
+
+  Widget _priorityChipPill() {
+    const opts = [
+      (0, '无', AppTheme.textHint),
+      (1, '低', AppTheme.priorityP3),
+      (3, '中', AppTheme.priorityP1),
+      (5, '高', AppTheme.priorityP0),
+    ];
+    final cur = opts.firstWhere((o) => o.$1 == _priority, orElse: () => opts[0]);
+    return PopupMenuButton<int>(
+      tooltip: '优先级',
+      onSelected: (v) {
+        setState(() => _priority = v);
+        _markChanged();
+      },
+      itemBuilder: (_) => opts
+          .map((o) => PopupMenuItem(
+                value: o.$1,
+                child: Row(children: [
+                  Container(width: 8, height: 8,
+                    decoration: BoxDecoration(color: o.$3, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Text(o.$2),
+                ]),
+              ))
+          .toList(),
+      child: _chipContainer(
+        bgColor: cur.$3.withValues(alpha: 0.10),
+        borderColor: cur.$3.withValues(alpha: 0.35),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.flag_rounded, size: 12, color: cur.$3),
+          const SizedBox(width: 4),
+          Text(cur.$2, style: TextStyle(fontSize: 12, color: cur.$3, fontWeight: FontWeight.w600)),
+          Icon(Icons.arrow_drop_down, size: 14, color: cur.$3),
+        ]),
+      ),
+    );
+  }
+
+  Widget _timeChip() {
+    String fmt(DateTime d) =>
+        '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return _chipContainer(
+      onTap: () => _pickDateTime(true),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.calendar_today_rounded, size: 12, color: AppTheme.textSecondary),
+        const SizedBox(width: 4),
+        Text(fmt(_startDateTime), style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary)),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Icon(Icons.arrow_forward_rounded, size: 10, color: AppTheme.textHint),
+        ),
+        InkWell(
+          onTap: () => _pickDateTime(false),
+          child: Text(fmt(_endDateTime), style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _reminderChip() {
+    final enabled = _reminderEnabled > 0;
+    final label = enabled ? '$_remindBeforeMinutes 分钟' : '关';
+    return PopupMenuButton<int>(
+      tooltip: '提前提醒',
+      onSelected: (v) {
+        setState(() {
+          if (v < 0) {
+            _reminderEnabled = 0;
+          } else {
+            _reminderEnabled = 1;
+            _remindBeforeMinutes = v;
+          }
+        });
+        _markChanged();
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: -1, child: Text('关闭提醒')),
+        PopupMenuItem(value: 5, child: Text('提前 5 分钟')),
+        PopupMenuItem(value: 10, child: Text('提前 10 分钟')),
+        PopupMenuItem(value: 15, child: Text('提前 15 分钟')),
+        PopupMenuItem(value: 30, child: Text('提前 30 分钟')),
+        PopupMenuItem(value: 60, child: Text('提前 1 小时')),
+        PopupMenuItem(value: 1440, child: Text('提前 1 天')),
+      ],
+      child: _chipContainer(
+        bgColor: enabled
+            ? AppTheme.primaryColor.withValues(alpha: 0.08)
+            : AppTheme.bgInput,
+        borderColor: enabled
+            ? AppTheme.primaryColor.withValues(alpha: 0.30)
+            : AppTheme.borderSubtle,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(
+            enabled ? Icons.notifications_active_rounded : Icons.notifications_off_outlined,
+            size: 12,
+            color: enabled ? AppTheme.primaryColor : AppTheme.textHint,
+          ),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: enabled ? AppTheme.primaryColor : AppTheme.textHint,
+                  fontWeight: FontWeight.w600)),
+          Icon(Icons.arrow_drop_down,
+              size: 14,
+              color: enabled ? AppTheme.primaryColor : AppTheme.textHint),
+        ]),
+      ),
+    );
+  }
+
+  bool _aiBusy = false;
+  Widget _aiDecomposeChip() {
+    return _chipContainer(
+      onTap: _aiBusy
+          ? () {}
+          : () async {
+              setState(() => _aiBusy = true);
+              await runAiDecompose(
+                context: context,
+                task: widget.task,
+                projectId: _selectedProjectId,
+                currentDescription: _descController.text,
+              );
+              if (mounted) setState(() => _aiBusy = false);
+            },
+      bgColor: AppTheme.primaryColor.withValues(alpha: 0.10),
+      borderColor: AppTheme.primaryColor.withValues(alpha: 0.35),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        _aiBusy
+            ? const SizedBox(
+                width: 12, height: 12,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppTheme.primaryColor),
+              )
+            : const Icon(Icons.auto_awesome_rounded, size: 12, color: AppTheme.primaryColor),
+        const SizedBox(width: 4),
+        Text(_aiBusy ? '拆解中…' : 'AI 拆分',
+            style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.w600)),
+      ]),
     );
   }
 

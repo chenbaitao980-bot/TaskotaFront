@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
 import '../../../../../core/theme/app_theme.dart';
-import '../../../../../data/database/app_database.dart';
+import '../../../../../data/database/app_database.dart' hide TaskAttachment;
+import '../../../../../services/attachment_sync_service.dart';
 import '../../../../../services/task_attachment_service.dart';
 
 class AttachmentSection extends StatefulWidget {
@@ -16,11 +20,45 @@ class _AttachmentSectionState extends State<AttachmentSection> {
   final _service = TaskAttachmentService();
   List<TaskAttachment> _attachments = [];
   bool _loading = false;
+  StreamSubscription<void>? _syncSub;
+  String? _openingId;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _syncSub = AttachmentSyncService.instance.changes.listen((_) {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openAttachment(TaskAttachment att) async {
+    setState(() => _openingId = att.id);
+    try {
+      final file = await _service.ensureLocalFile(att);
+      if (file == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('附件下载失败')),
+          );
+        }
+        return;
+      }
+      final result = await OpenFilex.open(file.path);
+      if (result.type != ResultType.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开失败：${result.message}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingId = null);
+    }
   }
 
   Future<void> _load() async {
@@ -54,7 +92,7 @@ class _AttachmentSectionState extends State<AttachmentSection> {
       ),
     );
     if (confirm == true) {
-      await _service.deleteAttachment(widget.task.id, attachment.filePath);
+      await _service.deleteAttachment(widget.task.id, attachment.id);
       await _load();
     }
   }
@@ -62,52 +100,59 @@ class _AttachmentSectionState extends State<AttachmentSection> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          // 紧凑头部
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
             child: Row(
               children: [
-                const Icon(Icons.attach_file_rounded, size: 20, color: AppTheme.textPrimary),
-                const SizedBox(width: 8),
+                const Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.textSecondary),
+                const SizedBox(width: 4),
                 Text(
-                  '附件',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  '附件 (${_attachments.length})',
+                  style: const TextStyle(
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
                   ),
                 ),
                 const Spacer(),
-                TextButton.icon(
+                IconButton(
                   onPressed: _loading ? null : _pickFile,
                   icon: _loading
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('上传'),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: AppTheme.primaryColor,
-                  ),
+                  color: AppTheme.primaryColor,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  tooltip: '上传',
                 ),
               ],
             ),
           ),
           if (_attachments.isEmpty)
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: EdgeInsets.fromLTRB(10, 0, 10, 10),
               child: Text(
                 '暂无附件',
-                style: TextStyle(color: AppTheme.textHint, fontSize: 13),
+                style: TextStyle(color: AppTheme.textHint, fontSize: 11),
               ),
             )
           else
-            ..._attachments.map((a) => _buildAttachmentRow(a)),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Column(
+                children: _attachments.map((a) => _buildAttachmentRow(a)).toList(),
+              ),
+            ),
         ],
       ),
     );
@@ -119,29 +164,37 @@ class _AttachmentSectionState extends State<AttachmentSection> {
         attachment.fileName.endsWith('.json');
     final icon = isText ? Icons.description_outlined : Icons.insert_drive_file_outlined;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Row(
-        children: [
-          const SizedBox(width: 40),
-          Icon(icon, size: 18, color: AppTheme.textSecondary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              attachment.fileName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+    final opening = _openingId == attachment.id;
+    return InkWell(
+      onTap: opening ? null : () => _openAttachment(attachment),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(
+          children: [
+            opening
+                ? const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(icon, size: 14, color: AppTheme.textSecondary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                attachment.fileName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+              ),
             ),
-          ),
-          GestureDetector(
-            onTap: () => _deleteFile(attachment),
-            child: const Padding(
-              padding: EdgeInsets.all(8),
-              child: Icon(Icons.close, size: 16, color: AppTheme.textHint),
+            GestureDetector(
+              onTap: () => _deleteFile(attachment),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, size: 12, color: AppTheme.textHint),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

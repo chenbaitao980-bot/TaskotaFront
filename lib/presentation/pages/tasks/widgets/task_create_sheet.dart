@@ -30,7 +30,7 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
   final _descController = TextEditingController();
   late Future<List<Project>> _projectsFuture;
   String? _selectedProjectId;
-  int _priority = 0;
+  int _priority = 1; // 默认"低"
   DateTime? _startDate;
   DateTime? _dueDate;
   String? _parentTaskId;

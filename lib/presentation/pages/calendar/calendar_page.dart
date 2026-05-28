@@ -157,6 +157,20 @@ class _CalendarPageState extends State<CalendarPage> {
     return depth;
   }
 
+  /// 任务的 [startDate, dueDate] 是否与 [rangeStart, rangeEndExclusive) 相交
+  bool _taskOverlapsRange(Task task, DateTime rangeStart, DateTime rangeEndExclusive) {
+    final s = task.startDate;
+    final d = task.dueDate;
+    if (s == null && d == null) return false;
+    final start = s != null
+        ? DateTime.fromMillisecondsSinceEpoch(s)
+        : DateTime.fromMillisecondsSinceEpoch(d!);
+    final end = d != null
+        ? DateTime.fromMillisecondsSinceEpoch(d)
+        : start.add(const Duration(hours: 1));
+    return start.isBefore(rangeEndExclusive) && end.isAfter(rangeStart);
+  }
+
   bool _taskOverlapsDay(Task task, DateTime day) {
     final s = task.startDate;
     final d = task.dueDate;
@@ -854,7 +868,10 @@ class _CalendarPageState extends State<CalendarPage> {
     final totalHeight = _hourHeight * 24;
     final tasks = _filteredTasks();
 
-    final multiDayTasks = tasks.where(_isMultiDayTask).toList();
+    final weekEndExclusive = weekStart.add(Duration(days: _displayDayCount));
+    final multiDayTasks = tasks
+        .where((t) => _isMultiDayTask(t) && _taskOverlapsRange(t, weekStart, weekEndExclusive))
+        .toList();
     final singleDayTasks = tasks.where((t) => !_isMultiDayTask(t)).toList();
 
     return Column(
@@ -881,6 +898,9 @@ class _CalendarPageState extends State<CalendarPage> {
                         onPointerCancel: _onPointerCancel,
                         child: SingleChildScrollView(
                           controller: _weekScrollController,
+                          physics: _editingTaskId != null
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
                           child: SizedBox(
                             height: totalHeight,
                             child: Row(
@@ -1035,11 +1055,14 @@ class _CalendarPageState extends State<CalendarPage> {
     final endDay = end.hour == 0 && end.minute == 0
         ? DateTime(end.year, end.month, end.day)
         : DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
-    final startOffset = startDay.difference(weekStart).inDays.clamp(0, _displayDayCount - 1);
-    final spanDays = endDay
-        .difference(startDay)
-        .inDays
-        .clamp(1, _displayDayCount - startOffset);
+    final rawStartOffset = startDay.difference(weekStart).inDays;
+    final rawSpanDays = endDay.difference(startDay).inDays;
+    // 防御：任务不在当前周（理论上 _buildWeekTimeline 已过滤，这里兜底）
+    if (rawStartOffset >= _displayDayCount || rawSpanDays <= 0) {
+      return const SizedBox.shrink();
+    }
+    final startOffset = rawStartOffset.clamp(0, _displayDayCount - 1);
+    final spanDays = rawSpanDays.clamp(1, _displayDayCount - startOffset);
 
     final isCompleted = task.status == 2;
     final color = isCompleted
@@ -1330,7 +1353,6 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
   // 整块移动：拖动偏移
   Offset? _moveDelta;
   bool _isDragging = false;
-  Offset? _dragStartGlobal;
 
   double get _currentTopDelta => _resizeTopDelta ?? 0;
   double get _currentBottomDelta => _resizeBottomDelta ?? 0;
@@ -1367,7 +1389,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
         clipBehavior: Clip.none,
         fit: StackFit.expand,
         children: [
-          // 主体：Transform.translate 让块跟手平移，保持原尺寸
+          // 主体：用 GestureDetector(pan) 进入手势 arena，避免被父 scroll 抢走
           Positioned(
             left: 0,
             right: 0,
@@ -1375,56 +1397,43 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
             bottom: -effectiveBottom,
             child: Transform.translate(
               offset: move,
-              child: Listener(
+              child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPointerDown: (e) {
-                  if (w.isEditMode) return; // 编辑模式只允许 resize
-                  _dragStartGlobal = e.position;
-                  _isDragging = false;
+                onTap: w.onOpenDetail,
+                onSecondaryTap: w.onDelete,
+                onLongPress: _isMobile && !w.isEditMode
+                    ? () => w.onEditModeChanged(true)
+                    : null,
+                onPanStart: (details) {
+                  setState(() {
+                    _isDragging = true;
+                    _moveDelta = Offset.zero;
+                  });
                 },
-                onPointerMove: (e) {
-                  if (_dragStartGlobal == null) return;
-                  final delta = e.position - _dragStartGlobal!;
-                  // 启动阈值
-                  if (!_isDragging && delta.distance < 6) return;
-                  if (!_isDragging) {
-                    setState(() => _isDragging = true);
-                  }
-                  setState(() => _moveDelta = delta);
+                onPanUpdate: (details) {
+                  setState(() {
+                    _moveDelta = (_moveDelta ?? Offset.zero) + details.delta;
+                  });
                 },
-                onPointerUp: (e) {
-                  final wasDragging = _isDragging;
+                onPanEnd: (details) {
                   final delta = _moveDelta;
                   setState(() {
                     _isDragging = false;
                     _moveDelta = null;
-                    _dragStartGlobal = null;
                   });
-                  if (wasDragging && delta != null && delta.distance >= 6) {
-                    final target = _targetFromDelta(delta);
-                    if (target != w.start) {
-                      w.onMove(target);
-                    }
-                  } else {
-                    // 等同于点击
-                    w.onOpenDetail();
+                  if (delta == null || delta.distance < 3) return;
+                  final target = _targetFromDelta(delta);
+                  if (target != w.start) {
+                    w.onMove(target);
                   }
                 },
-                onPointerCancel: (_) {
+                onPanCancel: () {
                   setState(() {
                     _isDragging = false;
                     _moveDelta = null;
-                    _dragStartGlobal = null;
                   });
                 },
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onLongPress: _isMobile && !w.isEditMode
-                      ? () => w.onEditModeChanged(true)
-                      : null,
-                  onSecondaryTap: w.onDelete,
-                  child: _buildBlockContent(color, textColor),
-                ),
+                child: _buildBlockContent(color, textColor),
               ),
             ),
           ),
@@ -1676,7 +1685,6 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
   double? _startDayDelta;
   double? _endDayDelta;
   double? _moveDeltaX;
-  double? _moveStartX;
   final double _handleWidth = 18.0;
 
   @override
@@ -1690,45 +1698,31 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
         clipBehavior: Clip.none,
         fit: StackFit.expand,
         children: [
-          // 主体（横向拖动按整天移动；保持原尺寸跟手）
+          // 主体（横向拖动按整天移动；GestureDetector + pan 抢到 arena）
           Positioned(
             left: (_startDayDelta ?? 0) + (_moveDeltaX ?? 0),
             right: (_endDayDelta != null ? -(_endDayDelta!) : 0)
                 + (_moveDeltaX != null ? -(_moveDeltaX!) : 0),
-            child: Listener(
+            child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onPointerDown: (e) {
-                _moveStartX = e.position.dx;
+              onTap: w.onTap,
+              onPanStart: (_) {
+                setState(() => _moveDeltaX = 0);
               },
-              onPointerMove: (e) {
-                if (_moveStartX == null) return;
+              onPanUpdate: (details) {
                 setState(() {
-                  _moveDeltaX = e.position.dx - _moveStartX!;
+                  _moveDeltaX = (_moveDeltaX ?? 0) + details.delta.dx;
                 });
               },
-              onPointerUp: (e) {
+              onPanEnd: (_) {
                 final dx = _moveDeltaX;
-                final startX = _moveStartX;
-                setState(() {
-                  _moveDeltaX = null;
-                  _moveStartX = null;
-                });
-                if (dx == null || startX == null) {
-                  w.onTap();
-                  return;
-                }
-                if (dx.abs() < 6) {
-                  w.onTap();
-                  return;
-                }
+                setState(() => _moveDeltaX = null);
+                if (dx == null || dx.abs() < 3) return;
                 final days = (dx / w.dayWidth).round();
                 if (days != 0) w.onMoveDay(days);
               },
-              onPointerCancel: (_) {
-                setState(() {
-                  _moveDeltaX = null;
-                  _moveStartX = null;
-                });
+              onPanCancel: () {
+                setState(() => _moveDeltaX = null);
               },
               child: _buildBar(color, isCompleted),
             ),

@@ -63,6 +63,10 @@ class TaskSyncService {
 
   /// 订阅云端变更，自动更新本地数据库
   void subscribe() {
+    final token = _client.auth.currentSession?.accessToken;
+    if (token != null) {
+      _client.realtime.setAuth(token);
+    }
     _channel?.unsubscribe();
     _channel = _client.channel('user_tasks_sync');
 

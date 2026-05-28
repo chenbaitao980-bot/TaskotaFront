@@ -2452,6 +2452,572 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
   }
 }
 
+class $TaskAttachmentsTable extends TaskAttachments
+    with TableInfo<$TaskAttachmentsTable, TaskAttachment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TaskAttachmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _taskIdMeta = const VerificationMeta('taskId');
+  @override
+  late final GeneratedColumn<String> taskId = GeneratedColumn<String>(
+    'task_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fileNameMeta = const VerificationMeta(
+    'fileName',
+  );
+  @override
+  late final GeneratedColumn<String> fileName = GeneratedColumn<String>(
+    'file_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localPathMeta = const VerificationMeta(
+    'localPath',
+  );
+  @override
+  late final GeneratedColumn<String> localPath = GeneratedColumn<String>(
+    'local_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _storagePathMeta = const VerificationMeta(
+    'storagePath',
+  );
+  @override
+  late final GeneratedColumn<String> storagePath = GeneratedColumn<String>(
+    'storage_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'size_bytes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mimeTypeMeta = const VerificationMeta(
+    'mimeType',
+  );
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+    'mime_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<int> addedAt = GeneratedColumn<int>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    taskId,
+    fileName,
+    localPath,
+    storagePath,
+    sizeBytes,
+    mimeType,
+    addedAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'task_attachments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TaskAttachment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('task_id')) {
+      context.handle(
+        _taskIdMeta,
+        taskId.isAcceptableOrUnknown(data['task_id']!, _taskIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_taskIdMeta);
+    }
+    if (data.containsKey('file_name')) {
+      context.handle(
+        _fileNameMeta,
+        fileName.isAcceptableOrUnknown(data['file_name']!, _fileNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fileNameMeta);
+    }
+    if (data.containsKey('local_path')) {
+      context.handle(
+        _localPathMeta,
+        localPath.isAcceptableOrUnknown(data['local_path']!, _localPathMeta),
+      );
+    }
+    if (data.containsKey('storage_path')) {
+      context.handle(
+        _storagePathMeta,
+        storagePath.isAcceptableOrUnknown(
+          data['storage_path']!,
+          _storagePathMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_storagePathMeta);
+    }
+    if (data.containsKey('size_bytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
+      );
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(
+        _mimeTypeMeta,
+        mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta),
+      );
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TaskAttachment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TaskAttachment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      taskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}task_id'],
+      )!,
+      fileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_name'],
+      )!,
+      localPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_path'],
+      ),
+      storagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}storage_path'],
+      )!,
+      sizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}size_bytes'],
+      ),
+      mimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mime_type'],
+      ),
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}added_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $TaskAttachmentsTable createAlias(String alias) {
+    return $TaskAttachmentsTable(attachedDatabase, alias);
+  }
+}
+
+class TaskAttachment extends DataClass implements Insertable<TaskAttachment> {
+  final String id;
+  final String taskId;
+  final String fileName;
+  final String? localPath;
+  final String storagePath;
+  final int? sizeBytes;
+  final String? mimeType;
+  final int addedAt;
+  final int updatedAt;
+  const TaskAttachment({
+    required this.id,
+    required this.taskId,
+    required this.fileName,
+    this.localPath,
+    required this.storagePath,
+    this.sizeBytes,
+    this.mimeType,
+    required this.addedAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['task_id'] = Variable<String>(taskId);
+    map['file_name'] = Variable<String>(fileName);
+    if (!nullToAbsent || localPath != null) {
+      map['local_path'] = Variable<String>(localPath);
+    }
+    map['storage_path'] = Variable<String>(storagePath);
+    if (!nullToAbsent || sizeBytes != null) {
+      map['size_bytes'] = Variable<int>(sizeBytes);
+    }
+    if (!nullToAbsent || mimeType != null) {
+      map['mime_type'] = Variable<String>(mimeType);
+    }
+    map['added_at'] = Variable<int>(addedAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  TaskAttachmentsCompanion toCompanion(bool nullToAbsent) {
+    return TaskAttachmentsCompanion(
+      id: Value(id),
+      taskId: Value(taskId),
+      fileName: Value(fileName),
+      localPath: localPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localPath),
+      storagePath: Value(storagePath),
+      sizeBytes: sizeBytes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sizeBytes),
+      mimeType: mimeType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mimeType),
+      addedAt: Value(addedAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory TaskAttachment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TaskAttachment(
+      id: serializer.fromJson<String>(json['id']),
+      taskId: serializer.fromJson<String>(json['taskId']),
+      fileName: serializer.fromJson<String>(json['fileName']),
+      localPath: serializer.fromJson<String?>(json['localPath']),
+      storagePath: serializer.fromJson<String>(json['storagePath']),
+      sizeBytes: serializer.fromJson<int?>(json['sizeBytes']),
+      mimeType: serializer.fromJson<String?>(json['mimeType']),
+      addedAt: serializer.fromJson<int>(json['addedAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'taskId': serializer.toJson<String>(taskId),
+      'fileName': serializer.toJson<String>(fileName),
+      'localPath': serializer.toJson<String?>(localPath),
+      'storagePath': serializer.toJson<String>(storagePath),
+      'sizeBytes': serializer.toJson<int?>(sizeBytes),
+      'mimeType': serializer.toJson<String?>(mimeType),
+      'addedAt': serializer.toJson<int>(addedAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  TaskAttachment copyWith({
+    String? id,
+    String? taskId,
+    String? fileName,
+    Value<String?> localPath = const Value.absent(),
+    String? storagePath,
+    Value<int?> sizeBytes = const Value.absent(),
+    Value<String?> mimeType = const Value.absent(),
+    int? addedAt,
+    int? updatedAt,
+  }) => TaskAttachment(
+    id: id ?? this.id,
+    taskId: taskId ?? this.taskId,
+    fileName: fileName ?? this.fileName,
+    localPath: localPath.present ? localPath.value : this.localPath,
+    storagePath: storagePath ?? this.storagePath,
+    sizeBytes: sizeBytes.present ? sizeBytes.value : this.sizeBytes,
+    mimeType: mimeType.present ? mimeType.value : this.mimeType,
+    addedAt: addedAt ?? this.addedAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  TaskAttachment copyWithCompanion(TaskAttachmentsCompanion data) {
+    return TaskAttachment(
+      id: data.id.present ? data.id.value : this.id,
+      taskId: data.taskId.present ? data.taskId.value : this.taskId,
+      fileName: data.fileName.present ? data.fileName.value : this.fileName,
+      localPath: data.localPath.present ? data.localPath.value : this.localPath,
+      storagePath: data.storagePath.present
+          ? data.storagePath.value
+          : this.storagePath,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TaskAttachment(')
+          ..write('id: $id, ')
+          ..write('taskId: $taskId, ')
+          ..write('fileName: $fileName, ')
+          ..write('localPath: $localPath, ')
+          ..write('storagePath: $storagePath, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    taskId,
+    fileName,
+    localPath,
+    storagePath,
+    sizeBytes,
+    mimeType,
+    addedAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TaskAttachment &&
+          other.id == this.id &&
+          other.taskId == this.taskId &&
+          other.fileName == this.fileName &&
+          other.localPath == this.localPath &&
+          other.storagePath == this.storagePath &&
+          other.sizeBytes == this.sizeBytes &&
+          other.mimeType == this.mimeType &&
+          other.addedAt == this.addedAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class TaskAttachmentsCompanion extends UpdateCompanion<TaskAttachment> {
+  final Value<String> id;
+  final Value<String> taskId;
+  final Value<String> fileName;
+  final Value<String?> localPath;
+  final Value<String> storagePath;
+  final Value<int?> sizeBytes;
+  final Value<String?> mimeType;
+  final Value<int> addedAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const TaskAttachmentsCompanion({
+    this.id = const Value.absent(),
+    this.taskId = const Value.absent(),
+    this.fileName = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.storagePath = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TaskAttachmentsCompanion.insert({
+    required String id,
+    required String taskId,
+    required String fileName,
+    this.localPath = const Value.absent(),
+    required String storagePath,
+    this.sizeBytes = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    required int addedAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       taskId = Value(taskId),
+       fileName = Value(fileName),
+       storagePath = Value(storagePath),
+       addedAt = Value(addedAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<TaskAttachment> custom({
+    Expression<String>? id,
+    Expression<String>? taskId,
+    Expression<String>? fileName,
+    Expression<String>? localPath,
+    Expression<String>? storagePath,
+    Expression<int>? sizeBytes,
+    Expression<String>? mimeType,
+    Expression<int>? addedAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (taskId != null) 'task_id': taskId,
+      if (fileName != null) 'file_name': fileName,
+      if (localPath != null) 'local_path': localPath,
+      if (storagePath != null) 'storage_path': storagePath,
+      if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (addedAt != null) 'added_at': addedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TaskAttachmentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? taskId,
+    Value<String>? fileName,
+    Value<String?>? localPath,
+    Value<String>? storagePath,
+    Value<int?>? sizeBytes,
+    Value<String?>? mimeType,
+    Value<int>? addedAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return TaskAttachmentsCompanion(
+      id: id ?? this.id,
+      taskId: taskId ?? this.taskId,
+      fileName: fileName ?? this.fileName,
+      localPath: localPath ?? this.localPath,
+      storagePath: storagePath ?? this.storagePath,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      mimeType: mimeType ?? this.mimeType,
+      addedAt: addedAt ?? this.addedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (taskId.present) {
+      map['task_id'] = Variable<String>(taskId.value);
+    }
+    if (fileName.present) {
+      map['file_name'] = Variable<String>(fileName.value);
+    }
+    if (localPath.present) {
+      map['local_path'] = Variable<String>(localPath.value);
+    }
+    if (storagePath.present) {
+      map['storage_path'] = Variable<String>(storagePath.value);
+    }
+    if (sizeBytes.present) {
+      map['size_bytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<int>(addedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TaskAttachmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('taskId: $taskId, ')
+          ..write('fileName: $fileName, ')
+          ..write('localPath: $localPath, ')
+          ..write('storagePath: $storagePath, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2459,6 +3025,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TasksTable tasks = $TasksTable(this);
   late final $ChecklistItemsTable checklistItems = $ChecklistItemsTable(this);
   late final $ProjectGroupsTable projectGroups = $ProjectGroupsTable(this);
+  late final $TaskAttachmentsTable taskAttachments = $TaskAttachmentsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2468,6 +3037,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     tasks,
     checklistItems,
     projectGroups,
+    taskAttachments,
   ];
 }
 
@@ -4091,6 +4661,290 @@ typedef $$ProjectGroupsTableProcessedTableManager =
       ProjectGroup,
       PrefetchHooks Function()
     >;
+typedef $$TaskAttachmentsTableCreateCompanionBuilder =
+    TaskAttachmentsCompanion Function({
+      required String id,
+      required String taskId,
+      required String fileName,
+      Value<String?> localPath,
+      required String storagePath,
+      Value<int?> sizeBytes,
+      Value<String?> mimeType,
+      required int addedAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$TaskAttachmentsTableUpdateCompanionBuilder =
+    TaskAttachmentsCompanion Function({
+      Value<String> id,
+      Value<String> taskId,
+      Value<String> fileName,
+      Value<String?> localPath,
+      Value<String> storagePath,
+      Value<int?> sizeBytes,
+      Value<String?> mimeType,
+      Value<int> addedAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$TaskAttachmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $TaskAttachmentsTable> {
+  $$TaskAttachmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get taskId => $composableBuilder(
+    column: $table.taskId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$TaskAttachmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $TaskAttachmentsTable> {
+  $$TaskAttachmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get taskId => $composableBuilder(
+    column: $table.taskId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TaskAttachmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TaskAttachmentsTable> {
+  $$TaskAttachmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get taskId =>
+      $composableBuilder(column: $table.taskId, builder: (column) => column);
+
+  GeneratedColumn<String> get fileName =>
+      $composableBuilder(column: $table.fileName, builder: (column) => column);
+
+  GeneratedColumn<String> get localPath =>
+      $composableBuilder(column: $table.localPath, builder: (column) => column);
+
+  GeneratedColumn<String> get storagePath => $composableBuilder(
+    column: $table.storagePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<String> get mimeType =>
+      $composableBuilder(column: $table.mimeType, builder: (column) => column);
+
+  GeneratedColumn<int> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$TaskAttachmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TaskAttachmentsTable,
+          TaskAttachment,
+          $$TaskAttachmentsTableFilterComposer,
+          $$TaskAttachmentsTableOrderingComposer,
+          $$TaskAttachmentsTableAnnotationComposer,
+          $$TaskAttachmentsTableCreateCompanionBuilder,
+          $$TaskAttachmentsTableUpdateCompanionBuilder,
+          (
+            TaskAttachment,
+            BaseReferences<
+              _$AppDatabase,
+              $TaskAttachmentsTable,
+              TaskAttachment
+            >,
+          ),
+          TaskAttachment,
+          PrefetchHooks Function()
+        > {
+  $$TaskAttachmentsTableTableManager(
+    _$AppDatabase db,
+    $TaskAttachmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TaskAttachmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TaskAttachmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TaskAttachmentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> taskId = const Value.absent(),
+                Value<String> fileName = const Value.absent(),
+                Value<String?> localPath = const Value.absent(),
+                Value<String> storagePath = const Value.absent(),
+                Value<int?> sizeBytes = const Value.absent(),
+                Value<String?> mimeType = const Value.absent(),
+                Value<int> addedAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => TaskAttachmentsCompanion(
+                id: id,
+                taskId: taskId,
+                fileName: fileName,
+                localPath: localPath,
+                storagePath: storagePath,
+                sizeBytes: sizeBytes,
+                mimeType: mimeType,
+                addedAt: addedAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String taskId,
+                required String fileName,
+                Value<String?> localPath = const Value.absent(),
+                required String storagePath,
+                Value<int?> sizeBytes = const Value.absent(),
+                Value<String?> mimeType = const Value.absent(),
+                required int addedAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => TaskAttachmentsCompanion.insert(
+                id: id,
+                taskId: taskId,
+                fileName: fileName,
+                localPath: localPath,
+                storagePath: storagePath,
+                sizeBytes: sizeBytes,
+                mimeType: mimeType,
+                addedAt: addedAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$TaskAttachmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TaskAttachmentsTable,
+      TaskAttachment,
+      $$TaskAttachmentsTableFilterComposer,
+      $$TaskAttachmentsTableOrderingComposer,
+      $$TaskAttachmentsTableAnnotationComposer,
+      $$TaskAttachmentsTableCreateCompanionBuilder,
+      $$TaskAttachmentsTableUpdateCompanionBuilder,
+      (
+        TaskAttachment,
+        BaseReferences<_$AppDatabase, $TaskAttachmentsTable, TaskAttachment>,
+      ),
+      TaskAttachment,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4103,4 +4957,6 @@ class $AppDatabaseManager {
       $$ChecklistItemsTableTableManager(_db, _db.checklistItems);
   $$ProjectGroupsTableTableManager get projectGroups =>
       $$ProjectGroupsTableTableManager(_db, _db.projectGroups);
+  $$TaskAttachmentsTableTableManager get taskAttachments =>
+      $$TaskAttachmentsTableTableManager(_db, _db.taskAttachments);
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/database/app_database.dart';
@@ -14,6 +15,14 @@ class ProjectSyncService {
   ProjectRepository? _projectRepo;
   ProjectGroupRepository? _groupRepo;
   RealtimeChannel? _channel;
+
+  // 远端任何变更（拉取/订阅 upsert/delete）写入本地 db 后广播，
+  // 供 UI 层（home_page）刷新 bloc 用
+  final _changesCtrl = StreamController<void>.broadcast();
+  Stream<void> get changes => _changesCtrl.stream;
+  void _emitChange() {
+    if (!_changesCtrl.isClosed) _changesCtrl.add(null);
+  }
 
   void bind({
     required AppDatabase db,
@@ -44,14 +53,17 @@ class ProjectSyncService {
         await _upsertProjectFromRow(row as Map<String, dynamic>);
       }
       print('[ProjectSync] 拉取完成 groups=${groupRows.length} projects=${projRows.length}');
-    } catch (e) {
-      print('[ProjectSync] 拉取失败: $e');
+    } catch (e, st) {
+      print('[ProjectSync] ❌ 拉取失败: $e\n$st');
     }
   }
 
   Future<void> pushProject(Project p) async {
     final userId = _client.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      print('[ProjectSync] ⚠ pushProject ${p.id} 跳过（未登录 Supabase）');
+      return;
+    }
     try {
       await _client.from('projects').upsert({
         'id': p.id,
@@ -64,22 +76,27 @@ class ProjectSyncService {
         'created_at': p.createdAt,
         'updated_at': p.updatedAt,
       });
+      print('[ProjectSync] ✓ pushProject ${p.id} ${p.name}');
     } catch (e) {
-      print('[ProjectSync] push project 失败 ${p.id}: $e');
+      print('[ProjectSync] ❌ push project 失败 ${p.id}: $e');
     }
   }
 
   Future<void> removeProject(String id) async {
     try {
       await _client.from('projects').delete().eq('id', id);
+      print('[ProjectSync] ✓ removeProject $id');
     } catch (e) {
-      print('[ProjectSync] 删除 project 失败 $id: $e');
+      print('[ProjectSync] ❌ 删除 project 失败 $id: $e');
     }
   }
 
   Future<void> pushGroup(ProjectGroup g) async {
     final userId = _client.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      print('[ProjectSync] ⚠ pushGroup ${g.id} 跳过（未登录 Supabase）');
+      return;
+    }
     try {
       await _client.from('project_groups').upsert({
         'id': g.id,
@@ -90,20 +107,27 @@ class ProjectSyncService {
         'created_at': g.createdAt,
         'updated_at': g.updatedAt,
       });
+      print('[ProjectSync] ✓ pushGroup ${g.id} ${g.name}');
     } catch (e) {
-      print('[ProjectSync] push group 失败 ${g.id}: $e');
+      print('[ProjectSync] ❌ push group 失败 ${g.id}: $e');
     }
   }
 
   Future<void> removeGroup(String id) async {
     try {
       await _client.from('project_groups').delete().eq('id', id);
+      print('[ProjectSync] ✓ removeGroup $id');
     } catch (e) {
-      print('[ProjectSync] 删除 group 失败 $id: $e');
+      print('[ProjectSync] ❌ 删除 group 失败 $id: $e');
     }
   }
 
   void subscribe() {
+    // 用当前 user JWT 认证 Realtime（不然 RLS 表的事件可能拿不到）
+    final token = _client.auth.currentSession?.accessToken;
+    if (token != null) {
+      _client.realtime.setAuth(token);
+    }
     _channel?.unsubscribe();
     _channel = _client.channel('projects_sync');
     _channel!
@@ -124,8 +148,18 @@ class ProjectSyncService {
           schema: 'public',
           table: 'projects',
           callback: (p) async {
+            print('[ProjectSync] 收到 DELETE projects oldRecord=${p.oldRecord}');
             final id = p.oldRecord['id'] as String?;
-            if (id != null) await _projectRepo?.delete(id);
+            if (id == null || _db == null) return;
+            try {
+              await (_db!.delete(_db!.projects)
+                    ..where((t) => t.id.equals(id)))
+                  .go();
+              _emitChange();
+              print('[ProjectSync] ✓ 本地删 project $id');
+            } catch (e) {
+              print('[ProjectSync] ❌ 本地删 project 失败 $id: $e');
+            }
           },
         )
         .onPostgresChanges(
@@ -145,11 +179,28 @@ class ProjectSyncService {
           schema: 'public',
           table: 'project_groups',
           callback: (p) async {
+            print('[ProjectSync] 收到 DELETE project_groups oldRecord=${p.oldRecord}');
             final id = p.oldRecord['id'] as String?;
-            if (id != null) await _groupRepo?.delete(id);
+            if (id == null || _db == null) return;
+            try {
+              await _db!.transaction(() async {
+                await (_db!.update(_db!.projects)
+                      ..where((t) => t.groupId.equals(id)))
+                    .write(const ProjectsCompanion(groupId: Value(null)));
+                await (_db!.delete(_db!.projectGroups)
+                      ..where((t) => t.id.equals(id)))
+                    .go();
+              });
+              _emitChange();
+              print('[ProjectSync] ✓ 本地删 group $id');
+            } catch (e) {
+              print('[ProjectSync] ❌ 本地删 group 失败 $id: $e');
+            }
           },
         );
-    _channel!.subscribe();
+    _channel!.subscribe((status, [error]) {
+      print('[ProjectSync] channel status=$status ${error ?? ''}');
+    });
   }
 
   void unsubscribe() => _channel?.unsubscribe();
@@ -172,6 +223,7 @@ class ProjectSyncService {
       updatedAt: Value(row['updated_at'] as int? ?? now),
     );
     await _db!.into(_db!.projects).insertOnConflictUpdate(companion);
+    _emitChange();
   }
 
   Future<void> _upsertGroupFromRow(Map<String, dynamic> row) async {
@@ -188,5 +240,6 @@ class ProjectSyncService {
       updatedAt: Value(row['updated_at'] as int? ?? now),
     );
     await _db!.into(_db!.projectGroups).insertOnConflictUpdate(companion);
+    _emitChange();
   }
 }

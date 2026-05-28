@@ -95,6 +95,9 @@ class _TasksPageState extends State<TasksPage> {
               selectedFilter: selectedFilter,
               projectProgress: state.projectProgress,
               groupProgress: state.groupProgress,
+              onCreateGroup: () => _showCreateGroupDialog(context),
+              onEditGroup: (g) => _showEditGroupDialog(context, g),
+              onDeleteGroup: (g) => _confirmDeleteGroup(context, g),
               onProjectSelected: (id) {
                 Navigator.pop(context);
                 context.read<TaskNewBloc>().add(LoadTasks(projectId: id));
@@ -233,33 +236,63 @@ class _TasksPageState extends State<TasksPage> {
 
   Future<void> _showCreateProjectDialog(BuildContext context) async {
     final controller = TextEditingController();
-    final name = await showDialog<String>(
+    final blocState = context.read<TaskNewBloc>().state;
+    final groups = blocState is TaskNewLoaded ? blocState.groups : const <ProjectGroup>[];
+    String? selectedGroupId;
+    final result = await showDialog<({String name, String? groupId})>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('新建项目'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '项目名称',
-            border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(builder: (ctx, setLocal) {
+        return AlertDialog(
+          title: const Text('新建项目'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: '项目名称',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String?>(
+                value: selectedGroupId,
+                decoration: const InputDecoration(
+                  labelText: '所属分组（可选）',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('无分组')),
+                  ...groups.map((g) => DropdownMenuItem<String?>(
+                        value: g.id,
+                        child: Text(g.name),
+                      )),
+                ],
+                onChanged: (v) => setLocal(() => selectedGroupId = v),
+              ),
+            ],
           ),
-          onSubmitted: (v) => Navigator.pop(context, v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('创建'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消')),
+            TextButton(
+              onPressed: () {
+                final n = controller.text.trim();
+                if (n.isEmpty) return;
+                Navigator.pop(context, (name: n, groupId: selectedGroupId));
+              },
+              child: const Text('创建'),
+            ),
+          ],
+        );
+      }),
     );
-    if (name != null && name.isNotEmpty) {
-      context.read<TaskNewBloc>().add(CreateProject(name: name));
+    if (result != null) {
+      context.read<TaskNewBloc>().add(
+            CreateProject(name: result.name, groupId: result.groupId),
+          );
     }
   }
 
@@ -268,35 +301,180 @@ class _TasksPageState extends State<TasksPage> {
     Project project,
   ) async {
     final controller = TextEditingController(text: project.name);
+    final blocState = context.read<TaskNewBloc>().state;
+    final groups = blocState is TaskNewLoaded ? blocState.groups : const <ProjectGroup>[];
+    String? selectedGroupId = project.groupId;
+    final result = await showDialog<({String name, String? groupId, bool clearGroup})>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (ctx, setLocal) {
+        return AlertDialog(
+          title: const Text('编辑项目'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: '项目名称',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String?>(
+                value: selectedGroupId,
+                decoration: const InputDecoration(
+                  labelText: '所属分组（可选）',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('无分组')),
+                  ...groups.map((g) => DropdownMenuItem<String?>(
+                        value: g.id,
+                        child: Text(g.name),
+                      )),
+                ],
+                onChanged: (v) => setLocal(() => selectedGroupId = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消')),
+            TextButton(
+              onPressed: () {
+                final n = controller.text.trim();
+                if (n.isEmpty) return;
+                Navigator.pop(context, (
+                  name: n,
+                  groupId: selectedGroupId,
+                  clearGroup: selectedGroupId == null,
+                ));
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      }),
+    );
+    if (result != null) {
+      context.read<TaskNewBloc>().add(UpdateProject(
+            id: project.id,
+            name: result.name,
+            groupId: result.groupId,
+            clearGroup: result.clearGroup,
+          ));
+    }
+  }
+
+  // ──────── 分组 CRUD ────────
+  Future<void> _showCreateGroupDialog(BuildContext context) async {
+    final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('编辑项目'),
+        title: const Text('新建分组'),
         content: TextField(
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '项目名称',
+            hintText: '分组名称',
             border: OutlineInputBorder(),
           ),
           onSubmitted: (v) => Navigator.pop(context, v.trim()),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消')),
           TextButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('保存'),
-          ),
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('创建')),
         ],
       ),
     );
-    if (name != null && name.isNotEmpty) {
+    if (name != null && name.isNotEmpty && context.mounted) {
+      context.read<TaskNewBloc>().add(CreateProjectGroup(name: name));
+    }
+  }
+
+  Future<void> _showEditGroupDialog(
+    BuildContext context,
+    ProjectGroup group,
+  ) async {
+    final controller = TextEditingController(text: group.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重命名分组'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+          onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+    if (name != null && name.isNotEmpty && context.mounted) {
+      context.read<TaskNewBloc>().add(UpdateProjectGroup(id: group.id, name: name));
+    }
+  }
+
+  Future<void> _confirmDeleteGroup(
+    BuildContext context,
+    ProjectGroup group,
+  ) async {
+    bool deleteProjects = false;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (ctx, setLocal) {
+        return AlertDialog(
+          title: const Text('删除分组'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('确定删除分组"${group.name}"？'),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: deleteProjects,
+                onChanged: (v) => setLocal(() => deleteProjects = v ?? false),
+                title: const Text('同时删除该分组下的所有项目和任务',
+                    style: TextStyle(fontSize: 13)),
+                subtitle: const Text('不勾选则项目变为"未分组"',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textHint)),
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消')),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+              child: Text(deleteProjects ? '删除分组和项目' : '删除分组'),
+            ),
+          ],
+        );
+      }),
+    );
+    if (confirm == true && context.mounted) {
       context.read<TaskNewBloc>().add(
-        UpdateProject(id: project.id, name: name),
-      );
+            DeleteProjectGroup(id: group.id, deleteProjects: deleteProjects),
+          );
     }
   }
 
@@ -354,7 +532,7 @@ class _TasksPageState extends State<TasksPage> {
           projectId: (result['projectId'] as String?) ?? 'inbox',
           title: result['title'] as String,
           description: result['description'] as String? ?? '',
-          priority: result['priority'] as int? ?? 0,
+          priority: result['priority'] as int? ?? 1,
           startDate: result['startDate'] as int?,
           dueDate: result['dueDate'] as int?,
           parentId: result['parentId'] as String?,

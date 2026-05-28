@@ -6,18 +6,53 @@ class LoadProjects extends TaskEvent {}
 class CreateProject extends TaskEvent {
   final String name;
   final String color;
-  CreateProject({required this.name, this.color = '#4772FA'});
+  final String? groupId;
+  CreateProject({required this.name, this.color = '#4772FA', this.groupId});
   @override
-  List<Object> get props => [name, color];
+  List<Object?> get props => [name, color, groupId];
 }
 
 class UpdateProject extends TaskEvent {
   final String id;
   final String? name;
   final String? color;
-  UpdateProject({required this.id, this.name, this.color});
+  final String? groupId;
+  final bool clearGroup;
+  UpdateProject({
+    required this.id,
+    this.name,
+    this.color,
+    this.groupId,
+    this.clearGroup = false,
+  });
+  @override
+  List<Object?> get props => [id, name, color, groupId, clearGroup];
+}
+
+// --- 项目分组事件 ---
+class CreateProjectGroup extends TaskEvent {
+  final String name;
+  final String color;
+  CreateProjectGroup({required this.name, this.color = '#4772FA'});
+  @override
+  List<Object?> get props => [name, color];
+}
+
+class UpdateProjectGroup extends TaskEvent {
+  final String id;
+  final String? name;
+  final String? color;
+  UpdateProjectGroup({required this.id, this.name, this.color});
   @override
   List<Object?> get props => [id, name, color];
+}
+
+class DeleteProjectGroup extends TaskEvent {
+  final String id;
+  final bool deleteProjects; // 同时删除组内所有项目+任务
+  DeleteProjectGroup({required this.id, this.deleteProjects = false});
+  @override
+  List<Object?> get props => [id, deleteProjects];
 }
 
 class DeleteProject extends TaskEvent {

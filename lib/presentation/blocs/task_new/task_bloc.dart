@@ -27,6 +27,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<CreateProject>(_onCreateProject);
     on<UpdateProject>(_onUpdateProject);
     on<DeleteProject>(_onDeleteProject);
+    on<CreateProjectGroup>(_onCreateProjectGroup);
+    on<UpdateProjectGroup>(_onUpdateProjectGroup);
+    on<DeleteProjectGroup>(_onDeleteProjectGroup);
 
     on<LoadTasks>(_onLoadTasks);
     on<CreateTask>(_onCreateTask);
@@ -100,7 +103,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     Emitter<TaskNewState> emit,
   ) async {
     try {
-      await projectRepository.create(name: event.name, color: event.color);
+      await projectRepository.create(
+        name: event.name,
+        color: event.color,
+        groupId: event.groupId,
+      );
       final projects = await projectRepository.getActive();
       if (state is TaskNewLoaded) {
         final current = state as TaskNewLoaded;
@@ -122,10 +129,81 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         event.id,
         name: event.name,
         color: event.color,
+        groupId: event.groupId,
+        clearGroup: event.clearGroup,
       );
       final projects = await projectRepository.getActive();
       if (state is TaskNewLoaded) {
         emit((state as TaskNewLoaded).copyWith(projects: projects));
+      }
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  // --- 项目分组 ---
+  Future<void> _onCreateProjectGroup(
+    CreateProjectGroup event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    if (projectGroupRepository == null) return;
+    try {
+      await projectGroupRepository!.create(name: event.name, color: event.color);
+      final groups = await projectGroupRepository!.getAll();
+      if (state is TaskNewLoaded) {
+        emit((state as TaskNewLoaded).copyWith(groups: groups));
+      }
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onUpdateProjectGroup(
+    UpdateProjectGroup event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    if (projectGroupRepository == null) return;
+    try {
+      await projectGroupRepository!
+          .update(event.id, name: event.name, color: event.color);
+      final groups = await projectGroupRepository!.getAll();
+      if (state is TaskNewLoaded) {
+        emit((state as TaskNewLoaded).copyWith(groups: groups));
+      }
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onDeleteProjectGroup(
+    DeleteProjectGroup event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    if (projectGroupRepository == null) return;
+    try {
+      // 可选：先删除组内所有项目（会级联删任务+同步）
+      if (event.deleteProjects) {
+        final all = await projectRepository.getAll();
+        final inGroup = all.where((p) => p.groupId == event.id).toList();
+        for (final p in inGroup) {
+          if (p.id == 'inbox') continue; // 默认收件箱不可删
+          await projectRepository.delete(p.id);
+        }
+      }
+      await projectGroupRepository!.delete(event.id);
+      final groups = await projectGroupRepository!.getAll();
+      final projects = await projectRepository.getActive();
+      final allTasks = await taskRepository.getAll();
+      final progress = await _calculateProgress(allTasks);
+      if (state is TaskNewLoaded) {
+        emit((state as TaskNewLoaded).copyWith(
+          groups: groups,
+          projects: projects,
+          tasks: allTasks,
+          taskProgress: progress.taskProgress,
+          projectProgress: progress.projectProgress,
+          groupProgress: progress.groupProgress,
+        ));
       }
     } catch (e) {
       emit(TaskNewError(e.toString()));

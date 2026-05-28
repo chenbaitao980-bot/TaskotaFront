@@ -12,8 +12,11 @@ class ProjectSidebar extends StatelessWidget {
   final ValueChanged<String?> onProjectSelected;
   final ValueChanged<String> onFilterSelected;
   final VoidCallback onCreateProject;
+  final VoidCallback? onCreateGroup;
   final void Function(Project)? onEditProject;
   final void Function(Project)? onDeleteProject;
+  final void Function(ProjectGroup)? onEditGroup;
+  final void Function(ProjectGroup)? onDeleteGroup;
 
   const ProjectSidebar({
     super.key,
@@ -26,8 +29,11 @@ class ProjectSidebar extends StatelessWidget {
     required this.onProjectSelected,
     required this.onFilterSelected,
     required this.onCreateProject,
+    this.onCreateGroup,
     this.onEditProject,
     this.onDeleteProject,
+    this.onEditGroup,
+    this.onDeleteGroup,
   });
 
   @override
@@ -95,7 +101,6 @@ class ProjectSidebar extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
                     '项目',
@@ -105,12 +110,26 @@ class ProjectSidebar extends StatelessWidget {
                       color: AppTheme.textHint,
                     ),
                   ),
+                  const Spacer(),
+                  if (onCreateGroup != null)
+                    TextButton.icon(
+                      onPressed: onCreateGroup,
+                      icon: const Icon(Icons.folder_outlined, size: 16),
+                      label: const Text('分组', style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.textSecondary,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        minimumSize: const Size(0, 28),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
                   IconButton(
                     onPressed: onCreateProject,
                     icon: const Icon(Icons.add_rounded, size: 20),
                     color: AppTheme.primaryColor,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
+                    tooltip: '新建项目',
                   ),
                 ],
               ),
@@ -147,8 +166,9 @@ class ProjectSidebar extends StatelessWidget {
         children: [
           ...groups.map((g) {
             final items = buckets[g.id] ?? const <Project>[];
-            if (items.isEmpty) return const SizedBox.shrink();
+            // S1: 空分组也展示
             final prog = (groupProgress[g.id] ?? 0).clamp(0, 100).toInt();
+            final groupColor = Color(int.parse(g.color.replaceFirst('#', '0xFF')));
             return Theme(
               data: Theme.of(ctx).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
@@ -156,14 +176,7 @@ class ProjectSidebar extends StatelessWidget {
                 initiallyExpanded: true,
                 tilePadding: const EdgeInsets.symmetric(horizontal: 8),
                 childrenPadding: EdgeInsets.zero,
-                leading: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: Color(int.parse(g.color.replaceFirst('#', '0xFF'))),
-                    shape: BoxShape.circle,
-                  ),
-                ),
+                leading: Icon(Icons.folder_rounded, size: 22, color: groupColor),
                 title: Text(
                   g.name,
                   style: const TextStyle(
@@ -172,18 +185,49 @@ class ProjectSidebar extends StatelessWidget {
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                trailing: Text(
-                  '$prog%',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textHint,
-                      fontWeight: FontWeight.w600),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$prog%',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.textHint,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_horiz, size: 16, color: AppTheme.textHint),
+                      padding: EdgeInsets.zero,
+                      onSelected: (action) {
+                        if (action == 'edit') onEditGroup?.call(g);
+                        if (action == 'delete') onDeleteGroup?.call(g);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'edit', child: Text('重命名分组')),
+                        PopupMenuItem(value: 'delete', child: Text('删除分组（项目保留）')),
+                      ],
+                    ),
+                  ],
                 ),
-                children: items.map((p) {
-                  final isSelected = p.id == selectedProjectId;
-                  return _buildProjectItem(ctx,
-                      project: p, isSelected: isSelected);
-                }).toList(),
+                children: items.isEmpty
+                    ? [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(48, 4, 16, 8),
+                          child: Text(
+                            '暂无项目',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textHint.withValues(alpha: 0.7),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ]
+                    : items.map((p) {
+                        final isSelected = p.id == selectedProjectId;
+                        return _buildProjectItem(ctx,
+                            project: p, isSelected: isSelected);
+                      }).toList(),
               ),
             );
           }),
@@ -247,13 +291,22 @@ class ProjectSidebar extends StatelessWidget {
     required bool isSelected,
   }) {
     final progress = (projectProgress[project.id] ?? 0).clamp(0, 100).toInt();
+    final projectColor =
+        Color(int.parse(project.color.replaceFirst('#', '0xFF')));
+    final firstChar = project.name.isNotEmpty
+        ? project.name.characters.first.toUpperCase()
+        : '·';
     return ListTile(
-      leading: Container(
-        width: 12,
-        height: 12,
-        decoration: BoxDecoration(
-          color: Color(int.parse(project.color.replaceFirst('#', '0xFF'))),
-          shape: BoxShape.circle,
+      leading: CircleAvatar(
+        radius: 12,
+        backgroundColor: projectColor.withValues(alpha: 0.18),
+        child: Text(
+          firstChar,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: projectColor,
+          ),
         ),
       ),
       title: Text(

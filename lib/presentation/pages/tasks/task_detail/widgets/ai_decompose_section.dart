@@ -53,7 +53,9 @@ class _AiDecomposeSectionState extends State<AiDecomposeSection> {
       final attachments =
           await _attachmentService.getAttachments(widget.task.id);
       for (final a in attachments) {
-        final content = await _attachmentService.readFileContent(a.filePath);
+        // 仅读取已下载到本地的；未下载的此处跳过（AI 不需要）
+        if (a.localPath == null) continue;
+        final content = await _attachmentService.readFileContent(a.localPath!);
         if (content.isNotEmpty) {
           attachmentContents.add(content.length > 3000
               ? content.substring(0, 3000)
@@ -101,6 +103,7 @@ class _AiDecomposeSectionState extends State<AiDecomposeSection> {
           projectId: widget.projectId,
           title: node.title.trim(),
           parentId: parentId,
+          priority: 1, // 默认"低"
           estimatedMinutes: isLeaf ? node.estimatedMinutes : null,
         );
         existingTitles.add(node.title.trim());
@@ -283,4 +286,180 @@ class _CreatedLeaf {
   final String id;
   final int minutes;
   const _CreatedLeaf({required this.id, required this.minutes});
+}
+
+/// 公共入口：供其他 UI（如 task_detail 顶部 chip 按钮）触发 AI 拆分。
+/// 返回新增的叶子数；过程中失败/无可拆会 SnackBar 提示。
+Future<int> runAiDecompose({
+  required BuildContext context,
+  required Task task,
+  required String projectId,
+  String currentDescription = '',
+}) async {
+  final attachmentService = TaskAttachmentService();
+  final decomposition = TaskDecompositionService();
+  final bloc = context.read<TaskNewBloc>();
+  final repo = bloc.taskRepository;
+
+  bool isSimilarToAny(String title, List<String> existing) {
+    final t = title.trim();
+    if (t.isEmpty) return true;
+    for (final e in existing) {
+      if (e.trim() == t) return true;
+      if (e.contains(t) || t.contains(e)) return true;
+    }
+    return false;
+  }
+
+  try {
+    // 1) 收集附件文本
+    final attachmentContents = <String>[];
+    final attachments = await attachmentService.getAttachments(task.id);
+    for (final a in attachments) {
+      if (a.localPath == null) continue;
+      final content = await attachmentService.readFileContent(a.localPath!);
+      if (content.isNotEmpty) {
+        attachmentContents.add(content.length > 3000
+            ? content.substring(0, 3000)
+            : content);
+      }
+    }
+
+    final existingDescendants = await repo.getDescendants(task.id);
+    final existingTitles =
+        existingDescendants.map((t) => t.title.trim()).toList();
+
+    final descToUse =
+        currentDescription.isNotEmpty ? currentDescription : task.description;
+    final result = await decomposition.decompose(
+      task.title,
+      descToUse,
+      attachmentContents,
+      existingTaskTitles: existingTitles,
+    );
+
+    if (result.nodes.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              result.allDuplicates ? '子任务已完整，无需重复分解' : 'AI 分解失败，请重试'),
+        ));
+      }
+      return 0;
+    }
+
+    final createdLeaves = <_CreatedLeaf>[];
+    final parentToLeafIds = <String, List<String>>{};
+    int created = 0;
+
+    Future<void> walk(SubtaskNode node, String parentId) async {
+      if (isSimilarToAny(node.title.trim(), existingTitles)) return;
+      final isLeaf = node.children.isEmpty;
+      final t = await repo.create(
+        projectId: projectId,
+        title: node.title.trim(),
+        parentId: parentId,
+        priority: 1,
+        estimatedMinutes: isLeaf ? node.estimatedMinutes : null,
+      );
+      existingTitles.add(node.title.trim());
+      created++;
+      if (isLeaf) {
+        createdLeaves.add(_CreatedLeaf(
+          id: t.id,
+          minutes: node.estimatedMinutes ?? 60,
+        ));
+      } else {
+        parentToLeafIds[t.id] = [];
+        for (final child in node.children) {
+          final beforeLen = createdLeaves.length;
+          await walk(child, t.id);
+          for (int i = beforeLen; i < createdLeaves.length; i++) {
+            parentToLeafIds[t.id]!.add(createdLeaves[i].id);
+          }
+        }
+      }
+    }
+
+    for (final node in result.nodes) {
+      await walk(node, task.id);
+    }
+    parentToLeafIds[task.id] = createdLeaves.map((e) => e.id).toList();
+
+    if (createdLeaves.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('新增 $created 个子任务（无叶子，无需排程）')),
+        );
+        context.read<TaskNewBloc>().add(LoadSubTree(rootTaskId: task.id));
+      }
+      return created;
+    }
+
+    final storage = LocalStorageService();
+    await storage.init();
+    final skipWeekends = storage.skipWeekends;
+
+    final allTasks = await repo.getAll();
+    final ignoreIds = createdLeaves.map((e) => e.id).toSet();
+    final scheduler = SubtaskScheduler(
+      existingTasks: allTasks,
+      skipWeekends: skipWeekends,
+      ignoreTaskIds: ignoreIds,
+    );
+    final slots = scheduler.scheduleLeaves(
+      createdLeaves
+          .map((e) => LeafToSchedule(taskId: e.id, minutes: e.minutes))
+          .toList(),
+    );
+
+    for (final s in slots) {
+      await repo.update(
+        s.taskId,
+        startDate: s.start.millisecondsSinceEpoch,
+        dueDate: s.end.millisecondsSinceEpoch,
+        reminderEnabled: 1,
+        remindBeforeMinutes: 5,
+      );
+      try {
+        await NotificationService().scheduleReminderForSchedule(
+          scheduleId: s.taskId,
+          title: '即将开始：子任务',
+          startTime: s.start,
+          description: null,
+          remindBeforeMinutes: 5,
+          isRepeating: false,
+          repeatInterval: null,
+        );
+      } catch (_) {}
+    }
+
+    final parentSpans = computeParentSpans(
+      parentToLeafIds: parentToLeafIds,
+      slots: slots,
+    );
+    for (final entry in parentSpans.entries) {
+      await repo.update(
+        entry.key,
+        startDate: entry.value.start.millisecondsSinceEpoch,
+        dueDate: entry.value.end.millisecondsSinceEpoch,
+      );
+    }
+
+    if (context.mounted) {
+      context.read<TaskNewBloc>().add(LoadTasks());
+      context.read<TaskNewBloc>().add(LoadSubTree(rootTaskId: task.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('新增 $created 个子任务，已自动排到日历')),
+      );
+    }
+    return created;
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('拆解失败：$e')),
+      );
+    }
+    return 0;
+  }
 }

@@ -188,8 +188,12 @@ class _TaskEditPageState extends State<TaskEditPage> {
                 decoration: const InputDecoration(
                   labelText: '描述（选填）',
                   border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  alignLabelWithHint: true,
                 ),
-                maxLines: 4,
+                minLines: 6,
+                maxLines: 12,
                 onChanged: (_) => _markChanged(),
               ),
             ],

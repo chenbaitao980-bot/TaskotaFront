@@ -5,7 +5,7 @@ import '../../../../../data/database/app_database.dart';
 import '../../../../blocs/task_new/task_bloc.dart';
 import '../../../../blocs/task_new/task_event.dart';
 import '../../../../blocs/task_new/task_state.dart';
-import '../../widgets/task_edit_page.dart';
+import '../task_detail_page.dart';
 
 class SubtaskTreeSection extends StatefulWidget {
   final Task task;
@@ -50,72 +50,73 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
         final expandedNodes = state.expandedNodes[rootId] ?? {};
 
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: AppTheme.bgCard,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(color: AppTheme.borderSubtle),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // 紧凑头部
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
                 child: Row(
                   children: [
                     const Icon(
                       Icons.account_tree_outlined,
-                      size: 20,
-                      color: AppTheme.textPrimary,
+                      size: 14,
+                      color: AppTheme.textSecondary,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
                     Text(
-                      '子任务',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      '子任务 (${descendants.length})',
+                      style: const TextStyle(
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary,
                       ),
                     ),
-                    if (descendants.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        '(${descendants.length})',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.textHint,
-                        ),
-                      ),
-                    ],
                     const Spacer(),
-                    TextButton.icon(
+                    IconButton(
                       onPressed: () => _showAddSubTaskDialog(context, rootId),
                       icon: const Icon(Icons.add_rounded, size: 16),
-                      label: const Text('添加'),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        foregroundColor: AppTheme.primaryColor,
-                      ),
+                      color: AppTheme.primaryColor,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                      tooltip: '添加子任务',
                     ),
                   ],
                 ),
               ),
               if (descendants.isEmpty)
                 const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: Text(
-                      '暂无子任务',
-                      style: TextStyle(color: AppTheme.textHint, fontSize: 13),
-                    ),
+                  padding: EdgeInsets.fromLTRB(10, 0, 10, 10),
+                  child: Text(
+                    '暂无子任务',
+                    style: TextStyle(color: AppTheme.textHint, fontSize: 11),
                   ),
                 )
               else
-                ..._buildTree(
-                  descendants,
-                  rootId,
-                  expandedNodes,
-                  rootId,
-                  0,
-                  context,
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: _buildTree(
+                          descendants,
+                          rootId,
+                          expandedNodes,
+                          rootId,
+                          0,
+                          context,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -203,7 +204,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                 : null,
           ),
           child: Padding(
-            padding: EdgeInsets.only(left: 4.0 + depth * 24),
+            padding: EdgeInsets.only(left: 4.0 + depth * 16),
             child: Row(
               children: [
                 // 拖拽手柄（仅此处可拖拽）
@@ -297,16 +298,11 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                         : null,
                   ),
                 ),
-                // 标题
+                // 标题（点击直接进入子任务编辑页）
                 Expanded(
                   child: GestureDetector(
-                    onTap: () {
-                      if (hasChildren) {
-                        context.read<TaskNewBloc>().add(
-                          ToggleTreeNode(rootTaskId: rootId, nodeId: child.id),
-                        );
-                      }
-                    },
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _editSubTask(context, child),
                     child: Text(
                       child.title,
                       maxLines: 1,
@@ -444,38 +440,13 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(
           value: bloc,
-          child: TaskEditPage(
-            task: task,
-            projectRepository: bloc.projectRepository,
-            onAutoSave: (data) {
-              bloc.add(
-                UpdateTask(
-                  id: task.id,
-                  title: data['title'] as String,
-                  projectId: data['projectId'] as String,
-                  description: data['description'] as String,
-                  priority: data['priority'] as int,
-                  startDate: data['startDate'] as int?,
-                  dueDate: data['dueDate'] as int?,
-                ),
-              );
-            },
-          ),
+          child: TaskDetailPage(task: task),
         ),
       ),
-    ).then((result) {
-      if (result != null && mounted) {
-        bloc.add(
-          UpdateTask(
-            id: task.id,
-            title: result['title'] as String,
-            projectId: result['projectId'] as String,
-            description: result['description'] as String,
-            priority: result['priority'] as int,
-            startDate: result['startDate'] as int?,
-            dueDate: result['dueDate'] as int?,
-          ),
-        );
+    ).then((_) {
+      if (mounted) {
+        // 回到父任务后刷新子树，反映子任务的更新
+        bloc.add(LoadSubTree(rootTaskId: widget.task.id));
       }
       // 无论编辑保存还是删除，都刷新树
       if (mounted) _loadTree();

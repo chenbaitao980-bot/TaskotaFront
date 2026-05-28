@@ -10,6 +10,8 @@ class _TreeNodeData {
   final bool hasChildren;
   final bool isExpanded;
   final String? parentId;
+  final List<bool> ancestorIsLast; // 每层祖先是否为最后一个子节点
+  final bool isLastSibling;        // 本节点是否为同级最后一个
 
   const _TreeNodeData({
     required this.task,
@@ -17,6 +19,8 @@ class _TreeNodeData {
     required this.hasChildren,
     required this.isExpanded,
     required this.parentId,
+    required this.ancestorIsLast,
+    required this.isLastSibling,
   });
 }
 
@@ -65,8 +69,12 @@ class _TaskListViewState extends State<TaskListView> {
       return parentId == null || !taskIds.contains(parentId);
     }).toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
-    for (final root in rootTasks) {
-      _addNode(root, 0, allTasks, expandedIds, result);
+    for (var i = 0; i < rootTasks.length; i++) {
+      _addNode(
+        rootTasks[i], 0, allTasks, expandedIds, result,
+        ancestorIsLast: const [],
+        isLastSibling: i == rootTasks.length - 1,
+      );
     }
     return result;
   }
@@ -76,8 +84,10 @@ class _TaskListViewState extends State<TaskListView> {
     int depth,
     List<Task> allTasks,
     Set<String> expandedIds,
-    List<_TreeNodeData> result,
-  ) {
+    List<_TreeNodeData> result, {
+    required List<bool> ancestorIsLast,
+    required bool isLastSibling,
+  }) {
     final children = allTasks.where((t) => t.parentId == task.id).toList()
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
@@ -90,12 +100,19 @@ class _TaskListViewState extends State<TaskListView> {
         hasChildren: hasChildren,
         isExpanded: isExpanded,
         parentId: task.parentId,
+        ancestorIsLast: ancestorIsLast,
+        isLastSibling: isLastSibling,
       ),
     );
 
     if (hasChildren && isExpanded) {
-      for (final child in children) {
-        _addNode(child, depth + 1, allTasks, expandedIds, result);
+      final childAncestorIsLast = [...ancestorIsLast, isLastSibling];
+      for (var i = 0; i < children.length; i++) {
+        _addNode(
+          children[i], depth + 1, allTasks, expandedIds, result,
+          ancestorIsLast: childAncestorIsLast,
+          isLastSibling: i == children.length - 1,
+        );
       }
     }
   }
@@ -259,7 +276,7 @@ class _TaskListViewState extends State<TaskListView> {
                 GestureDetector(
                   onTap: () => widget.onToggleExpand(node.task.id),
                   child: Container(
-                    width: 28,
+                    width: 20,
                     height: 28,
                     alignment: Alignment.center,
                     child: Icon(
@@ -272,7 +289,7 @@ class _TaskListViewState extends State<TaskListView> {
                   ),
                 )
               else
-                const SizedBox(width: 28),
+                const SizedBox(width: 20),
               // TaskCard 内容（展开箭头、拖拽手柄已在外层，内层关闭）
               Expanded(
                 child: TaskCard(
@@ -443,7 +460,7 @@ class _DragHandle extends StatelessWidget {
       childWhenDragging: Opacity(
         opacity: 0.3,
         child: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
           child: Icon(
             Icons.drag_indicator_rounded,
             size: 20,
@@ -452,7 +469,7 @@ class _DragHandle extends StatelessWidget {
         ),
       ),
       child: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
         child: Icon(
           Icons.drag_indicator_rounded,
           size: 20,
