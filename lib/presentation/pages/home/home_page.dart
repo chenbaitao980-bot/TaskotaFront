@@ -11,7 +11,9 @@ import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/permission_service.dart';
 import '../../../services/attachment_sync_service.dart';
+import '../../../services/checklist_sync_service.dart';
 import '../../../services/project_sync_service.dart';
 import '../../../services/task_sync_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
@@ -27,7 +29,10 @@ import '../profile/profile_page.dart';
 import '../task/create_task_page.dart';
 import '../task/task_list_page.dart';
 import '../tasks/task_detail/task_detail_page.dart';
+import '../tasks/task_detail/widgets/attachment_section.dart';
+import '../tasks/task_detail/widgets/checklist_section.dart';
 import '../tasks/tasks_page.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class HomePage extends StatefulWidget {
   final ProjectRepository? projectRepository;
@@ -59,6 +64,9 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _initStorage();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      PermissionService.showNotificationGuideIfNeeded(context);
+    });
   }
 
   @override
@@ -97,7 +105,7 @@ class _HomePageState extends State<HomePage> {
       ),
       const TasksPage(),
       const CalendarPage(),
-      const ProfilePage(),
+      ProfilePage(taskRepository: widget.taskRepository),
     ];
   }
 
@@ -105,14 +113,7 @@ class _HomePageState extends State<HomePage> {
     await _storage.init();
     _storageReady = true;
     await _storage.fetchAndMergeFromCloud();
-    // Supabase 云端任务同步
-    TaskSyncService.instance.pullAll().then((_) {
-      if (mounted) {
-        context.read<TaskNewBloc>().add(LoadTasks());
-      }
-    });
-    TaskSyncService.instance.subscribe();
-    // 项目与分组：等到 Supabase 登录后再同步
+    // 所有业务数据同步统一在登录后启动（见 _setupProjectSyncOnAuth）
     _setupProjectSyncOnAuth();
     _loadStats();
     _checkOnboarding();
@@ -122,26 +123,35 @@ class _HomePageState extends State<HomePage> {
   /// 监听 Supabase 登录状态：登录后才启动项目/分组同步
   void _setupProjectSyncOnAuth() {
     final client = sb.Supabase.instance.client;
+    // 全量对账（projects/tasks/checklist/attachments），完成后刷新 UI
+    Future<void> runSyncAll() async {
+      await ProjectSyncService.instance.syncAll();
+      await TaskSyncService.instance.syncAll();
+      await ChecklistSyncService.instance.syncAll();
+      await AttachmentSyncService.instance.pullAll();
+      if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+    }
+
     void startIfReady() {
-      if (_projectSyncStarted) return;
       if (client.auth.currentUser == null) return;
-      _projectSyncStarted = true;
-      print('[ProjectSync] 检测到登录用户 ${client.auth.currentUser?.id}，启动同步');
-      ProjectSyncService.instance.pullAll().then((_) {
-        if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
-      });
-      ProjectSyncService.instance.subscribe();
-      // 附件 metadata 同步
-      AttachmentSyncService.instance.pullAll();
-      AttachmentSyncService.instance.subscribe();
-      // 远端变更（Realtime/拉取）后 debounce 触发 LoadTasks，让 sidebar 实时刷新
-      _projectChangesSub ??= ProjectSyncService.instance.changes.listen((_) {
-        _projectChangesDebounce?.cancel();
-        _projectChangesDebounce =
-            Timer(const Duration(milliseconds: 500), () {
-          if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+      if (!_projectSyncStarted) {
+        _projectSyncStarted = true;
+        print('[Sync] 检测到登录用户 ${client.auth.currentUser?.id}，启动同步');
+        ProjectSyncService.instance.subscribe();
+        TaskSyncService.instance.subscribe();
+        ChecklistSyncService.instance.subscribe();
+        AttachmentSyncService.instance.subscribe();
+        // 远端变更（Realtime/拉取）后 debounce 触发 LoadTasks，让 sidebar 实时刷新
+        _projectChangesSub ??= ProjectSyncService.instance.changes.listen((_) {
+          _projectChangesDebounce?.cancel();
+          _projectChangesDebounce =
+              Timer(const Duration(milliseconds: 500), () {
+            if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+          });
         });
-      });
+      }
+      // 每次登录/会话恢复都跑一次全量对账
+      runSyncAll();
     }
     startIfReady();
     _authSub = client.auth.onAuthStateChange.listen((data) {
@@ -215,15 +225,11 @@ class _HomePageState extends State<HomePage> {
         }
         _loadStats();
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('日程已创建')));
+          showAppSnackBar(context, '日程已创建');
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('创建日程失败：$e')));
+          showAppSnackBar(context, '创建日程失败：$e');
         }
       }
     }
@@ -303,9 +309,7 @@ class _HomePageState extends State<HomePage> {
       } catch (_) {}
       _loadStats();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('日程已更新')));
+        showAppSnackBar(context, '日程已更新');
       }
     }
   }
@@ -359,9 +363,7 @@ class _HomePageState extends State<HomePage> {
       } catch (_) {}
       _loadStats();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('日程已删除')));
+        showAppSnackBar(context, '日程已删除');
       }
     }
   }
@@ -385,7 +387,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
-        border: const Border(
+        border: Border(
           top: BorderSide(color: AppTheme.borderSubtle, width: 0.5),
         ),
         boxShadow: [
@@ -457,7 +459,7 @@ class _HomePageState extends State<HomePage> {
               margin: const EdgeInsets.only(top: 2),
               width: 4,
               height: 4,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppTheme.primaryColor,
                 shape: BoxShape.circle,
               ),
@@ -472,7 +474,7 @@ class _HomePageState extends State<HomePage> {
             margin: const EdgeInsets.only(top: 2),
             width: 4,
             height: 4,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppTheme.primaryColor,
               shape: BoxShape.circle,
             ),
@@ -525,6 +527,7 @@ class _HomeContentState extends State<_HomeContent> {
   bool _modeSwitchGuard = false;
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
+  String _statsPeriod = 'day'; // 完成率统计周期: 'day'|'week'|'month'|'year'
   String? _filterProjectId;
   Timer? _timelineScrollDebounce;
   double _viewportWidth = 0;
@@ -535,6 +538,7 @@ class _HomeContentState extends State<_HomeContent> {
   Map<String, Project> _projectCache = {};
   final Map<String, List<ChecklistItem>> _checklistCache = {};
   final Map<String, List<Task>> _subtaskCache = {};
+  final Map<String, Task?> _dbTaskCache = {};
   String? _selectedTaskId;
   _TimelineTask? _selectedTask;
 
@@ -606,11 +610,15 @@ class _HomeContentState extends State<_HomeContent> {
           : (t.dueDate != null
               ? DateTime.fromMillisecondsSinceEpoch(t.dueDate!)
               : now);
+      final end = t.dueDate != null
+          ? DateTime.fromMillisecondsSinceEpoch(t.dueDate!)
+          : null;
       timelineItems.add(_TimelineTask(
         id: t.id,
         title: t.title,
         description: t.description,
         date: date,
+        endDate: end,
         isCompleted: t.status == 2,
         priority: _dbPriorityToLabel(t.priority),
         source: 'db',
@@ -857,7 +865,7 @@ class _HomeContentState extends State<_HomeContent> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: AppTheme.bgInput.withValues(alpha: 0.5),
-          border: const Border(
+          border: Border(
             bottom: BorderSide(color: AppTheme.borderSubtle, width: 0.5),
           ),
         ),
@@ -919,7 +927,14 @@ class _HomeContentState extends State<_HomeContent> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 12),
-                      _buildGreeting(),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(child: _buildGreeting()),
+                          const SizedBox(width: 12),
+                          _buildStatsCompact(),
+                        ],
+                      ),
                       const SizedBox(height: 12),
                       _buildProjectFilter(),
                       const SizedBox(height: 12),
@@ -964,9 +979,341 @@ class _HomeContentState extends State<_HomeContent> {
                   ? '筛选出 ${_filteredTasks.length} 个任务'
                   : '时间轴上有 ${_filteredTasks.length} 个任务节点')
               : '没有匹配的任务',
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 15),
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
       ],
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // Stats Card (今日任务数 / 完成率 / 逾期数)
+  // ──────────────────────────────────────────────
+
+  /// 返回指定周期的 [start, end) 区间（含 start，不含 end）
+  (DateTime, DateTime) _periodRange(String period) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (period) {
+      case 'week':
+        final start = today.subtract(Duration(days: today.weekday - 1));
+        return (start, start.add(const Duration(days: 7)));
+      case 'month':
+        final start = DateTime(now.year, now.month, 1);
+        final end = now.month < 12
+            ? DateTime(now.year, now.month + 1, 1)
+            : DateTime(now.year + 1, 1, 1);
+        return (start, end);
+      case 'year':
+        return (DateTime(now.year, 1, 1), DateTime(now.year + 1, 1, 1));
+      case 'day':
+      default:
+        return (today, today.add(const Duration(days: 1)));
+    }
+  }
+
+  Widget _buildStatsCompact() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final todayCount =
+        _filteredTasks.where((t) => _isSameDayDate(t.date, today)).length;
+
+    final (start, end) = _periodRange(_statsPeriod);
+    final inPeriod = _filteredTasks
+        .where((t) => !t.date.isBefore(start) && t.date.isBefore(end))
+        .toList();
+    final completedCount = inPeriod.where((t) => t.isCompleted).length;
+
+    final overdueCount = _filteredTasks
+        .where((t) => t.date.isBefore(today) && !t.isCompleted)
+        .length;
+
+    return GestureDetector(
+      onTap: _showStatsDetail,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderSubtle),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildCompactStat('今日', '$todayCount', AppTheme.textPrimary),
+            _compactDivider(),
+            _buildCompactStat(
+              '完成率',
+              '$completedCount/${inPeriod.length}',
+              AppTheme.primaryColor,
+            ),
+            _compactDivider(),
+            _buildCompactStat(
+              '逾期',
+              '$overdueCount',
+              overdueCount > 0 ? AppTheme.error : AppTheme.textPrimary,
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right, size: 14, color: AppTheme.textHint),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactStat(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: GoogleFonts.jetBrainsMonoTextTheme().titleMedium?.copyWith(
+              color: color,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(color: AppTheme.textHint, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _compactDivider() => Container(
+        width: 0.5,
+        height: 28,
+        color: AppTheme.borderSubtle,
+      );
+
+  Widget _buildStatItem({
+    required String label,
+    required String value,
+    required Color valueColor,
+    bool showChevron = false,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.jetBrainsMonoTextTheme().titleLarge?.copyWith(
+                    color: valueColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            if (showChevron)
+              Icon(Icons.chevron_right, size: 16, color: AppTheme.error),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  void _showStatsDetail() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todayCount =
+        _filteredTasks.where((t) => _isSameDayDate(t.date, today)).length;
+    final overdueCount = _filteredTasks
+        .where((t) => t.date.isBefore(today) && !t.isCompleted)
+        .length;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        String sheetPeriod = _statsPeriod;
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final (start, end) = _periodRange(sheetPeriod);
+            final inPeriod = _filteredTasks
+                .where((t) => !t.date.isBefore(start) && t.date.isBefore(end))
+                .toList();
+            final completedCount = inPeriod.where((t) => t.isCompleted).length;
+
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.textHint.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildStatItem(
+                        label: '今日任务', value: '$todayCount',
+                        valueColor: AppTheme.textPrimary,
+                      ),
+                      _buildStatItem(
+                        label: '完成率', value: '$completedCount/${inPeriod.length}',
+                        valueColor: AppTheme.primaryColor,
+                      ),
+                      GestureDetector(
+                        onTap: overdueCount > 0
+                            ? () {
+                                Navigator.pop(ctx);
+                                _showOverdueSheet();
+                              }
+                            : null,
+                        child: _buildStatItem(
+                          label: '逾期', value: '$overdueCount',
+                          valueColor: overdueCount > 0
+                              ? AppTheme.error
+                              : AppTheme.textPrimary,
+                          showChevron: overdueCount > 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: ['日', '周', '月', '年'].map((label) {
+                      final p = label == '日' ? 'day'
+                          : label == '周' ? 'week'
+                          : label == '月' ? 'month'
+                          : 'year';
+                      final selected = sheetPeriod == p;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        child: GestureDetector(
+                          onTap: () {
+                            if (sheetPeriod == p) return;
+                            setSheetState(() => sheetPeriod = p);
+                            setState(() => _statsPeriod = p);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: selected
+                                    ? AppTheme.primaryColor
+                                    : AppTheme.borderSubtle,
+                                width: selected ? 1.5 : 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: selected
+                                    ? AppTheme.primaryColor
+                                    : AppTheme.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showOverdueSheet() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final overdue = _filteredTasks
+        .where((t) => t.date.isBefore(today) && !t.isCompleted)
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    if (overdue.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 18, color: AppTheme.error),
+                  const SizedBox(width: 6),
+                  Text(
+                    '逾期任务 (${overdue.length})',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: overdue.length,
+                itemBuilder: (_, i) {
+                  final task = overdue[i];
+                  return ListTile(
+                    leading: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: _priorityColor(task.priority),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    title: Text(
+                      task.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      _formatTaskDate(task.date),
+                      style: TextStyle(color: AppTheme.error, fontSize: 12),
+                    ),
+                    trailing: Icon(Icons.chevron_right,
+                        size: 18, color: AppTheme.textHint),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      // 选中时间轴节点并展开详情卡（时间轴随之切换天/小时）
+                      _selectTask(task);
+                    },
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 
@@ -983,7 +1330,7 @@ class _HomeContentState extends State<_HomeContent> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.folder_outlined, size: 16, color: AppTheme.textSecondary),
+          Icon(Icons.folder_outlined, size: 16, color: AppTheme.textSecondary),
           const SizedBox(width: 8),
           Expanded(
             child: DropdownButtonHideUnderline(
@@ -1030,7 +1377,7 @@ class _HomeContentState extends State<_HomeContent> {
                   _applyProjectFilter();
                 });
               },
-              child: const Icon(Icons.close, size: 16, color: AppTheme.textHint),
+              child: Icon(Icons.close, size: 16, color: AppTheme.textHint),
             ),
         ],
       ),
@@ -1212,14 +1559,14 @@ class _HomeContentState extends State<_HomeContent> {
           if (_timelineMode == 'hour')
             Text(
               '${today.month}月${today.day}日',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textPrimary,
               ),
             )
           else
-            const Text(
+            Text(
               '时间轴',
               style: TextStyle(
                 fontSize: 13,
@@ -1344,7 +1691,7 @@ class _HomeContentState extends State<_HomeContent> {
                 margin: const EdgeInsets.only(top: 2),
                 width: 6,
                 height: 6,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppTheme.primaryColor,
                   shape: BoxShape.circle,
                 ),
@@ -1426,7 +1773,7 @@ class _HomeContentState extends State<_HomeContent> {
                 margin: const EdgeInsets.only(top: 2),
                 width: 6,
                 height: 6,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppTheme.primaryColor,
                   shape: BoxShape.circle,
                 ),
@@ -1481,7 +1828,7 @@ class _HomeContentState extends State<_HomeContent> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 8,
                       color: AppTheme.textHint,
                     ),
@@ -1587,7 +1934,7 @@ class _HomeContentState extends State<_HomeContent> {
                           color: AppTheme.success.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text(
+                        child: Text(
                           '已完成',
                           style: TextStyle(
                             color: AppTheme.success,
@@ -1619,10 +1966,10 @@ class _HomeContentState extends State<_HomeContent> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.schedule, size: 14, color: AppTheme.textSecondary),
+                    Icon(Icons.schedule, size: 14, color: AppTheme.textSecondary),
                     const SizedBox(width: 4),
                     GestureDetector(
-                      onTap: () => _quickEditDate(task),
+                      onTap: () => _quickEditDate(task, isStart: true),
                       child: Text(
                         _formatTaskDate(task.date),
                         style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
@@ -1633,6 +1980,24 @@ class _HomeContentState extends State<_HomeContent> {
                         ),
                       ),
                     ),
+                    if (task.endDate != null) ...[
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(Icons.arrow_forward_rounded, size: 10, color: AppTheme.textHint),
+                      ),
+                      GestureDetector(
+                        onTap: () => _quickEditDate(task, isStart: false),
+                        child: Text(
+                          _formatTaskDate(task.endDate!),
+                          style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
+                            color: AppTheme.primaryColor,
+                            fontSize: 12,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppTheme.primaryColor.withValues(alpha: 0.3),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(width: 12),
                     GestureDetector(
                       onTap: () => _quickCyclePriority(task),
@@ -1674,7 +2039,7 @@ class _HomeContentState extends State<_HomeContent> {
                 if (task.projectId != null &&
                     _projectCache.containsKey(task.projectId!)) ...[
                   const SizedBox(height: 10),
-                  _buildProjectBadge(task.projectId!),
+                  _buildProjectBadge(task.projectId!, task),
                 ],
                 // Description（固定高度可滚动；超过 1000 字截断+"展开全文"）
                 if (task.description != null &&
@@ -1682,12 +2047,11 @@ class _HomeContentState extends State<_HomeContent> {
                   const SizedBox(height: 12),
                   _buildDescriptionBox(task),
                 ],
-                // Checklist items (DB only)
-                const SizedBox(height: 12),
-                _buildChecklistPreview(task),
                 // Subtask tree (DB only)
                 if (task.source == 'db')
                   _buildSubtaskTree(task.taskId),
+                // Resource section: attachment + checklist (DB only, fully interactive)
+                _buildResourceSection(task),
               ],
             ),
           ),
@@ -1718,7 +2082,7 @@ class _HomeContentState extends State<_HomeContent> {
             children: [
               Text(
                 shown,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 14,
                   height: 1.5,
@@ -1748,32 +2112,78 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  Widget _buildProjectBadge(String projectId) {
+  Widget _buildProjectBadge(String projectId, _TimelineTask task) {
     final project = _projectCache[projectId]!;
-    return Row(
-      children: [
-        const Icon(Icons.folder_outlined,
-            size: 14, color: AppTheme.textSecondary),
-        const SizedBox(width: 4),
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: Color(int.parse(project.color.replaceFirst('#', '0xFF'))),
-            shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: () => _quickChangeProject(task),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.folder_outlined,
+              size: 14, color: AppTheme.textSecondary),
+          const SizedBox(width: 4),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: Color(int.parse(project.color.replaceFirst('#', '0xFF'))),
+              shape: BoxShape.circle,
+            ),
           ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          project.name,
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
+          const SizedBox(width: 4),
+          Text(
+            project.name,
+            style: TextStyle(
+              color: AppTheme.primaryColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.underline,
+              decorationColor: Color(0x4DDE6B48),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(width: 2),
+          Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textHint),
+        ],
+      ),
     );
+  }
+
+  Future<void> _quickChangeProject(_TimelineTask task) async {
+    if (task.source != 'db' || widget.taskRepository == null) return;
+    final projects = _projectCache.values.toList();
+    if (projects.isEmpty) return;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('选择项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+            ...projects.map((p) {
+              final color = Color(int.parse(p.color.replaceFirst('#', '0xFF')));
+              return ListTile(
+                leading: CircleAvatar(
+                  radius: 10,
+                  backgroundColor: color.withValues(alpha: 0.2),
+                  child: Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                ),
+                title: Text(p.name),
+                selected: p.id == task.projectId,
+                onTap: () => Navigator.pop(ctx, p.id),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && selected != task.projectId && mounted) {
+      await widget.taskRepository!.update(task.taskId, projectId: selected);
+      _loadData();
+    }
   }
 
   Future<void> _loadChecklists(String taskId) async {
@@ -1796,6 +2206,88 @@ class _HomeContentState extends State<_HomeContent> {
     }
   }
 
+  Future<void> _loadDbTask(String taskId) async {
+    if (widget.taskRepository == null) return;
+    final task = await widget.taskRepository!.get(taskId);
+    if (mounted) setState(() => _dbTaskCache[taskId] = task);
+  }
+
+  Future<void> _homeToggleChecklist(String itemId, String taskId) async {
+    await widget.checklistRepository?.toggleStatus(itemId);
+    await _loadChecklists(taskId);
+  }
+
+  Future<void> _homeDeleteChecklist(String itemId, String taskId) async {
+    await widget.checklistRepository?.delete(itemId);
+    await _loadChecklists(taskId);
+  }
+
+  Future<void> _homeEditChecklist(String itemId, String title, String taskId) async {
+    await widget.checklistRepository?.update(itemId, title: title);
+    await _loadChecklists(taskId);
+  }
+
+  Future<void> _homeAddChecklist((String, String) args) async {
+    final (taskId, title) = args;
+    await widget.checklistRepository?.create(taskId: taskId, title: title);
+    await _loadChecklists(taskId);
+  }
+
+  Future<void> _homeSetObsidianUri(String itemId, String? uri, String taskId) async {
+    await widget.checklistRepository?.setObsidianUri(itemId, uri);
+    await _loadChecklists(taskId);
+  }
+
+  Widget _buildResourceSection(_TimelineTask task) {
+    if (task.source != 'db') return const SizedBox.shrink();
+    final taskId = task.taskId;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Divider(color: AppTheme.borderSubtle, height: 1),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.taskRepository != null) ...[
+              Expanded(child: _buildAttachmentWidget(taskId)),
+              const SizedBox(width: 8),
+            ],
+            if (widget.checklistRepository != null)
+              Expanded(child: _buildChecklistWidget(task)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAttachmentWidget(String taskId) {
+    final dbTask = _dbTaskCache[taskId];
+    if (dbTask == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDbTask(taskId));
+      return const SizedBox.shrink();
+    }
+    return AttachmentSection(task: dbTask);
+  }
+
+  Widget _buildChecklistWidget(_TimelineTask task) {
+    final taskId = task.taskId;
+    final items = _checklistCache[taskId] ?? [];
+    if (_checklistCache[taskId] == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadChecklists(taskId));
+    }
+    return ChecklistSection(
+      items: items,
+      taskId: taskId,
+      onToggle: (id) => _homeToggleChecklist(id, taskId),
+      onDelete: (id) => _homeDeleteChecklist(id, taskId),
+      onEdit: (id, title) => _homeEditChecklist(id, title, taskId),
+      onAdd: _homeAddChecklist,
+      onSetObsidianUri: (id, uri) => _homeSetObsidianUri(id, uri, taskId),
+    );
+  }
+
   Widget _buildSubtaskTree(String taskId) {
     final subtasks = _subtaskCache[taskId];
 
@@ -1814,12 +2306,12 @@ class _HomeContentState extends State<_HomeContent> {
         const SizedBox(height: 12),
         Row(
           children: [
-            const Icon(Icons.account_tree_outlined,
+            Icon(Icons.account_tree_outlined,
                 size: 14, color: AppTheme.textSecondary),
             const SizedBox(width: 4),
             Text(
               '子任务 (${subtasks.length})',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -1859,6 +2351,7 @@ class _HomeContentState extends State<_HomeContent> {
                           isAllDay: st.isAllDay,
                           completedTime: newStatus == 2 ? DateTime.now().millisecondsSinceEpoch : st.completedTime,
                           sortOrder: st.sortOrder,
+                          deleted: st.deleted,
                           createdAt: st.createdAt,
                           updatedAt: DateTime.now().millisecondsSinceEpoch,
                           remindBeforeMinutes: st.remindBeforeMinutes,
@@ -1900,6 +2393,9 @@ class _HomeContentState extends State<_HomeContent> {
                         title: st.title,
                         description: '',
                         date: date,
+                        endDate: st.dueDate != null
+                            ? DateTime.fromMillisecondsSinceEpoch(st.dueDate!)
+                            : null,
                         isCompleted: st.status == 2,
                         priority: st.priority.toString(),
                         source: 'db',
@@ -1928,97 +2424,6 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           );
         }),
-      ],
-    );
-  }
-
-  Widget _buildChecklistPreview(_TimelineTask task) {
-    if (task.source != 'db' || widget.checklistRepository == null) {
-      return const SizedBox.shrink();
-    }
-
-    final cachedItems = _checklistCache[task.taskId];
-    if (cachedItems == null) {
-      // Trigger async load
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loadChecklists(task.taskId);
-      });
-      return const SizedBox(
-        height: 24,
-        child: Center(
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-
-    if (cachedItems.isEmpty) return const SizedBox.shrink();
-
-    final completed = cachedItems.where((c) => c.status == 1).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.checklist_rounded,
-                size: 14, color: AppTheme.textSecondary),
-            const SizedBox(width: 4),
-            Text(
-              '检查项 ($completed/${cachedItems.length})',
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        ...cachedItems.take(5).map((item) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                children: [
-                  Icon(
-                    item.status == 1
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 14,
-                    color: item.status == 1
-                        ? AppTheme.success
-                        : AppTheme.textHint,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: item.status == 1
-                            ? AppTheme.textHint
-                            : AppTheme.textPrimary,
-                        decoration: item.status == 1
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )),
-        if (cachedItems.length > 5)
-          Text(
-            '+${cachedItems.length - 5} 更多',
-            style: const TextStyle(
-              color: AppTheme.textHint,
-              fontSize: 12,
-            ),
-          ),
       ],
     );
   }
@@ -2054,27 +2459,39 @@ class _HomeContentState extends State<_HomeContent> {
         }
       });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('暂不支持编辑此类型任务')),
-      );
+      showAppSnackBar(context, '暂不支持编辑此类型任务');
     }
   }
 
-  Future<void> _quickEditDate(_TimelineTask task) async {
+  Future<void> _quickEditDate(_TimelineTask task, {bool isStart = true}) async {
     if (task.source != 'db' || widget.taskRepository == null) return;
     final now = DateTime.now();
+    final initialDate = isStart ? task.date : (task.endDate ?? task.date);
     final picked = await showCalendarDatePicker(
       context: context,
-      initialDate: task.date,
+      initialDate: initialDate,
       firstDate: now.subtract(const Duration(days: 365)),
       lastDate: now.add(const Duration(days: 365)),
     );
     if (picked == null || !mounted) return;
-    final updated = DateTime(picked.year, picked.month, picked.day, task.date.hour, task.date.minute);
-    await widget.taskRepository!.update(task.taskId,
-      startDate: updated.millisecondsSinceEpoch,
-      dueDate: updated.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-    );
+    if (isStart) {
+      final updated = DateTime(picked.year, picked.month, picked.day, task.date.hour, task.date.minute);
+      final duration = (task.endDate ?? task.date.add(const Duration(hours: 1))).difference(task.date);
+      await widget.taskRepository!.update(task.taskId,
+        startDate: updated.millisecondsSinceEpoch,
+        dueDate: updated.add(duration).millisecondsSinceEpoch,
+      );
+    } else {
+      final updated = DateTime(picked.year, picked.month, picked.day, initialDate.hour, initialDate.minute);
+      if (updated.isAfter(task.date)) {
+        await widget.taskRepository!.update(task.taskId,
+          dueDate: updated.millisecondsSinceEpoch,
+        );
+      } else {
+        showAppSnackBar(context, '结束时间必须晚于开始时间');
+        return;
+      }
+    }
     _loadData();
   }
 
@@ -2093,7 +2510,7 @@ class _HomeContentState extends State<_HomeContent> {
     if (listIdx >= 0) {
       _timelineTasks[listIdx] = _TimelineTask(
         id: task.id, title: task.title, description: task.description,
-        date: task.date, isCompleted: task.isCompleted,
+        date: task.date, endDate: task.endDate, isCompleted: task.isCompleted,
         priority: nextLabel, source: task.source,
         projectId: task.projectId, taskId: task.taskId, parentId: task.parentId,
       );
@@ -2115,6 +2532,7 @@ class _HomeContentState extends State<_HomeContent> {
         title: task.title,
         description: task.description,
         date: task.date,
+        endDate: task.endDate,
         isCompleted: !task.isCompleted,
         priority: task.priority,
         source: task.source,
@@ -2174,8 +2592,8 @@ class _HomeContentState extends State<_HomeContent> {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppTheme.error),
-              title: const Text('删除任务', style: TextStyle(color: AppTheme.error)),
+              leading: Icon(Icons.delete_outline, color: AppTheme.error),
+              title: Text('删除任务', style: TextStyle(color: AppTheme.error)),
               onTap: () {
                 Navigator.pop(ctx);
                 _confirmDeleteTask(task);
@@ -2202,9 +2620,7 @@ class _HomeContentState extends State<_HomeContent> {
 
   Widget _buildQuadrantChart() {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
 
-    final overdueCount = _filteredTasks.where((t) => !t.isCompleted && t.date.isBefore(today)).length;
     final scored = <_TimelineTask, int>{};
     for (final t in _filteredTasks) {
       if (t.isCompleted) continue;
@@ -2222,16 +2638,14 @@ class _HomeContentState extends State<_HomeContent> {
       final important = t.priority == 'P0' || t.priority == 'P1';
       (urgent ? (important ? q1 : q3) : (important ? q2 : q4)).add(t);
     }
-    for (final q in [q1, q2, q3, q4]) {
-      if (q.length > 5) q.removeRange(5, q.length);
-    }
+    // No hard cap — tasks overflow into columns within each quadrant
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Icon(Icons.grid_view_rounded,
+            Icon(Icons.grid_view_rounded,
                 size: 18, color: AppTheme.textPrimary),
             const SizedBox(width: 6),
             Text(
@@ -2243,35 +2657,6 @@ class _HomeContentState extends State<_HomeContent> {
           ],
         ),
         const SizedBox(height: 12),
-        // Overdue banner
-        if (overdueCount > 0)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppTheme.error.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: AppTheme.error.withValues(alpha: 0.25),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded,
-                    size: 16, color: AppTheme.error),
-                const SizedBox(width: 6),
-                Text(
-                  '$overdueCount 个任务已逾期',
-                  style: const TextStyle(
-                    color: AppTheme.error,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
         // Quadrant grid
         SizedBox(
           width: double.infinity,
@@ -2327,11 +2712,61 @@ class _HomeContentState extends State<_HomeContent> {
     required String title,
     required Color color,
     required List<_TimelineTask> tasks,
+    int maxPerColumn = 5,
   }) {
-    // Find overdue tasks in this quadrant
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final overdueTasks = tasks.where((t) => t.date.isBefore(today)).toList();
+
+    // Chunk tasks into columns of maxPerColumn
+    final columns = <List<_TimelineTask>>[];
+    for (var i = 0; i < tasks.length; i += maxPerColumn) {
+      columns.add(tasks.skip(i).take(maxPerColumn).toList());
+    }
+
+    Widget taskItem(_TimelineTask task) {
+      final isOverdueItem = task.date.isBefore(today);
+      return GestureDetector(
+        onTap: () => _selectTask(task),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(
+            children: [
+              if (isOverdueItem)
+                Padding(
+                  padding: EdgeInsets.only(right: 3),
+                  child: Icon(Icons.error_rounded,
+                      size: 12, color: AppTheme.error),
+                )
+              else
+                Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(right: 4),
+                  decoration: BoxDecoration(
+                    color: _priorityColor(task.priority),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              Expanded(
+                child: Text(
+                  task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isOverdueItem
+                        ? AppTheme.error
+                        : AppTheme.textPrimary,
+                    fontWeight:
+                        isOverdueItem ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(10),
@@ -2345,6 +2780,7 @@ class _HomeContentState extends State<_HomeContent> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             title,
@@ -2357,79 +2793,35 @@ class _HomeContentState extends State<_HomeContent> {
           const SizedBox(height: 6),
           if (tasks.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 '暂无',
-                style: TextStyle(
-                  color: AppTheme.textHint,
-                  fontSize: 11,
-                ),
+                style: TextStyle(color: AppTheme.textHint, fontSize: 11),
               ),
             )
           else
-            ...tasks.take(4).map((task) {
-              final isOverdueItem = task.date.isBefore(today);
-              return GestureDetector(
-                onTap: () => _selectTask(task),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      if (isOverdueItem)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 3),
-                          child: Icon(Icons.error_rounded,
-                              size: 12, color: AppTheme.error),
-                        )
-                      else
-                        Container(
-                          width: 6,
-                          height: 6,
-                          margin: const EdgeInsets.only(right: 4),
-                          decoration: BoxDecoration(
-                            color: _priorityColor(task.priority),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      Expanded(
-                        child: Text(
-                          task.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isOverdueItem
-                                ? AppTheme.error
-                              : AppTheme.textPrimary,
-                          fontWeight: isOverdueItem
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < columns.length; i++) ...[
+                    if (i > 0)
+                      Container(
+                        width: 1,
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        color: color.withValues(alpha: 0.15),
+                      ),
+                    SizedBox(
+                      width: 120,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: columns[i].map(taskItem).toList(),
                       ),
                     ),
                   ],
-                ),
-              ),
-            );
-            }),
-          if (tasks.length > 4)
-            Text(
-              '+${tasks.length - 4} 更多',
-              style: const TextStyle(
-                color: AppTheme.textHint,
-                fontSize: 10,
-              ),
-            ),
-          if (overdueTasks.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${overdueTasks.length} 逾期',
-                style: const TextStyle(
-                  color: AppTheme.error,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
+                  if (columns.length > 1) const SizedBox(width: 8),
+                ],
               ),
             ),
         ],
@@ -2447,6 +2839,7 @@ class _TimelineTask {
   final String title;
   final String? description;
   final DateTime date;
+  final DateTime? endDate;
   final bool isCompleted;
   final String priority;
   final String source; // 'storage' or 'db'
@@ -2459,6 +2852,7 @@ class _TimelineTask {
     required this.title,
     this.description,
     required this.date,
+    this.endDate,
     required this.isCompleted,
     required this.priority,
     required this.source,

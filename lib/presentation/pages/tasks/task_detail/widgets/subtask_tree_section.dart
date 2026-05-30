@@ -5,6 +5,7 @@ import '../../../../../data/database/app_database.dart';
 import '../../../../blocs/task_new/task_bloc.dart';
 import '../../../../blocs/task_new/task_event.dart';
 import '../../../../blocs/task_new/task_state.dart';
+import '../../widgets/task_create_sheet.dart';
 import '../task_detail_page.dart';
 
 class SubtaskTreeSection extends StatefulWidget {
@@ -64,7 +65,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                 padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.account_tree_outlined,
                       size: 14,
                       color: AppTheme.textSecondary,
@@ -72,7 +73,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                     const SizedBox(width: 4),
                     Text(
                       '子任务 (${descendants.length})',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textSecondary,
@@ -91,7 +92,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                 ),
               ),
               if (descendants.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.fromLTRB(10, 0, 10, 10),
                   child: Text(
                     '暂无子任务',
@@ -351,7 +352,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'delete',
                       child: Row(
                         children: [
@@ -366,7 +367,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                       ),
                     ),
                   ],
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.more_horiz,
                     size: 16,
                     color: AppTheme.textHint,
@@ -382,55 +383,41 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
     );
   }
 
-  void _showAddSubTaskDialog(BuildContext context, String parentId) {
-    final controller = TextEditingController();
-    showDialog(
+  // 复用 TaskCreateSheet：自带开始/截止时间 + 子任务时间冲突检测
+  Future<void> _showAddSubTaskDialog(BuildContext context, String parentId) async {
+    final bloc = context.read<TaskNewBloc>();
+    final blocState = bloc.state;
+    final availableParents = blocState is TaskNewLoaded
+        ? blocState.tasks.where((t) => t.status == 0).toList()
+        : const <Task>[];
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('添加子任务'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '子任务名称',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (v) {
-            if (v.trim().isNotEmpty) {
-              context.read<TaskNewBloc>().add(
-                AddSubTask(
-                  parentId: parentId,
-                  title: v.trim(),
-                  projectId: widget.projectId,
-                ),
-              );
-              Navigator.pop(ctx);
-            }
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                context.read<TaskNewBloc>().add(
-                  AddSubTask(
-                    parentId: parentId,
-                    title: controller.text.trim(),
-                    projectId: widget.projectId,
-                  ),
-                );
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('添加'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => TaskCreateSheet(
+        initialProjectId: widget.projectId,
+        projectRepository: bloc.projectRepository,
+        taskRepository: bloc.taskRepository,
+        initialParentId: parentId,
+        availableParentTasks: availableParents,
       ),
     );
+
+    if (result == null || !mounted) return;
+    bloc.add(
+      CreateTask(
+        projectId: (result['projectId'] as String?) ?? widget.projectId,
+        title: result['title'] as String,
+        description: result['description'] as String? ?? '',
+        priority: result['priority'] as int? ?? 1,
+        startDate: result['startDate'] as int?,
+        dueDate: result['dueDate'] as int?,
+        parentId: (result['parentId'] as String?) ?? parentId,
+      ),
+    );
+    // 刷新当前根任务子树
+    bloc.add(LoadSubTree(rootTaskId: widget.task.id));
   }
 
   void _editSubTask(BuildContext context, Task task) {

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
+import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
 import '../../blocs/task_new/task_state.dart';
 import 'widgets/project_sidebar.dart';
 import 'widgets/task_list_view.dart';
+import 'widgets/mind_map_view.dart';
 import 'widgets/task_create_sheet.dart';
 import 'task_detail/task_detail_page.dart';
 
@@ -44,7 +46,7 @@ class _TasksPageState extends State<TasksPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.error_outline,
                     size: 48,
                     color: AppTheme.error,
@@ -52,7 +54,7 @@ class _TasksPageState extends State<TasksPage> {
                   const SizedBox(height: 16),
                   Text(
                     '加载失败：${state.message}',
-                    style: const TextStyle(color: AppTheme.error),
+                    style: TextStyle(color: AppTheme.error),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -81,11 +83,9 @@ class _TasksPageState extends State<TasksPage> {
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
               ),
               actions: [
+                _buildViewModeButton(state),
+                _buildDateFilterButton(state),
                 _buildExpandCollapseButton(state),
-                IconButton(
-                  icon: const Icon(Icons.add_rounded),
-                  onPressed: () => _showCreateProjectDialog(context),
-                ),
               ],
             ),
             drawer: ProjectSidebar(
@@ -112,7 +112,34 @@ class _TasksPageState extends State<TasksPage> {
               onDeleteProject: (project) =>
                   _confirmDeleteProject(context, project),
             ),
-            body: TaskListView(
+            body: state.viewMode == 'mindmap'
+              ? MindMapView(
+              tasks: state.tasks,
+              userId: _getUserId(),
+              projectNames: projectNames,
+              projects: state.projects,
+              taskProgress: state.taskProgress,
+              selectedFilter: selectedFilter,
+              selectedProjectId: state.selectedProjectId,
+              expandedIds: state.expandedNodes['main_tree'] ?? {},
+              onTaskTap: (id) => _openTaskDetail(id, state),
+              onTaskToggle: (id) =>
+                  context.read<TaskNewBloc>().add(ToggleTaskStatus(id: id)),
+              onTaskDelete: (id) => _confirmDeleteTask(id),
+              onToggleExpand: (id) =>
+                  context.read<TaskNewBloc>().add(ToggleTaskExpand(taskId: id)),
+              onMoveToParent: (taskId, newParentId) =>
+                  context.read<TaskNewBloc>().add(
+                    MoveTaskToParent(
+                      taskId: taskId,
+                      newParentId: newParentId,
+                      projectId: state.selectedProjectId,
+                    ),
+                  ),
+              onAddSubtask: (parentId) =>
+                  _showCreateTaskSheet(context, parentId: parentId),
+            )
+              : TaskListView(
               tasks: state.tasks,
               projectNames: projectNames,
               taskProgress: state.taskProgress,
@@ -148,6 +175,13 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
+  String _getUserId() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is Authenticated) return authState.user.id;
+    if (authState is LocalAuthenticated) return 'local_${authState.email}';
+    return 'anonymous';
+  }
+
   String _getTitle(TaskNewLoaded state) {
     if (state.selectedFilter == 'today') return '今天';
     if (state.selectedFilter == 'important') return '重要';
@@ -158,6 +192,61 @@ class _TasksPageState extends State<TasksPage> {
       return project?.name ?? '任务';
     }
     return '所有任务';
+  }
+
+  Widget _buildViewModeButton(TaskNewLoaded state) {
+    final isMindMap = state.viewMode == 'mindmap';
+    return IconButton(
+      icon: Icon(
+        isMindMap ? Icons.account_tree_rounded : Icons.list_rounded,
+      ),
+      tooltip: isMindMap ? '切换到列表' : '切换到思维导图',
+      onPressed: () {
+        context.read<TaskNewBloc>().add(ToggleViewMode());
+      },
+    );
+  }
+
+  Widget _buildDateFilterButton(TaskNewLoaded state) {
+    final hasFilter = state.dateFrom != null && state.dateTo != null;
+    return IconButton(
+      icon: Icon(
+        hasFilter ? Icons.date_range : Icons.date_range_outlined,
+        color: hasFilter ? AppTheme.primaryColor : null,
+      ),
+      tooltip: hasFilter ? '清除日期筛选' : '按日期筛选',
+      onPressed: () async {
+        if (hasFilter) {
+          context.read<TaskNewBloc>().add(LoadTasks(
+            projectId: state.selectedProjectId,
+            filter: state.selectedFilter,
+            clearDateRange: true,
+          ));
+          return;
+        }
+        final now = DateTime.now();
+        final picked = await showDateRangePicker(
+          context: context,
+          firstDate: now.subtract(const Duration(days: 365)),
+          lastDate: now.add(const Duration(days: 365)),
+          initialDateRange: DateTimeRange(
+            start: now.subtract(const Duration(days: 7)),
+            end: now,
+          ),
+          locale: const Locale('zh', 'CN'),
+        );
+        if (picked != null && mounted) {
+          final from = DateTime(picked.start.year, picked.start.month, picked.start.day);
+          final to = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+          context.read<TaskNewBloc>().add(LoadTasks(
+            projectId: state.selectedProjectId,
+            filter: state.selectedFilter,
+            dateFrom: from.millisecondsSinceEpoch,
+            dateTo: to.millisecondsSinceEpoch,
+          ));
+        }
+      },
+    );
   }
 
   Widget _buildExpandCollapseButton(TaskNewLoaded state) {
@@ -450,7 +539,7 @@ class _TasksPageState extends State<TasksPage> {
                 onChanged: (v) => setLocal(() => deleteProjects = v ?? false),
                 title: const Text('同时删除该分组下的所有项目和任务',
                     style: TextStyle(fontSize: 13)),
-                subtitle: const Text('不勾选则项目变为"未分组"',
+                subtitle: Text('不勾选则项目变为"未分组"',
                     style: TextStyle(fontSize: 11, color: AppTheme.textHint)),
                 controlAffinity: ListTileControlAffinity.leading,
                 dense: true,
@@ -501,18 +590,18 @@ class _TasksPageState extends State<TasksPage> {
       ),
     );
     if (confirm == true) {
-      Navigator.pop(context); // 关闭 Drawer
       context.read<TaskNewBloc>().add(DeleteProject(id: project.id));
     }
   }
 
-  Future<void> _showCreateTaskSheet(BuildContext context) async {
+  Future<void> _showCreateTaskSheet(BuildContext context, {String? parentId}) async {
     final repo = context.read<TaskNewBloc>().projectRepository;
     final blocState = context.read<TaskNewBloc>().state;
     final initialProjectId = blocState is TaskNewLoaded
         ? blocState.selectedProjectId
         : null;
 
+    final taskRepo = context.read<TaskNewBloc>().taskRepository;
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -520,6 +609,8 @@ class _TasksPageState extends State<TasksPage> {
       builder: (_) => TaskCreateSheet(
         initialProjectId: initialProjectId,
         projectRepository: repo,
+        taskRepository: taskRepo,
+        initialParentId: parentId,
         availableParentTasks: blocState is TaskNewLoaded
             ? blocState.tasks.where((t) => t.status == 0).toList()
             : [],
@@ -527,6 +618,7 @@ class _TasksPageState extends State<TasksPage> {
     );
 
     if (result != null && context.mounted) {
+      final resultParentId = result['parentId'] as String?;
       context.read<TaskNewBloc>().add(
         CreateTask(
           projectId: (result['projectId'] as String?) ?? 'inbox',
@@ -535,9 +627,20 @@ class _TasksPageState extends State<TasksPage> {
           priority: result['priority'] as int? ?? 1,
           startDate: result['startDate'] as int?,
           dueDate: result['dueDate'] as int?,
-          parentId: result['parentId'] as String?,
+          parentId: resultParentId,
         ),
       );
+      if (resultParentId != null) {
+        final currentState = context.read<TaskNewBloc>().state;
+        if (currentState is TaskNewLoaded) {
+          final expanded = currentState.expandedNodes['main_tree'] ?? {};
+          if (!expanded.contains(resultParentId)) {
+            context.read<TaskNewBloc>().add(
+              ToggleTaskExpand(taskId: resultParentId),
+            );
+          }
+        }
+      }
     }
   }
 }

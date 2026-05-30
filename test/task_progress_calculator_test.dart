@@ -128,6 +128,7 @@ Task _task(
     status: status,
     isAllDay: 0,
     sortOrder: 0,
+    deleted: 0,
     createdAt: 0,
     updatedAt: 0,
     remindBeforeMinutes: 15,
@@ -142,6 +143,7 @@ ChecklistItem _item(String id, String taskId, {int status = 0}) {
     title: id,
     status: status,
     sortOrder: 0,
+    deleted: 0,
     createdAt: 0,
     updatedAt: 0,
   );

@@ -22,6 +22,9 @@ class TaskNewLoaded extends TaskNewState {
   final Map<String, int> taskProgress;
   final Map<String, int> projectProgress;
   final Map<String, int> groupProgress;
+  final int? dateFrom;
+  final int? dateTo;
+  final String viewMode; // 'mindmap' or 'list'
 
   TaskNewLoaded({
     this.projects = const [],
@@ -35,6 +38,9 @@ class TaskNewLoaded extends TaskNewState {
     this.taskProgress = const {},
     this.projectProgress = const {},
     this.groupProgress = const {},
+    this.dateFrom,
+    this.dateTo,
+    this.viewMode = 'mindmap',
   });
 
   TaskNewLoaded copyWith({
@@ -49,6 +55,10 @@ class TaskNewLoaded extends TaskNewState {
     Map<String, int>? taskProgress,
     Map<String, int>? projectProgress,
     Map<String, int>? groupProgress,
+    int? dateFrom,
+    int? dateTo,
+    bool clearDateRange = false,
+    String? viewMode,
   }) {
     return TaskNewLoaded(
       projects: projects ?? this.projects,
@@ -62,6 +72,9 @@ class TaskNewLoaded extends TaskNewState {
       taskProgress: taskProgress ?? this.taskProgress,
       projectProgress: projectProgress ?? this.projectProgress,
       groupProgress: groupProgress ?? this.groupProgress,
+      dateFrom: clearDateRange ? null : (dateFrom ?? this.dateFrom),
+      dateTo: clearDateRange ? null : (dateTo ?? this.dateTo),
+      viewMode: viewMode ?? this.viewMode,
     );
   }
 
@@ -78,6 +91,9 @@ class TaskNewLoaded extends TaskNewState {
     taskProgress,
     projectProgress,
     groupProgress,
+    dateFrom,
+    dateTo,
+    viewMode,
   ];
 }
 

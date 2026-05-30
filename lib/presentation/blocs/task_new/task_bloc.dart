@@ -8,6 +8,7 @@ import '../../../data/repositories/task_repository.dart';
 import '../../../data/repositories/checklist_repository.dart';
 import '../../../domain/tasks/task_progress_calculator.dart';
 import '../../../services/supabase_service.dart';
+import '../../../core/utils/file_logger.dart';
 
 class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   final ProjectRepository projectRepository;
@@ -57,6 +58,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<ExpandAllTasks>(_onExpandAllTasks);
     on<CollapseAllTasks>(_onCollapseAllTasks);
     on<SyncFromCloud>(_onSyncFromCloud);
+    on<ToggleViewMode>(_onToggleViewMode);
   }
 
   // --- 项目 ---
@@ -241,10 +243,16 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     // 在 emit loading 前先保留子树状态，避免被 loading 覆盖
     Map<String, List<Task>> preservedSubTrees = const {};
     Map<String, Set<String>> preservedExpanded = const {};
+    String preservedViewMode = 'mindmap';
+    int? preservedDateFrom;
+    int? preservedDateTo;
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       preservedSubTrees = current.subTrees;
       preservedExpanded = current.expandedNodes;
+      preservedViewMode = current.viewMode;
+      preservedDateFrom = current.dateFrom;
+      preservedDateTo = current.dateTo;
     }
 
     emit(TaskNewLoading());
@@ -261,6 +269,31 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       } else {
         tasks = allTasks;
       }
+
+      // 日期区间过滤：任务的 [startDate, dueDate] 与 [dateFrom, dateTo] 有交集
+      if (event.dateFrom != null && event.dateTo != null) {
+        tasks = tasks.where((t) {
+          final s = t.startDate ?? t.dueDate;
+          final d = t.dueDate ?? t.startDate;
+          if (s == null && d == null) return false;
+          final taskStart = s ?? d!;
+          final taskEnd = d ?? s!;
+          return taskStart <= event.dateTo! && taskEnd >= event.dateFrom!;
+        }).toList();
+      }
+
+      // DEBUG: 诊断子任务消失
+      final allChildTasks = allTasks.where((t) => t.parentId != null).toList();
+      final childTasks = tasks.where((t) => t.parentId != null).toList();
+      flog('[LoadTasks] filter=${event.filter}, projectId=${event.projectId}');
+      flog('[LoadTasks] allTasks总数=${allTasks.length}, allChildren=${allChildTasks.length}');
+      flog('[LoadTasks] 过滤后tasks=${tasks.length}, filteredChildren=${childTasks.length}');
+      for (final c in allChildTasks) {
+        final inFiltered = tasks.any((t) => t.id == c.id);
+        final parentInFiltered = tasks.any((t) => t.id == c.parentId);
+        flog('[LoadTasks]   child: id=${c.id.substring(0, 8)}, title=${c.title}, parentId=${c.parentId?.substring(0, 8)}, projectId=${c.projectId}, deleted=${c.deleted}, inFiltered=$inFiltered, parentInFiltered=$parentInFiltered');
+      }
+
       final progress = await _calculateProgress(allTasks);
 
       // 默认展开所有有子节点的任务
@@ -285,7 +318,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           expandedNodes: newExpanded,
           taskProgress: progress.taskProgress,
           projectProgress: progress.projectProgress,
-            groupProgress: progress.groupProgress,
+          groupProgress: progress.groupProgress,
+          dateFrom: event.clearDateRange ? null : (event.dateFrom ?? preservedDateFrom),
+          dateTo: event.clearDateRange ? null : (event.dateTo ?? preservedDateTo),
+          viewMode: preservedViewMode,
         ),
       );
     } catch (e) {
@@ -344,7 +380,8 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     Emitter<TaskNewState> emit,
   ) async {
     try {
-      await taskRepository.create(
+      final current = state;
+      final newTask = await taskRepository.create(
         projectId: event.projectId,
         title: event.title,
         description: event.description,
@@ -353,7 +390,30 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         dueDate: event.dueDate,
         parentId: event.parentId,
       );
-      add(LoadTasks());
+      flog('[CreateTask] 写入完成: id=${newTask.id.substring(0, 8)}, title=${newTask.title}, parentId=${newTask.parentId?.substring(0, 8)}, projectId=${newTask.projectId}');
+      // 回读验证
+      final verify = await taskRepository.get(newTask.id);
+      if (verify == null) {
+        flog('[CreateTask] ⚠️ 回读验证失败！任务 ${newTask.id.substring(0, 8)} 写入后查不到');
+      } else {
+        flog('[CreateTask] 回读验证OK: parentId=${verify.parentId?.substring(0, 8)}, deleted=${verify.deleted}');
+      }
+      await _syncTasksToCloud();
+      // syncTasksToCloud 后再次验证
+      final verify2 = await taskRepository.get(newTask.id);
+      if (verify2 == null) {
+        flog('[CreateTask] ⚠️ syncTasksToCloud后任务消失！id=${newTask.id.substring(0, 8)}');
+      } else if (verify2.parentId != newTask.parentId) {
+        flog('[CreateTask] ⚠️ syncTasksToCloud后parentId变化！${newTask.parentId?.substring(0, 8)} → ${verify2.parentId?.substring(0, 8)}');
+      }
+      if (current is TaskNewLoaded) {
+        add(LoadTasks(
+          projectId: current.selectedProjectId,
+          filter: current.selectedFilter,
+        ));
+      } else {
+        add(LoadTasks());
+      }
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }
@@ -770,6 +830,17 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
       newExpanded['main_tree'] = <String>{};
       emit(current.copyWith(expandedNodes: newExpanded));
+    }
+  }
+
+  void _onToggleViewMode(
+    ToggleViewMode event,
+    Emitter<TaskNewState> emit,
+  ) {
+    if (state is TaskNewLoaded) {
+      final current = state as TaskNewLoaded;
+      final newMode = current.viewMode == 'mindmap' ? 'list' : 'mindmap';
+      emit(current.copyWith(viewMode: newMode));
     }
   }
 }

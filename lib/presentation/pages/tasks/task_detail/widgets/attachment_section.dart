@@ -6,6 +6,7 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../../../data/database/app_database.dart' hide TaskAttachment;
 import '../../../../../services/attachment_sync_service.dart';
 import '../../../../../services/task_attachment_service.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class AttachmentSection extends StatefulWidget {
   final Task task;
@@ -44,17 +45,13 @@ class _AttachmentSectionState extends State<AttachmentSection> {
       final file = await _service.ensureLocalFile(att);
       if (file == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('附件下载失败')),
-          );
+          showAppSnackBar(context, '附件下载失败');
         }
         return;
       }
       final result = await OpenFilex.open(file.path);
       if (result.type != ResultType.done && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('打开失败：${result.message}')),
-        );
+        showAppSnackBar(context, '打开失败：${result.message}');
       }
     } finally {
       if (mounted) setState(() => _openingId = null);
@@ -114,11 +111,11 @@ class _AttachmentSectionState extends State<AttachmentSection> {
             padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
             child: Row(
               children: [
-                const Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.textSecondary),
+                Icon(Icons.attach_file_rounded, size: 14, color: AppTheme.textSecondary),
                 const SizedBox(width: 4),
                 Text(
                   '附件 (${_attachments.length})',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textSecondary,
@@ -139,7 +136,7 @@ class _AttachmentSectionState extends State<AttachmentSection> {
             ),
           ),
           if (_attachments.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(10, 0, 10, 10),
               child: Text(
                 '暂无附件',
@@ -183,12 +180,12 @@ class _AttachmentSectionState extends State<AttachmentSection> {
                 attachment.fileName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+                style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
               ),
             ),
             GestureDetector(
               onTap: () => _deleteFile(attachment),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(4),
                 child: Icon(Icons.close, size: 12, color: AppTheme.textHint),
               ),

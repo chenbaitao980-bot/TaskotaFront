@@ -7,6 +7,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -36,30 +37,22 @@ class _RegisterPageState extends State<RegisterPage> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入邮箱和密码')),
-      );
+      showAppSnackBar(context, '请输入邮箱和密码');
       return;
     }
 
     if (password != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('两次输入的密码不一致')),
-      );
+      showAppSnackBar(context, '两次输入的密码不一致');
       return;
     }
 
     if (password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('密码至少6位')),
-      );
+      showAppSnackBar(context, '密码至少6位');
       return;
     }
 
     if (!_acceptTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请同意用户协议')),
-      );
+      showAppSnackBar(context, '请同意用户协议');
       return;
     }
 
@@ -77,9 +70,7 @@ class _RegisterPageState extends State<RegisterPage> {
           }
         } else {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('该邮箱已注册')),
-            );
+            showAppSnackBar(context, '该邮箱已注册');
           }
         }
       } else {
@@ -91,9 +82,7 @@ class _RegisterPageState extends State<RegisterPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('注册失败: $e')),
-        );
+        showAppSnackBar(context, '注册失败: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -105,14 +94,10 @@ class _RegisterPageState extends State<RegisterPage> {
     return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is Authenticated || state is LocalAuthenticated) {
-          ScaffoldMessenger.of(context)
-            ..clearSnackBars()
-            ..showSnackBar(const SnackBar(content: Text('注册成功')));
+          showAppSnackBar(context, '注册成功');
           AppRouter.navigateToAndReplace(context, AppRouter.home);
         } else if (state is AuthError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+          showAppSnackBar(context, state.message);
         }
       },
       builder: (context, state) {
@@ -143,7 +128,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     '开始你的 AI 日程管理之旅',
                     style: TextStyle(
                       color: AppTheme.textSecondary,
@@ -221,7 +206,7 @@ class _RegisterPageState extends State<RegisterPage> {
                               color: AppTheme.textHint,
                               fontSize: 13,
                             ),
-                            children: const [
+                            children: [
                               TextSpan(
                                 text: '用户协议',
                                 style: TextStyle(

@@ -71,7 +71,9 @@ class TaskCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Container(
+      child: GestureDetector(
+        onSecondaryTapUp: (details) => _showContextMenu(context, details.globalPosition),
+        child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
           color: AppTheme.bgCard,
@@ -85,8 +87,8 @@ class TaskCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             child: Row(
               children: [
-                // 缩进空白
-                SizedBox(width: depth * 24.0),
+                // 缩进空白（由外层树形线负责，此处保留以兼容独立使用场景）
+                if (depth > 0) SizedBox(width: depth * 24.0),
 
                 // 拖拽手柄
                 if (showDragHandle)
@@ -160,6 +162,29 @@ class TaskCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (projectName != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          margin: const EdgeInsets.only(bottom: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Text(
+                            projectName!,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: isCompleted
+                                  ? AppTheme.textHint
+                                  : AppTheme.primaryColor,
+                            ),
+                          ),
+                        ),
+                      ],
                       Text(
                         task.title,
                         maxLines: 1,
@@ -175,16 +200,6 @@ class TaskCard extends StatelessWidget {
                               : null,
                         ),
                       ),
-                      if (projectName != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          projectName!,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textHint,
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 6),
                       Row(
                         children: [
@@ -210,7 +225,7 @@ class TaskCard extends StatelessWidget {
                             child: Text(
                               '$progressPercent%',
                               textAlign: TextAlign.right,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 color: AppTheme.textHint,
                                 fontWeight: FontWeight.w600,
@@ -253,7 +268,42 @@ class TaskCard extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
+  }
+
+  void _showContextMenu(BuildContext context, Offset position) {
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx, position.dy, position.dx, position.dy,
+      ),
+      items: [
+        const PopupMenuItem(
+          value: 'edit',
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 18),
+              SizedBox(width: 8),
+              Text('编辑'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline, size: 18, color: Colors.red),
+              SizedBox(width: 8),
+              Text('删除', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'edit') onTap();
+      if (value == 'delete') onDelete();
+    });
   }
 
   String _priorityShortLabel(int p) {
@@ -331,7 +381,7 @@ class _PriorityPill extends StatelessWidget {
     required this.onSelected,
   });
 
-  static const _options = [
+  static final _options = [
     (0, '无', AppTheme.textHint),
     (1, '低', AppTheme.priorityP3),
     (3, '中', AppTheme.priorityP1),
@@ -361,7 +411,7 @@ class _PriorityPill extends StatelessWidget {
               Text(o.$2, style: const TextStyle(fontSize: 13)),
               if (priority == o.$1) ...[
                 const Spacer(),
-                const Icon(Icons.check, size: 14, color: AppTheme.primaryColor),
+                Icon(Icons.check, size: 14, color: AppTheme.primaryColor),
               ],
             ],
           ),

@@ -9,6 +9,7 @@ import '../../../../../services/task_attachment_service.dart';
 import '../../../../../services/task_decomposition_service.dart';
 import '../../../../blocs/task_new/task_bloc.dart';
 import '../../../../blocs/task_new/task_event.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class AiDecomposeSection extends StatefulWidget {
   final Task task;
@@ -81,11 +82,9 @@ class _AiDecomposeSectionState extends State<AiDecomposeSection> {
 
       if (result.nodes.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(result.allDuplicates
+          showAppSnackBar(context, result.allDuplicates
                 ? '子任务已完整，无需重复分解'
-                : 'AI 分解失败，请重试'),
-          ));
+                : 'AI 分解失败，请重试');
         }
         return;
       }
@@ -135,9 +134,7 @@ class _AiDecomposeSectionState extends State<AiDecomposeSection> {
 
       if (createdLeaves.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('新增 $created 个子任务（无叶子，无需排程）')),
-          );
+          showAppSnackBar(context, '新增 $created 个子任务（无叶子，无需排程）');
           context.read<TaskNewBloc>().add(LoadSubTree(rootTaskId: widget.task.id));
         }
         return;
@@ -201,15 +198,11 @@ class _AiDecomposeSectionState extends State<AiDecomposeSection> {
       if (mounted) {
         context.read<TaskNewBloc>().add(LoadTasks());
         context.read<TaskNewBloc>().add(LoadSubTree(rootTaskId: widget.task.id));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('新增 $created 个子任务，已自动排到日历')),
-        );
+        showAppSnackBar(context, '新增 $created 个子任务，已自动排到日历');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拆解失败：$e')),
-        );
+        showAppSnackBar(context, '拆解失败：$e');
       }
     } finally {
       if (mounted) setState(() => _isDecomposing = false);
@@ -237,7 +230,7 @@ class _AiDecomposeSectionState extends State<AiDecomposeSection> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                const Icon(Icons.auto_awesome_rounded,
+                Icon(Icons.auto_awesome_rounded,
                     size: 20, color: AppTheme.textPrimary),
                 const SizedBox(width: 8),
                 Text(
@@ -340,10 +333,8 @@ Future<int> runAiDecompose({
 
     if (result.nodes.isEmpty) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              result.allDuplicates ? '子任务已完整，无需重复分解' : 'AI 分解失败，请重试'),
-        ));
+        showAppSnackBar(context,
+              result.allDuplicates ? '子任务已完整，无需重复分解' : 'AI 分解失败，请重试');
       }
       return 0;
     }
@@ -388,9 +379,7 @@ Future<int> runAiDecompose({
 
     if (createdLeaves.isEmpty) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('新增 $created 个子任务（无叶子，无需排程）')),
-        );
+        showAppSnackBar(context, '新增 $created 个子任务（无叶子，无需排程）');
         context.read<TaskNewBloc>().add(LoadSubTree(rootTaskId: task.id));
       }
       return created;
@@ -449,16 +438,12 @@ Future<int> runAiDecompose({
     if (context.mounted) {
       context.read<TaskNewBloc>().add(LoadTasks());
       context.read<TaskNewBloc>().add(LoadSubTree(rootTaskId: task.id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('新增 $created 个子任务，已自动排到日历')),
-      );
+      showAppSnackBar(context, '新增 $created 个子任务，已自动排到日历');
     }
     return created;
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('拆解失败：$e')),
-      );
+      showAppSnackBar(context, '拆解失败：$e');
     }
     return 0;
   }

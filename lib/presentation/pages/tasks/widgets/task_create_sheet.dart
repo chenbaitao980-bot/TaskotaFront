@@ -2,22 +2,29 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/project_repository.dart';
+import '../../../../data/repositories/task_repository.dart';
+import '../../../../services/subtask_scheduler.dart';
 import '../../../widgets/calendar_date_picker.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskCreateSheet extends StatefulWidget {
   final String? initialProjectId;
   final ProjectRepository projectRepository;
+  final TaskRepository? taskRepository;
   final List<Task> availableParentTasks;
   final int? initialStartDateMillis;
   final int? initialDueDateMillis;
+  final String? initialParentId;
 
   const TaskCreateSheet({
     super.key,
     this.initialProjectId,
     required this.projectRepository,
+    this.taskRepository,
     this.availableParentTasks = const [],
     this.initialStartDateMillis,
     this.initialDueDateMillis,
+    this.initialParentId,
   });
 
   @override
@@ -39,6 +46,7 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
   void initState() {
     super.initState();
     _selectedProjectId = widget.initialProjectId;
+    _parentTaskId = widget.initialParentId;
     if (widget.initialStartDateMillis != null) {
       _startDate =
           DateTime.fromMillisecondsSinceEpoch(widget.initialStartDateMillis!);
@@ -69,7 +77,7 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
       constraints: BoxConstraints(maxHeight: maxSheetHeight),
       child: Container(
         padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppTheme.bgCard,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
@@ -288,33 +296,137 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     });
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_startDate == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请选择开始时间')));
+      showAppSnackBar(context, '请选择开始时间');
       return;
     }
     if (_dueDate == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请选择截止时间')));
+      showAppSnackBar(context, '请选择截止时间');
       return;
     }
     if (!_dueDate!.isAfter(_startDate!)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('截止时间必须晚于开始时间')));
+      showAppSnackBar(context, '截止时间必须晚于开始时间');
       return;
     }
+
+    var finalStart = _startDate!;
+    var finalEnd = _dueDate!;
+
+    // 子任务才做冲突检测
+    if (_parentTaskId != null && widget.taskRepository != null) {
+      final conflict = await _checkConflict(finalStart, finalEnd);
+      if (conflict != null && mounted) {
+        final choice = await _showConflictDialog(conflict, finalStart, finalEnd);
+        if (!mounted) return;
+        switch (choice) {
+          case _ConflictChoice.cancel:
+            return;
+          case _ConflictChoice.parallel:
+            break; // 保持原时间
+          case _ConflictChoice.autoDelay:
+            final delayed = await _calcDelayedSlot(
+                finalStart, finalEnd, conflict.conflictEnd);
+            if (delayed != null) {
+              finalStart = delayed.start;
+              finalEnd = delayed.end;
+            }
+          case null:
+            return; // 弹窗关闭视为取消
+        }
+      }
+    }
+
+    if (!mounted) return;
     Navigator.pop(context, {
       'title': _titleController.text.trim(),
       'projectId': _selectedProjectId,
       'description': _descController.text.trim(),
       'priority': _priority,
-      'startDate': _startDate!.millisecondsSinceEpoch,
-      'dueDate': _dueDate!.millisecondsSinceEpoch,
+      'startDate': finalStart.millisecondsSinceEpoch,
+      'dueDate': finalEnd.millisecondsSinceEpoch,
       'parentId': _parentTaskId,
     });
   }
+
+  /// 检测 [newStart, newEnd) 与已有任务的时间重叠，返回首个冲突信息。
+  Future<_ConflictInfo?> _checkConflict(
+      DateTime newStart, DateTime newEnd) async {
+    final all = await widget.taskRepository!.getAll();
+    for (final t in all) {
+      if (t.startDate == null || t.dueDate == null) continue;
+      if (t.status == 2) continue; // 已完成跳过
+      final s = DateTime.fromMillisecondsSinceEpoch(t.startDate!);
+      final e = DateTime.fromMillisecondsSinceEpoch(t.dueDate!);
+      if (s.isBefore(newEnd) && e.isAfter(newStart)) {
+        return _ConflictInfo(title: t.title, start: s, end: e, conflictEnd: e);
+      }
+    }
+    return null;
+  }
+
+  /// 显示冲突弹窗，返回用户选择。
+  Future<_ConflictChoice?> _showConflictDialog(
+      _ConflictInfo conflict, DateTime newStart, DateTime newEnd) {
+    final fmt = (DateTime d) =>
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return showDialog<_ConflictChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('时间冲突'),
+        content: Text(
+          '「${conflict.title}」已安排 ${fmt(conflict.start)}—${fmt(conflict.end)}，'
+          '与当前时段（${fmt(newStart)}—${fmt(newEnd)}）重叠。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _ConflictChoice.cancel),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _ConflictChoice.parallel),
+            child: const Text('并行'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, _ConflictChoice.autoDelay),
+            child: const Text('自动延后'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 利用 SubtaskScheduler 计算从 [from] 开始的第一个空闲时段。
+  Future<ScheduledSlot?> _calcDelayedSlot(
+      DateTime start, DateTime end, DateTime from) async {
+    final duration = end.difference(start).inMinutes.clamp(1, 480);
+    final all = await widget.taskRepository!.getAll();
+    final scheduler = SubtaskScheduler(
+      existingTasks: all,
+      skipWeekends: false,
+    );
+    final slots = scheduler.scheduleLeaves(
+      [LeafToSchedule(taskId: 'tmp', minutes: duration)],
+      from: from,
+    );
+    return slots.isNotEmpty ? slots.first : null;
+  }
+}
+
+enum _ConflictChoice { cancel, parallel, autoDelay }
+
+class _ConflictInfo {
+  final String title;
+  final DateTime start;
+  final DateTime end;
+  final DateTime conflictEnd;
+  const _ConflictInfo({
+    required this.title,
+    required this.start,
+    required this.end,
+    required this.conflictEnd,
+  });
 }
 
 class _DateButton extends StatelessWidget {
@@ -343,7 +455,7 @@ class _DateButton extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textHint)),
+                style: TextStyle(fontSize: 12, color: AppTheme.textHint)),
             const SizedBox(height: 4),
             Text(
               date != null

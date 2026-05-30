@@ -13,6 +13,7 @@ class ProjectGroups extends Table {
   TextColumn get name => text()();
   TextColumn get color => text().customConstraint('NOT NULL DEFAULT \'#4772FA\'')();
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
+  IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
 
@@ -27,6 +28,7 @@ class Projects extends Table {
   TextColumn? get groupId => text().nullable()();
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get archived => integer().customConstraint('NOT NULL DEFAULT 0')();
+  IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
 
@@ -47,6 +49,7 @@ class Tasks extends Table {
   IntColumn get isAllDay => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn? get completedTime => integer().nullable()();
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
+  IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
   IntColumn get remindBeforeMinutes => integer().customConstraint('NOT NULL DEFAULT 15')();
@@ -80,6 +83,7 @@ class ChecklistItems extends Table {
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
   TextColumn? get obsidianUri => text().nullable()();
   IntColumn? get completedTime => integer().nullable()();
+  IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
 
@@ -94,7 +98,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration {
@@ -128,8 +132,32 @@ class AppDatabase extends _$AppDatabase {
         if (from < 6) {
           await m.createTable(taskAttachments);
         }
+        if (from < 7) {
+          await m.addColumn(tasks, tasks.deleted);
+          await m.addColumn(projects, projects.deleted);
+          await m.addColumn(projectGroups, projectGroups.deleted);
+          await m.addColumn(checklistItems, checklistItems.deleted);
+        }
       },
     );
+  }
+
+  /// 清空全部业务数据并重建"未分类"项目
+  Future<void> wipeAllData() async {
+    await transaction(() async {
+      await delete(checklistItems).go();
+      await delete(taskAttachments).go();
+      await delete(tasks).go();
+      await delete(projects).go();
+      await delete(projectGroups).go();
+      await into(projects).insert(ProjectsCompanion(
+        id: const Value('inbox'),
+        name: const Value('未分类'),
+        color: const Value('#4772FA'),
+        createdAt: Value(DateTime.now().millisecondsSinceEpoch),
+        updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+      ));
+    });
   }
 }
 

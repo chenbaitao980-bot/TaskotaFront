@@ -5,6 +5,7 @@ import '../../../models/entities/task_breakdown.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import 'create_task_page.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final String taskId;
@@ -112,15 +113,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   Future<void> _deleteTask() async {
     if (_task == null) return;
     if (_children.isNotEmpty || _storage.hasChildTasks(widget.taskId)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('该任务仍有子任务，请先删除子任务'),
-          action: SnackBarAction(
-            label: '知道了',
-            onPressed: () {},
-          ),
-        ),
-      );
+      showAppSnackBar(context, '该任务仍有子任务，请先删除子任务');
       return;
     }
     final confirm = await showDialog<bool>(
@@ -167,9 +160,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
     _loadTask();
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('已设为${_statusLabel(status)}')));
+      showAppSnackBar(context, '已设为${_statusLabel(status)}');
     }
   }
 
@@ -207,7 +198,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 _updateStatus(value);
               }
             },
-            itemBuilder: (context) => const [
+            itemBuilder: (context) => [
               PopupMenuItem(value: 'pending', child: Text('设为待办')),
               PopupMenuItem(value: 'in_progress', child: Text('设为进行中')),
               PopupMenuItem(value: 'completed', child: Text('设为已完成')),
@@ -262,7 +253,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               const SizedBox(height: 10),
               Text(
                 task.description!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   color: AppTheme.textSecondary,
                   height: 1.5,
@@ -283,7 +274,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '层级结构',
                     style: TextStyle(
                       fontSize: 12,
@@ -306,7 +297,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           const SizedBox(width: 4),
                           Text(
                             _parentTask!.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w500,
@@ -323,7 +314,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   Row(
                     children: [
                       if (_parentTask != null)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(left: 28),
                           child: Icon(Icons.arrow_downward,
                               size: 14, color: AppTheme.textHint),
@@ -336,7 +327,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       Expanded(
                         child: Text(
                           task.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.textPrimary,
@@ -368,7 +359,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       '开始时间',
                       _dateTimeLabel(task.startDate!),
                     ),
-                    const Divider(height: 1, color: AppTheme.borderSubtle),
+                    Divider(height: 1, color: AppTheme.borderSubtle),
                   ],
                   if (task.endDate != null) ...[
                     const SizedBox(height: 8),
@@ -377,7 +368,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       '结束时间',
                       _dateTimeLabel(task.endDate!),
                     ),
-                    const Divider(height: 1, color: AppTheme.borderSubtle),
+                    Divider(height: 1, color: AppTheme.borderSubtle),
                   ],
                   const SizedBox(height: 8),
                   _infoRow(Icons.layers, '层级', task.level),
@@ -398,7 +389,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               child: LinearProgressIndicator(
                 value: (_storage.calculateTaskProgress(task.id)) / 100,
                 backgroundColor: AppTheme.bgInput,
-                valueColor: const AlwaysStoppedAnimation<Color>(
+                valueColor: AlwaysStoppedAnimation<Color>(
                   AppTheme.primaryColor,
                 ),
                 minHeight: 8,
@@ -420,7 +411,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 Text('子任务',
                     style: Theme.of(context).textTheme.titleLarge),
                 Text('${_children.length}项',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13, color: AppTheme.textHint)),
               ],
             ),
@@ -439,7 +430,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     Icon(Icons.account_tree_outlined,
                         size: 28, color: AppTheme.textHint),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       '暂无子任务',
                       style: TextStyle(color: AppTheme.textSecondary),
                     ),
@@ -524,7 +515,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       label: const Text('添加子任务'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.primaryColor,
-                        side: const BorderSide(color: AppTheme.primaryColor),
+                        side: BorderSide(color: AppTheme.primaryColor),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -551,7 +542,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   label: const Text('编辑'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.primaryColor,
-                    side: const BorderSide(color: AppTheme.primaryColor),
+                    side: BorderSide(color: AppTheme.primaryColor),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -563,7 +554,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   label: const Text('删除'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.error,
-                    side: const BorderSide(color: AppTheme.error),
+                    side: BorderSide(color: AppTheme.error),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -600,7 +591,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
             subtitle: Text(
               _reminderEnabled ? '将在任务开始前通知您' : '不会发送提醒',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             value: _reminderEnabled,
             onChanged: (v) {
@@ -609,7 +600,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             },
           ),
           if (_reminderEnabled) ...[
-            const Divider(height: 0.5, color: AppTheme.borderSubtle),
+            Divider(height: 0.5, color: AppTheme.borderSubtle),
             _remindDropdownTile(
               icon: Icons.timer_outlined,
               label: '提前提醒',
@@ -642,10 +633,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
       title: Text(label,
-          style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
+          style: TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
       subtitle: Text(displayLabel,
-          style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-      trailing: const Icon(Icons.arrow_drop_down, size: 20, color: AppTheme.textHint),
+          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+      trailing: Icon(Icons.arrow_drop_down, size: 20, color: AppTheme.textHint),
       onTap: () => _showRemindPicker(options, optionLabels, value, onChanged),
     );
   }
@@ -728,7 +719,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 14,
               ),
@@ -736,7 +727,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w500,
               fontSize: 14,
               color: AppTheme.textPrimary,

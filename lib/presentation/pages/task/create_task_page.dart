@@ -5,6 +5,7 @@ import '../../../models/entities/task_breakdown.dart';
 import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../widgets/calendar_date_picker.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class CreateTaskPage extends StatefulWidget {
   final TaskBreakdown? existingTask;
@@ -180,17 +181,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   Future<void> _saveTask() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请输入任务标题')));
+      showAppSnackBar(context, '请输入任务标题');
       return;
     }
 
     // 日期必填校验
     if (!_endDateTime.isAfter(_startDateTime)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('截止时间必须晚于开始时间')));
+      showAppSnackBar(context, '截止时间必须晚于开始时间');
       return;
     }
 
@@ -354,7 +351,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                         child: Icon(Icons.close, size: 18, color: AppTheme.textHint),
                       ),
                     const SizedBox(width: 4),
-                    const Icon(Icons.chevron_right, size: 20, color: AppTheme.textHint),
+                    Icon(Icons.chevron_right, size: 20, color: AppTheme.textHint),
                   ],
                 ),
                 onTap: _selectParentTask,
@@ -382,7 +379,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                     _startDateTime,
                     () => _pickDateTime(true),
                   ),
-                  const Divider(
+                  Divider(
                     height: 0.5,
                     indent: 52,
                     color: AppTheme.borderSubtle,
@@ -427,7 +424,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   '标记为父任务（容器）',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   '父任务不出现在日历时间线上',
                   style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                 ),
@@ -453,7 +450,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   '需要专注',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   '此任务需要全神贯注完成',
                   style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                 ),
@@ -481,13 +478,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       leading: Icon(icon, color: AppTheme.primaryColor, size: 22),
       title: Text(
         label,
-        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
       ),
       subtitle: Text(
         _dateTimeLabel(dateTime),
-        style: const TextStyle(color: AppTheme.textSecondary),
+        style: TextStyle(color: AppTheme.textSecondary),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.chevron_right,
         size: 20,
         color: AppTheme.textHint,

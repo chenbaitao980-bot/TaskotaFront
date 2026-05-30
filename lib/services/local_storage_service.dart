@@ -426,6 +426,15 @@ class LocalStorageService {
     await _prefs?.setBool(_skipWeekendsKey, value);
   }
 
+  // 主题选择
+  static const _themeKey = 'app_theme_id';
+
+  String? get themeId => _prefs?.getString(_themeKey);
+
+  Future<void> setThemeId(String value) async {
+    await _prefs?.setString(_themeKey, value);
+  }
+
   Future<void> saveExplicitProfile(Map<String, dynamic> data) async {
     await _prefs?.setString(_profileKey, json.encode(data));
   }

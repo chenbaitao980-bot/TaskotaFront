@@ -39,6 +39,8 @@ class _CalendarPageState extends State<CalendarPage> {
   double? _pinchBaseDistance;
   double? _pinchBaseHourHeight;
   final GlobalKey _timelineListenerKey = GlobalKey();
+  double _dragOffset = 0;
+  double _cachedDayWidth = 100;
 
   List<Task> _allTasks = [];
   List<Project> _allProjects = [];
@@ -631,7 +633,7 @@ class _CalendarPageState extends State<CalendarPage> {
         value: _displayDayCount,
         isDense: true,
         icon: const Icon(Icons.arrow_drop_down, size: 16),
-        style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+        style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
         selectedItemBuilder: (context) => List.generate(15, (i) {
           return Align(
             alignment: Alignment.center,
@@ -751,7 +753,7 @@ class _CalendarPageState extends State<CalendarPage> {
         ),
         Expanded(
           child: dayTasks.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
                     '暂无任务',
                     style: TextStyle(color: AppTheme.textHint),
@@ -850,6 +852,133 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
+  // ── 日条头部 ──
+
+  Widget _buildDayStripHeader(List<DateTime> days, List<Task> tasks) {
+    const weekdayNames = ['一', '二', '三', '四', '五', '六', '日'];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    return Column(
+      children: [
+        // 月份导航行
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left, size: 20),
+                onPressed: () {
+                  setState(() {
+                    _focusedDay = _focusedDay.subtract(Duration(days: _displayDayCount));
+                    _didAutoScrollWeek = false;
+                  });
+                },
+              ),
+              Text(
+                '${_focusedDay.year}年${_focusedDay.month}月',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right, size: 20),
+                onPressed: () {
+                  setState(() {
+                    _focusedDay = _focusedDay.add(Duration(days: _displayDayCount));
+                    _didAutoScrollWeek = false;
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+        // 星期 + 日期行（跟随 _dragOffset 与下方网格同步平移）
+        ClipRect(
+          child: Transform.translate(
+            offset: Offset(_dragOffset, 0),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: _timeColumnWidth),
+                  ...days.map((day) {
+                final isToday = _isSameDate(day, today);
+                final isSelected = _selectedDay != null && _isSameDate(day, _selectedDay!);
+                final hasTasks = tasks.any((t) => _taskOverlapsDay(t, day));
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedDay = day;
+                        _focusedDay = day;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(
+                        children: [
+                          Text(
+                            weekdayNames[day.weekday - 1],
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isToday
+                                  ? Theme.of(context).colorScheme.primary
+                                  : AppTheme.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : isToday
+                                      ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
+                                      : null,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '${day.day}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: isToday || isSelected ? FontWeight.bold : FontWeight.normal,
+                                color: isSelected
+                                    ? Colors.white
+                                    : isToday
+                                        ? Theme.of(context).colorScheme.primary
+                                        : AppTheme.textPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          if (hasTasks)
+                            Container(
+                              width: 5, height: 5,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.secondary,
+                                shape: BoxShape.circle,
+                              ),
+                            )
+                          else
+                            const SizedBox(height: 5),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // ── 周时间线视图 ──
 
   Widget _buildWeekTimeline() {
@@ -858,9 +987,7 @@ class _CalendarPageState extends State<CalendarPage> {
     }
     _scrollWeekToCurrentTime();
 
-    final weekStart = _displayDayCount >= 7
-        ? _startOfWeek(_focusedDay)
-        : DateTime(_focusedDay.year, _focusedDay.month, _focusedDay.day);
+    final weekStart = DateTime(_focusedDay.year, _focusedDay.month, _focusedDay.day);
     final days = List.generate(
       _displayDayCount,
       (index) => weekStart.add(Duration(days: index)),
@@ -876,7 +1003,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return Column(
       children: [
-        _buildTableCalendar(CalendarFormat.week, tasks),
+        _buildDayStripHeader(days, tasks),
         const Divider(height: 1),
         Expanded(
           child: LayoutBuilder(
@@ -884,12 +1011,19 @@ class _CalendarPageState extends State<CalendarPage> {
               final dayWidth =
                   (constraints.maxWidth - _timeColumnWidth).clamp(320, 2400) /
                   _displayDayCount;
-              return Column(
-                children: [
-                  _buildMultiDayLane(days, dayWidth, multiDayTasks),
-                  Expanded(
-                    child: RepaintBoundary(
-                      child: Listener(
+              _cachedDayWidth = dayWidth;
+              return GestureDetector(
+                onHorizontalDragUpdate: _editingTaskId == null ? _onCalendarHorizontalDragUpdate : null,
+                onHorizontalDragEnd: _editingTaskId == null ? _onCalendarHorizontalDragEnd : null,
+                onHorizontalDragCancel: _editingTaskId == null ? _onCalendarHorizontalDragCancel : null,
+                child: Transform.translate(
+                  offset: Offset(_dragOffset, 0),
+                  child: Column(
+                    children: [
+                      _buildMultiDayLane(days, dayWidth, multiDayTasks),
+                      Expanded(
+                        child: RepaintBoundary(
+                          child: Listener(
                         key: _timelineListenerKey,
                         onPointerSignal: _handleTimelinePointerSignal,
                         onPointerDown: _onPointerDown,
@@ -941,13 +1075,39 @@ class _CalendarPageState extends State<CalendarPage> {
                       ),
                     ),
                   ),
-                ],
-              );
+                  ],
+                ),
+              ),
+            );
             },
           ),
         ),
       ],
     );
+  }
+
+  void _onCalendarHorizontalDragUpdate(DragUpdateDetails details) {
+    _dragOffset += details.delta.dx;
+    setState(() {});
+  }
+
+  void _onCalendarHorizontalDragEnd(DragEndDetails details) {
+    if (_dragOffset.abs() < 2) {
+      _dragOffset = 0;
+      return;
+    }
+    final daysToShift = -(_dragOffset / _cachedDayWidth).round();
+    if (daysToShift != 0) {
+      _focusedDay = _focusedDay.add(Duration(days: daysToShift));
+      _didAutoScrollWeek = false;
+    }
+    _dragOffset = 0;
+    setState(() {});
+  }
+
+  void _onCalendarHorizontalDragCancel() {
+    _dragOffset = 0;
+    setState(() {});
   }
 
   Widget _buildTimeColumn(double totalHeight) {
@@ -1006,7 +1166,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return Container(
       height: visibleHeight,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
       ),
       child: Row(
@@ -1252,7 +1412,7 @@ class _CalendarPageState extends State<CalendarPage> {
           child: Container(
             height: _hourHeight,
             width: dayWidth,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
                 right: BorderSide(color: AppTheme.borderSubtle),
                 bottom: BorderSide(color: AppTheme.borderSubtle),

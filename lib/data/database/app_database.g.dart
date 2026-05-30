@@ -74,6 +74,19 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
     $customConstraints: 'NOT NULL DEFAULT 0',
     defaultValue: const CustomExpression('0'),
   );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<int> deleted = GeneratedColumn<int>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -104,6 +117,7 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
     groupId,
     sortOrder,
     archived,
+    deleted,
     createdAt,
     updatedAt,
   ];
@@ -156,6 +170,12 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
         archived.isAcceptableOrUnknown(data['archived']!, _archivedMeta),
       );
     }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -205,6 +225,10 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
         DriftSqlType.int,
         data['${effectivePrefix}archived'],
       )!,
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -229,6 +253,7 @@ class Project extends DataClass implements Insertable<Project> {
   final String? groupId;
   final int sortOrder;
   final int archived;
+  final int deleted;
   final int createdAt;
   final int updatedAt;
   const Project({
@@ -238,6 +263,7 @@ class Project extends DataClass implements Insertable<Project> {
     this.groupId,
     required this.sortOrder,
     required this.archived,
+    required this.deleted,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -252,6 +278,7 @@ class Project extends DataClass implements Insertable<Project> {
     }
     map['sort_order'] = Variable<int>(sortOrder);
     map['archived'] = Variable<int>(archived);
+    map['deleted'] = Variable<int>(deleted);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     return map;
@@ -267,6 +294,7 @@ class Project extends DataClass implements Insertable<Project> {
           : Value(groupId),
       sortOrder: Value(sortOrder),
       archived: Value(archived),
+      deleted: Value(deleted),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -284,6 +312,7 @@ class Project extends DataClass implements Insertable<Project> {
       groupId: serializer.fromJson<String?>(json['groupId']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       archived: serializer.fromJson<int>(json['archived']),
+      deleted: serializer.fromJson<int>(json['deleted']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
     );
@@ -298,6 +327,7 @@ class Project extends DataClass implements Insertable<Project> {
       'groupId': serializer.toJson<String?>(groupId),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'archived': serializer.toJson<int>(archived),
+      'deleted': serializer.toJson<int>(deleted),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
     };
@@ -310,6 +340,7 @@ class Project extends DataClass implements Insertable<Project> {
     Value<String?> groupId = const Value.absent(),
     int? sortOrder,
     int? archived,
+    int? deleted,
     int? createdAt,
     int? updatedAt,
   }) => Project(
@@ -319,6 +350,7 @@ class Project extends DataClass implements Insertable<Project> {
     groupId: groupId.present ? groupId.value : this.groupId,
     sortOrder: sortOrder ?? this.sortOrder,
     archived: archived ?? this.archived,
+    deleted: deleted ?? this.deleted,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -330,6 +362,7 @@ class Project extends DataClass implements Insertable<Project> {
       groupId: data.groupId.present ? data.groupId.value : this.groupId,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       archived: data.archived.present ? data.archived.value : this.archived,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -344,6 +377,7 @@ class Project extends DataClass implements Insertable<Project> {
           ..write('groupId: $groupId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('archived: $archived, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -358,6 +392,7 @@ class Project extends DataClass implements Insertable<Project> {
     groupId,
     sortOrder,
     archived,
+    deleted,
     createdAt,
     updatedAt,
   );
@@ -371,6 +406,7 @@ class Project extends DataClass implements Insertable<Project> {
           other.groupId == this.groupId &&
           other.sortOrder == this.sortOrder &&
           other.archived == this.archived &&
+          other.deleted == this.deleted &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -382,6 +418,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
   final Value<String?> groupId;
   final Value<int> sortOrder;
   final Value<int> archived;
+  final Value<int> deleted;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int> rowid;
@@ -392,6 +429,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     this.groupId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.archived = const Value.absent(),
+    this.deleted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -403,6 +441,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     this.groupId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.archived = const Value.absent(),
+    this.deleted = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.rowid = const Value.absent(),
@@ -417,6 +456,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     Expression<String>? groupId,
     Expression<int>? sortOrder,
     Expression<int>? archived,
+    Expression<int>? deleted,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? rowid,
@@ -428,6 +468,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
       if (groupId != null) 'group_id': groupId,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (archived != null) 'archived': archived,
+      if (deleted != null) 'deleted': deleted,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -441,6 +482,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     Value<String?>? groupId,
     Value<int>? sortOrder,
     Value<int>? archived,
+    Value<int>? deleted,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<int>? rowid,
@@ -452,6 +494,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
       groupId: groupId ?? this.groupId,
       sortOrder: sortOrder ?? this.sortOrder,
       archived: archived ?? this.archived,
+      deleted: deleted ?? this.deleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -479,6 +522,9 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     if (archived.present) {
       map['archived'] = Variable<int>(archived.value);
     }
+    if (deleted.present) {
+      map['deleted'] = Variable<int>(deleted.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -500,6 +546,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
           ..write('groupId: $groupId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('archived: $archived, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -652,6 +699,19 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     $customConstraints: 'NOT NULL DEFAULT 0',
     defaultValue: const CustomExpression('0'),
   );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<int> deleted = GeneratedColumn<int>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -724,6 +784,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     isAllDay,
     completedTime,
     sortOrder,
+    deleted,
     createdAt,
     updatedAt,
     remindBeforeMinutes,
@@ -821,6 +882,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
       context.handle(
         _sortOrderMeta,
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
       );
     }
     if (data.containsKey('created_at')) {
@@ -923,6 +990,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -965,6 +1036,7 @@ class Task extends DataClass implements Insertable<Task> {
   final int isAllDay;
   final int? completedTime;
   final int sortOrder;
+  final int deleted;
   final int createdAt;
   final int updatedAt;
   final int remindBeforeMinutes;
@@ -983,6 +1055,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.isAllDay,
     this.completedTime,
     required this.sortOrder,
+    required this.deleted,
     required this.createdAt,
     required this.updatedAt,
     required this.remindBeforeMinutes,
@@ -1012,6 +1085,7 @@ class Task extends DataClass implements Insertable<Task> {
       map['completed_time'] = Variable<int>(completedTime);
     }
     map['sort_order'] = Variable<int>(sortOrder);
+    map['deleted'] = Variable<int>(deleted);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     map['remind_before_minutes'] = Variable<int>(remindBeforeMinutes);
@@ -1044,6 +1118,7 @@ class Task extends DataClass implements Insertable<Task> {
           ? const Value.absent()
           : Value(completedTime),
       sortOrder: Value(sortOrder),
+      deleted: Value(deleted),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       remindBeforeMinutes: Value(remindBeforeMinutes),
@@ -1072,6 +1147,7 @@ class Task extends DataClass implements Insertable<Task> {
       isAllDay: serializer.fromJson<int>(json['isAllDay']),
       completedTime: serializer.fromJson<int?>(json['completedTime']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      deleted: serializer.fromJson<int>(json['deleted']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       remindBeforeMinutes: serializer.fromJson<int>(
@@ -1097,6 +1173,7 @@ class Task extends DataClass implements Insertable<Task> {
       'isAllDay': serializer.toJson<int>(isAllDay),
       'completedTime': serializer.toJson<int?>(completedTime),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'deleted': serializer.toJson<int>(deleted),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'remindBeforeMinutes': serializer.toJson<int>(remindBeforeMinutes),
@@ -1118,6 +1195,7 @@ class Task extends DataClass implements Insertable<Task> {
     int? isAllDay,
     Value<int?> completedTime = const Value.absent(),
     int? sortOrder,
+    int? deleted,
     int? createdAt,
     int? updatedAt,
     int? remindBeforeMinutes,
@@ -1138,6 +1216,7 @@ class Task extends DataClass implements Insertable<Task> {
         ? completedTime.value
         : this.completedTime,
     sortOrder: sortOrder ?? this.sortOrder,
+    deleted: deleted ?? this.deleted,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     remindBeforeMinutes: remindBeforeMinutes ?? this.remindBeforeMinutes,
@@ -1164,6 +1243,7 @@ class Task extends DataClass implements Insertable<Task> {
           ? data.completedTime.value
           : this.completedTime,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       remindBeforeMinutes: data.remindBeforeMinutes.present
@@ -1193,6 +1273,7 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('isAllDay: $isAllDay, ')
           ..write('completedTime: $completedTime, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('remindBeforeMinutes: $remindBeforeMinutes, ')
@@ -1216,6 +1297,7 @@ class Task extends DataClass implements Insertable<Task> {
     isAllDay,
     completedTime,
     sortOrder,
+    deleted,
     createdAt,
     updatedAt,
     remindBeforeMinutes,
@@ -1238,6 +1320,7 @@ class Task extends DataClass implements Insertable<Task> {
           other.isAllDay == this.isAllDay &&
           other.completedTime == this.completedTime &&
           other.sortOrder == this.sortOrder &&
+          other.deleted == this.deleted &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.remindBeforeMinutes == this.remindBeforeMinutes &&
@@ -1258,6 +1341,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<int> isAllDay;
   final Value<int?> completedTime;
   final Value<int> sortOrder;
+  final Value<int> deleted;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int> remindBeforeMinutes;
@@ -1277,6 +1361,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.isAllDay = const Value.absent(),
     this.completedTime = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.deleted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.remindBeforeMinutes = const Value.absent(),
@@ -1297,6 +1382,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.isAllDay = const Value.absent(),
     this.completedTime = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.deleted = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.remindBeforeMinutes = const Value.absent(),
@@ -1321,6 +1407,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<int>? isAllDay,
     Expression<int>? completedTime,
     Expression<int>? sortOrder,
+    Expression<int>? deleted,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? remindBeforeMinutes,
@@ -1341,6 +1428,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (isAllDay != null) 'is_all_day': isAllDay,
       if (completedTime != null) 'completed_time': completedTime,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (deleted != null) 'deleted': deleted,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (remindBeforeMinutes != null)
@@ -1364,6 +1452,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<int>? isAllDay,
     Value<int?>? completedTime,
     Value<int>? sortOrder,
+    Value<int>? deleted,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<int>? remindBeforeMinutes,
@@ -1384,6 +1473,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       isAllDay: isAllDay ?? this.isAllDay,
       completedTime: completedTime ?? this.completedTime,
       sortOrder: sortOrder ?? this.sortOrder,
+      deleted: deleted ?? this.deleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       remindBeforeMinutes: remindBeforeMinutes ?? this.remindBeforeMinutes,
@@ -1432,6 +1522,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (deleted.present) {
+      map['deleted'] = Variable<int>(deleted.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -1468,6 +1561,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('isAllDay: $isAllDay, ')
           ..write('completedTime: $completedTime, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('remindBeforeMinutes: $remindBeforeMinutes, ')
@@ -1561,6 +1655,19 @@ class $ChecklistItemsTable extends ChecklistItems
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<int> deleted = GeneratedColumn<int>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1592,6 +1699,7 @@ class $ChecklistItemsTable extends ChecklistItems
     sortOrder,
     obsidianUri,
     completedTime,
+    deleted,
     createdAt,
     updatedAt,
   ];
@@ -1658,6 +1766,12 @@ class $ChecklistItemsTable extends ChecklistItems
         ),
       );
     }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -1711,6 +1825,10 @@ class $ChecklistItemsTable extends ChecklistItems
         DriftSqlType.int,
         data['${effectivePrefix}completed_time'],
       ),
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -1736,6 +1854,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
   final int sortOrder;
   final String? obsidianUri;
   final int? completedTime;
+  final int deleted;
   final int createdAt;
   final int updatedAt;
   const ChecklistItem({
@@ -1746,6 +1865,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     required this.sortOrder,
     this.obsidianUri,
     this.completedTime,
+    required this.deleted,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1763,6 +1883,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     if (!nullToAbsent || completedTime != null) {
       map['completed_time'] = Variable<int>(completedTime);
     }
+    map['deleted'] = Variable<int>(deleted);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     return map;
@@ -1781,6 +1902,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       completedTime: completedTime == null && nullToAbsent
           ? const Value.absent()
           : Value(completedTime),
+      deleted: Value(deleted),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -1799,6 +1921,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       obsidianUri: serializer.fromJson<String?>(json['obsidianUri']),
       completedTime: serializer.fromJson<int?>(json['completedTime']),
+      deleted: serializer.fromJson<int>(json['deleted']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
     );
@@ -1814,6 +1937,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       'sortOrder': serializer.toJson<int>(sortOrder),
       'obsidianUri': serializer.toJson<String?>(obsidianUri),
       'completedTime': serializer.toJson<int?>(completedTime),
+      'deleted': serializer.toJson<int>(deleted),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
     };
@@ -1827,6 +1951,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     int? sortOrder,
     Value<String?> obsidianUri = const Value.absent(),
     Value<int?> completedTime = const Value.absent(),
+    int? deleted,
     int? createdAt,
     int? updatedAt,
   }) => ChecklistItem(
@@ -1839,6 +1964,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     completedTime: completedTime.present
         ? completedTime.value
         : this.completedTime,
+    deleted: deleted ?? this.deleted,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -1855,6 +1981,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
       completedTime: data.completedTime.present
           ? data.completedTime.value
           : this.completedTime,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -1870,6 +1997,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
           ..write('sortOrder: $sortOrder, ')
           ..write('obsidianUri: $obsidianUri, ')
           ..write('completedTime: $completedTime, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1885,6 +2013,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
     sortOrder,
     obsidianUri,
     completedTime,
+    deleted,
     createdAt,
     updatedAt,
   );
@@ -1899,6 +2028,7 @@ class ChecklistItem extends DataClass implements Insertable<ChecklistItem> {
           other.sortOrder == this.sortOrder &&
           other.obsidianUri == this.obsidianUri &&
           other.completedTime == this.completedTime &&
+          other.deleted == this.deleted &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -1911,6 +2041,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
   final Value<int> sortOrder;
   final Value<String?> obsidianUri;
   final Value<int?> completedTime;
+  final Value<int> deleted;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int> rowid;
@@ -1922,6 +2053,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     this.sortOrder = const Value.absent(),
     this.obsidianUri = const Value.absent(),
     this.completedTime = const Value.absent(),
+    this.deleted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1934,6 +2066,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     this.sortOrder = const Value.absent(),
     this.obsidianUri = const Value.absent(),
     this.completedTime = const Value.absent(),
+    this.deleted = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.rowid = const Value.absent(),
@@ -1950,6 +2083,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     Expression<int>? sortOrder,
     Expression<String>? obsidianUri,
     Expression<int>? completedTime,
+    Expression<int>? deleted,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? rowid,
@@ -1962,6 +2096,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
       if (sortOrder != null) 'sort_order': sortOrder,
       if (obsidianUri != null) 'obsidian_uri': obsidianUri,
       if (completedTime != null) 'completed_time': completedTime,
+      if (deleted != null) 'deleted': deleted,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1976,6 +2111,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     Value<int>? sortOrder,
     Value<String?>? obsidianUri,
     Value<int?>? completedTime,
+    Value<int>? deleted,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<int>? rowid,
@@ -1988,6 +2124,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
       sortOrder: sortOrder ?? this.sortOrder,
       obsidianUri: obsidianUri ?? this.obsidianUri,
       completedTime: completedTime ?? this.completedTime,
+      deleted: deleted ?? this.deleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -2018,6 +2155,9 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
     if (completedTime.present) {
       map['completed_time'] = Variable<int>(completedTime.value);
     }
+    if (deleted.present) {
+      map['deleted'] = Variable<int>(deleted.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -2040,6 +2180,7 @@ class ChecklistItemsCompanion extends UpdateCompanion<ChecklistItem> {
           ..write('sortOrder: $sortOrder, ')
           ..write('obsidianUri: $obsidianUri, ')
           ..write('completedTime: $completedTime, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -2096,6 +2237,19 @@ class $ProjectGroupsTable extends ProjectGroups
     $customConstraints: 'NOT NULL DEFAULT 0',
     defaultValue: const CustomExpression('0'),
   );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<int> deleted = GeneratedColumn<int>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2124,6 +2278,7 @@ class $ProjectGroupsTable extends ProjectGroups
     name,
     color,
     sortOrder,
+    deleted,
     createdAt,
     updatedAt,
   ];
@@ -2162,6 +2317,12 @@ class $ProjectGroupsTable extends ProjectGroups
       context.handle(
         _sortOrderMeta,
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
       );
     }
     if (data.containsKey('created_at')) {
@@ -2205,6 +2366,10 @@ class $ProjectGroupsTable extends ProjectGroups
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -2227,6 +2392,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
   final String name;
   final String color;
   final int sortOrder;
+  final int deleted;
   final int createdAt;
   final int updatedAt;
   const ProjectGroup({
@@ -2234,6 +2400,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
     required this.name,
     required this.color,
     required this.sortOrder,
+    required this.deleted,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -2244,6 +2411,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
     map['name'] = Variable<String>(name);
     map['color'] = Variable<String>(color);
     map['sort_order'] = Variable<int>(sortOrder);
+    map['deleted'] = Variable<int>(deleted);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     return map;
@@ -2255,6 +2423,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
       name: Value(name),
       color: Value(color),
       sortOrder: Value(sortOrder),
+      deleted: Value(deleted),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -2270,6 +2439,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
       name: serializer.fromJson<String>(json['name']),
       color: serializer.fromJson<String>(json['color']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      deleted: serializer.fromJson<int>(json['deleted']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
     );
@@ -2282,6 +2452,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
       'name': serializer.toJson<String>(name),
       'color': serializer.toJson<String>(color),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'deleted': serializer.toJson<int>(deleted),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
     };
@@ -2292,6 +2463,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
     String? name,
     String? color,
     int? sortOrder,
+    int? deleted,
     int? createdAt,
     int? updatedAt,
   }) => ProjectGroup(
@@ -2299,6 +2471,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
     name: name ?? this.name,
     color: color ?? this.color,
     sortOrder: sortOrder ?? this.sortOrder,
+    deleted: deleted ?? this.deleted,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2308,6 +2481,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
       name: data.name.present ? data.name.value : this.name,
       color: data.color.present ? data.color.value : this.color,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -2320,6 +2494,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
           ..write('name: $name, ')
           ..write('color: $color, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2328,7 +2503,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
 
   @override
   int get hashCode =>
-      Object.hash(id, name, color, sortOrder, createdAt, updatedAt);
+      Object.hash(id, name, color, sortOrder, deleted, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2337,6 +2512,7 @@ class ProjectGroup extends DataClass implements Insertable<ProjectGroup> {
           other.name == this.name &&
           other.color == this.color &&
           other.sortOrder == this.sortOrder &&
+          other.deleted == this.deleted &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -2346,6 +2522,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
   final Value<String> name;
   final Value<String> color;
   final Value<int> sortOrder;
+  final Value<int> deleted;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int> rowid;
@@ -2354,6 +2531,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
     this.name = const Value.absent(),
     this.color = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.deleted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2363,6 +2541,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
     required String name,
     this.color = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.deleted = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.rowid = const Value.absent(),
@@ -2375,6 +2554,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
     Expression<String>? name,
     Expression<String>? color,
     Expression<int>? sortOrder,
+    Expression<int>? deleted,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? rowid,
@@ -2384,6 +2564,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
       if (name != null) 'name': name,
       if (color != null) 'color': color,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (deleted != null) 'deleted': deleted,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -2395,6 +2576,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
     Value<String>? name,
     Value<String>? color,
     Value<int>? sortOrder,
+    Value<int>? deleted,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<int>? rowid,
@@ -2404,6 +2586,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
       name: name ?? this.name,
       color: color ?? this.color,
       sortOrder: sortOrder ?? this.sortOrder,
+      deleted: deleted ?? this.deleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -2425,6 +2608,9 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (deleted.present) {
+      map['deleted'] = Variable<int>(deleted.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -2444,6 +2630,7 @@ class ProjectGroupsCompanion extends UpdateCompanion<ProjectGroup> {
           ..write('name: $name, ')
           ..write('color: $color, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -3049,6 +3236,7 @@ typedef $$ProjectsTableCreateCompanionBuilder =
       Value<String?> groupId,
       Value<int> sortOrder,
       Value<int> archived,
+      Value<int> deleted,
       required int createdAt,
       required int updatedAt,
       Value<int> rowid,
@@ -3061,6 +3249,7 @@ typedef $$ProjectsTableUpdateCompanionBuilder =
       Value<String?> groupId,
       Value<int> sortOrder,
       Value<int> archived,
+      Value<int> deleted,
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<int> rowid,
@@ -3126,6 +3315,11 @@ class $$ProjectsTableFilterComposer
 
   ColumnFilters<int> get archived => $composableBuilder(
     column: $table.archived,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deleted => $composableBuilder(
+    column: $table.deleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3204,6 +3398,11 @@ class $$ProjectsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3241,6 +3440,9 @@ class $$ProjectsTableAnnotationComposer
 
   GeneratedColumn<int> get archived =>
       $composableBuilder(column: $table.archived, builder: (column) => column);
+
+  GeneratedColumn<int> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
 
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -3308,6 +3510,7 @@ class $$ProjectsTableTableManager
                 Value<String?> groupId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<int> archived = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -3318,6 +3521,7 @@ class $$ProjectsTableTableManager
                 groupId: groupId,
                 sortOrder: sortOrder,
                 archived: archived,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -3330,6 +3534,7 @@ class $$ProjectsTableTableManager
                 Value<String?> groupId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<int> archived = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -3340,6 +3545,7 @@ class $$ProjectsTableTableManager
                 groupId: groupId,
                 sortOrder: sortOrder,
                 archived: archived,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -3406,6 +3612,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<int> isAllDay,
       Value<int?> completedTime,
       Value<int> sortOrder,
+      Value<int> deleted,
       required int createdAt,
       required int updatedAt,
       Value<int> remindBeforeMinutes,
@@ -3427,6 +3634,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<int> isAllDay,
       Value<int?> completedTime,
       Value<int> sortOrder,
+      Value<int> deleted,
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<int> remindBeforeMinutes,
@@ -3535,6 +3743,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deleted => $composableBuilder(
+    column: $table.deleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3676,6 +3889,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3770,6 +3988,9 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
 
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -3881,6 +4102,7 @@ class $$TasksTableTableManager
                 Value<int> isAllDay = const Value.absent(),
                 Value<int?> completedTime = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<int> remindBeforeMinutes = const Value.absent(),
@@ -3900,6 +4122,7 @@ class $$TasksTableTableManager
                 isAllDay: isAllDay,
                 completedTime: completedTime,
                 sortOrder: sortOrder,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 remindBeforeMinutes: remindBeforeMinutes,
@@ -3921,6 +4144,7 @@ class $$TasksTableTableManager
                 Value<int> isAllDay = const Value.absent(),
                 Value<int?> completedTime = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
                 Value<int> remindBeforeMinutes = const Value.absent(),
@@ -3940,6 +4164,7 @@ class $$TasksTableTableManager
                 isAllDay: isAllDay,
                 completedTime: completedTime,
                 sortOrder: sortOrder,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 remindBeforeMinutes: remindBeforeMinutes,
@@ -4046,6 +4271,7 @@ typedef $$ChecklistItemsTableCreateCompanionBuilder =
       Value<int> sortOrder,
       Value<String?> obsidianUri,
       Value<int?> completedTime,
+      Value<int> deleted,
       required int createdAt,
       required int updatedAt,
       Value<int> rowid,
@@ -4059,6 +4285,7 @@ typedef $$ChecklistItemsTableUpdateCompanionBuilder =
       Value<int> sortOrder,
       Value<String?> obsidianUri,
       Value<int?> completedTime,
+      Value<int> deleted,
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<int> rowid,
@@ -4127,6 +4354,11 @@ class $$ChecklistItemsTableFilterComposer
 
   ColumnFilters<int> get completedTime => $composableBuilder(
     column: $table.completedTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deleted => $composableBuilder(
+    column: $table.deleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4203,6 +4435,11 @@ class $$ChecklistItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -4267,6 +4504,9 @@ class $$ChecklistItemsTableAnnotationComposer
     column: $table.completedTime,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
 
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -4335,6 +4575,7 @@ class $$ChecklistItemsTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 Value<String?> obsidianUri = const Value.absent(),
                 Value<int?> completedTime = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -4346,6 +4587,7 @@ class $$ChecklistItemsTableTableManager
                 sortOrder: sortOrder,
                 obsidianUri: obsidianUri,
                 completedTime: completedTime,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -4359,6 +4601,7 @@ class $$ChecklistItemsTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 Value<String?> obsidianUri = const Value.absent(),
                 Value<int?> completedTime = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -4370,6 +4613,7 @@ class $$ChecklistItemsTableTableManager
                 sortOrder: sortOrder,
                 obsidianUri: obsidianUri,
                 completedTime: completedTime,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -4448,6 +4692,7 @@ typedef $$ProjectGroupsTableCreateCompanionBuilder =
       required String name,
       Value<String> color,
       Value<int> sortOrder,
+      Value<int> deleted,
       required int createdAt,
       required int updatedAt,
       Value<int> rowid,
@@ -4458,6 +4703,7 @@ typedef $$ProjectGroupsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String> color,
       Value<int> sortOrder,
+      Value<int> deleted,
       Value<int> createdAt,
       Value<int> updatedAt,
       Value<int> rowid,
@@ -4489,6 +4735,11 @@ class $$ProjectGroupsTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deleted => $composableBuilder(
+    column: $table.deleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4532,6 +4783,11 @@ class $$ProjectGroupsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -4563,6 +4819,9 @@ class $$ProjectGroupsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
 
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -4606,6 +4865,7 @@ class $$ProjectGroupsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String> color = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -4614,6 +4874,7 @@ class $$ProjectGroupsTableTableManager
                 name: name,
                 color: color,
                 sortOrder: sortOrder,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -4624,6 +4885,7 @@ class $$ProjectGroupsTableTableManager
                 required String name,
                 Value<String> color = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -4632,6 +4894,7 @@ class $$ProjectGroupsTableTableManager
                 name: name,
                 color: color,
                 sortOrder: sortOrder,
+                deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

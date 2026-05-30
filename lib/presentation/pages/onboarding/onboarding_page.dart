@@ -123,7 +123,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       children: [
         Text(
           '第 ${_step + 1} 步 / 共 3 步',
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
         ),
         const Spacer(),
         ...List.generate(3, (i) {
@@ -163,20 +163,20 @@ class _OnboardingPageState extends State<OnboardingPage> {
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           '这些信息都是可选项，之后也可以再补充。',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
         const SizedBox(height: 32),
         TextField(
           controller: _nameController,
-          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15),
+          style: TextStyle(color: AppTheme.textPrimary, fontSize: 15),
           decoration: const InputDecoration(labelText: '你的名字（可选）'),
         ),
         const SizedBox(height: 16),
         TextField(
           controller: _occupationController,
-          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15),
+          style: TextStyle(color: AppTheme.textPrimary, fontSize: 15),
           decoration: const InputDecoration(labelText: '职业（可选）'),
         ),
         const Spacer(),
@@ -200,7 +200,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           '最多 3 个，比如“考过 N1”“学吉他”“减 10 斤”。',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
@@ -210,7 +210,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
             padding: const EdgeInsets.only(bottom: 12),
             child: TextField(
               controller: _goalControllers[i],
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15),
+              style: TextStyle(color: AppTheme.textPrimary, fontSize: 15),
               decoration: InputDecoration(
                 labelText: '目标 ${i + 1}（${i == 0 ? '至少填一个' : '可选'}）',
               ),
@@ -239,7 +239,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           '可以跳过，AI 会在拆解任务时继续追问。',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
@@ -265,7 +265,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       ),
                       child: Text(
                         goal,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.primaryColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,

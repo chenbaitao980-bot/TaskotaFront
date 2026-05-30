@@ -66,9 +66,18 @@ class DeleteProject extends TaskEvent {
 class LoadTasks extends TaskEvent {
   final String? projectId;
   final String? filter; // 'all', 'today', 'important'
-  LoadTasks({this.projectId, this.filter});
+  final int? dateFrom; // millisecondsSinceEpoch, filter tasks overlapping [dateFrom, dateTo]
+  final int? dateTo;
+  final bool clearDateRange; // true=清除日期筛选，忽略已保留的日期
+  LoadTasks({
+    this.projectId,
+    this.filter,
+    this.dateFrom,
+    this.dateTo,
+    this.clearDateRange = false,
+  });
   @override
-  List<Object?> get props => [projectId, filter];
+  List<Object?> get props => [projectId, filter, dateFrom, dateTo, clearDateRange];
 }
 
 class CreateTask extends TaskEvent {
@@ -268,6 +277,8 @@ class ReorderTaskSiblings extends TaskEvent {
 
 class ExpandAllTasks extends TaskEvent {}
 class CollapseAllTasks extends TaskEvent {}
+
+class ToggleViewMode extends TaskEvent {}
 
 /// 从云端拉取任务并合并到本地
 class SyncFromCloud extends TaskEvent {}

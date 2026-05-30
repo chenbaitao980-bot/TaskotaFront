@@ -34,7 +34,10 @@ class ProjectSyncService {
     _groupRepo = groupRepo;
   }
 
-  Future<void> pullAll() async {
+  Future<void> pullAll() => syncAll();
+
+  /// 双向 LWW 全量对账：拉云端（含墓石）合并到本地；本地更新/云端缺失则推送上云
+  Future<void> syncAll() async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null || _db == null) return;
     try {
@@ -42,19 +45,43 @@ class ProjectSyncService {
           .from('project_groups')
           .select()
           .eq('user_id', userId);
+      final remoteGroups = <String, Map<String, dynamic>>{};
       for (final row in (groupRows as List)) {
-        await _upsertGroupFromRow(row as Map<String, dynamic>);
+        final m = row as Map<String, dynamic>;
+        remoteGroups[m['id'] as String] = m;
+        await _upsertGroupFromRow(m);
       }
       final projRows = await _client
           .from('projects')
           .select()
           .eq('user_id', userId);
+      final remoteProjects = <String, Map<String, dynamic>>{};
       for (final row in (projRows as List)) {
-        await _upsertProjectFromRow(row as Map<String, dynamic>);
+        final m = row as Map<String, dynamic>;
+        remoteProjects[m['id'] as String] = m;
+        await _upsertProjectFromRow(m);
       }
-      print('[ProjectSync] 拉取完成 groups=${groupRows.length} projects=${projRows.length}');
+
+      // 本地（含墓石）→ 云端缺失或本地更新则推送
+      if (_groupRepo != null) {
+        for (final g in await _groupRepo!.getAllRaw()) {
+          final r = remoteGroups[g.id];
+          if (r == null || g.updatedAt > (r['updated_at'] as int? ?? -1)) {
+            await pushGroup(g);
+          }
+        }
+      }
+      if (_projectRepo != null) {
+        for (final p in await _projectRepo!.getAllRaw()) {
+          final r = remoteProjects[p.id];
+          if (r == null || p.updatedAt > (r['updated_at'] as int? ?? -1)) {
+            await pushProject(p);
+          }
+        }
+      }
+      print('[ProjectSync] 全量对账完成 groups=${groupRows.length} projects=${projRows.length}');
     } catch (e, st) {
-      print('[ProjectSync] ❌ 拉取失败: $e\n$st');
+      print('[ProjectSync] ❌ 全量对账失败: $e\n$st');
     }
   }
 
@@ -73,6 +100,7 @@ class ProjectSyncService {
         'group_id': p.groupId,
         'sort_order': p.sortOrder,
         'archived': p.archived,
+        'deleted': p.deleted,
         'created_at': p.createdAt,
         'updated_at': p.updatedAt,
       });
@@ -104,6 +132,7 @@ class ProjectSyncService {
         'name': g.name,
         'color': g.color,
         'sort_order': g.sortOrder,
+        'deleted': g.deleted,
         'created_at': g.createdAt,
         'updated_at': g.updatedAt,
       });
@@ -152,6 +181,17 @@ class ProjectSyncService {
             final id = p.oldRecord['id'] as String?;
             if (id == null || _db == null) return;
             try {
+              // 墓碑保护：检查本地项目是否存活
+              final localProject = await (_db!.select(_db!.projects)
+                    ..where((t) => t.id.equals(id)))
+                  .getSingleOrNull();
+              if (localProject != null && localProject.deleted == 0) {
+                // 本地项目存活，拒绝物理删除，反推存活版本上云
+                print('[ProjectSync] 远端删除被拒绝: 本地活项目 ${id.substring(0, 8)} 反推');
+                await pushProject(localProject);
+                _emitChange();
+                return;
+              }
               await (_db!.delete(_db!.projects)
                     ..where((t) => t.id.equals(id)))
                   .go();
@@ -210,6 +250,22 @@ class ProjectSyncService {
     final id = row['id'] as String?;
     if (id == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
+    final remoteDeleted = row['deleted'] as int? ?? 0;
+    final remoteUpdated = row['updated_at'] as int? ?? now;
+
+    // 墓碑保护：检查本地项目是否存活
+    final localProject = await (_db!.select(_db!.projects)
+          ..where((p) => p.id.equals(id)))
+        .getSingleOrNull();
+    if (localProject != null && localProject.deleted == 0 && remoteDeleted == 1) {
+      // 本地项目存活，拒绝远端墓碑，反推存活版本上云
+      print('[ProjectSync] 墓碑保护: 本地活项目 ${id.substring(0, 8)} 拒绝被远端墓碑覆盖, localUpdated=${localProject.updatedAt}, remoteUpdated=$remoteUpdated');
+      if (localProject.updatedAt >= remoteUpdated) {
+        await pushProject(localProject);
+      }
+      return; // 不更新本地，不级联删任务
+    }
+
     final companion = ProjectsCompanion(
       id: Value(id),
       name: Value(row['name'] as String? ?? ''),
@@ -219,10 +275,31 @@ class ProjectSyncService {
           : const Value(null),
       sortOrder: Value(row['sort_order'] as int? ?? 0),
       archived: Value(row['archived'] as int? ?? 0),
+      deleted: Value(remoteDeleted),
       createdAt: Value(row['created_at'] as int? ?? now),
-      updatedAt: Value(row['updated_at'] as int? ?? now),
+      updatedAt: Value(remoteUpdated),
     );
     await _db!.into(_db!.projects).insertOnConflictUpdate(companion);
+    // 远端项目墓石 → 级联软删本地该项目下 tasks/checklist
+    // 仅当本地项目原本就是墓碑或不存在时才执行
+    if (remoteDeleted == 1 && (localProject == null || localProject.deleted == 1)) {
+      print('[ProjectSync] 级联软删项目 ${id.substring(0, 8)} 下的任务');
+      await _db!.transaction(() async {
+        final tasks = await (_db!.select(_db!.tasks)
+              ..where((t) => t.projectId.equals(id)))
+            .get();
+        for (final t in tasks) {
+          await (_db!.update(_db!.checklistItems)
+                ..where((c) => c.taskId.equals(t.id)))
+              .write(ChecklistItemsCompanion(
+            deleted: const Value(1),
+            updatedAt: Value(now),
+          ));
+        }
+        await (_db!.update(_db!.tasks)..where((t) => t.projectId.equals(id)))
+            .write(TasksCompanion(deleted: const Value(1), updatedAt: Value(now)));
+      });
+    }
     _emitChange();
   }
 
@@ -236,6 +313,7 @@ class ProjectSyncService {
       name: Value(row['name'] as String? ?? ''),
       color: Value(row['color'] as String? ?? '#4772FA'),
       sortOrder: Value(row['sort_order'] as int? ?? 0),
+      deleted: Value(row['deleted'] as int? ?? 0),
       createdAt: Value(row['created_at'] as int? ?? now),
       updatedAt: Value(row['updated_at'] as int? ?? now),
     );

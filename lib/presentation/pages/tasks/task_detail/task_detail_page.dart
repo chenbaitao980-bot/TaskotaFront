@@ -13,6 +13,7 @@ import 'widgets/checklist_section.dart';
 import 'widgets/subtask_tree_section.dart';
 import 'widgets/attachment_section.dart';
 import 'widgets/ai_decompose_section.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final Task task;
@@ -33,7 +34,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   late int _status;
   late int _savedStatus;
   late int _remindBeforeMinutes;
-  late int _reminderEnabled;
+  late bool _reminderEnabled;
   List<ChecklistItem> _checklistItems = [];
   bool _hasChanges = false;
   bool _allowPop = false;
@@ -50,7 +51,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ? DateTime.fromMillisecondsSinceEpoch(t.startDate!)
         : DateTime.now();
     _remindBeforeMinutes = t.remindBeforeMinutes;
-    _reminderEnabled = t.reminderEnabled;
+    _reminderEnabled = t.reminderEnabled > 0;
     _endDateTime = t.dueDate != null
         ? DateTime.fromMillisecondsSinceEpoch(t.dueDate!)
         : _startDateTime.add(const Duration(hours: 1));
@@ -155,7 +156,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.delete_outlined, color: AppTheme.error),
+                icon: Icon(Icons.delete_outlined, color: AppTheme.error),
                 onPressed: _deleteTask,
               ),
             ],
@@ -422,7 +423,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(bottom: 6),
             child: Row(
               children: [
@@ -443,7 +444,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             controller: _descController,
             minLines: 14,
             maxLines: 30,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               color: AppTheme.textPrimary,
               height: 1.6,
@@ -545,16 +546,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           const SizedBox(width: 6),
           Text(
             p?.name ?? '未分配',
-            style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+            style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
           ),
-          const Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textHint),
+          Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textHint),
         ]),
       ),
     );
   }
 
   Widget _priorityChipPill() {
-    const opts = [
+    final opts = [
       (0, '无', AppTheme.textHint),
       (1, '低', AppTheme.priorityP3),
       (3, '中', AppTheme.priorityP1),
@@ -595,34 +596,36 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     String fmt(DateTime d) =>
         '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     return _chipContainer(
-      onTap: () => _pickDateTime(true),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.calendar_today_rounded, size: 12, color: AppTheme.textSecondary),
+        Icon(Icons.calendar_today_rounded, size: 12, color: AppTheme.textSecondary),
         const SizedBox(width: 4),
-        Text(fmt(_startDateTime), style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary)),
-        const Padding(
+        InkWell(
+          onTap: () => _pickDateTime(true),
+          child: Text(fmt(_startDateTime), style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
+        ),
+        Padding(
           padding: EdgeInsets.symmetric(horizontal: 4),
           child: Icon(Icons.arrow_forward_rounded, size: 10, color: AppTheme.textHint),
         ),
         InkWell(
           onTap: () => _pickDateTime(false),
-          child: Text(fmt(_endDateTime), style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary)),
+          child: Text(fmt(_endDateTime), style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
         ),
       ]),
     );
   }
 
   Widget _reminderChip() {
-    final enabled = _reminderEnabled > 0;
+    final enabled = _reminderEnabled;
     final label = enabled ? '$_remindBeforeMinutes 分钟' : '关';
     return PopupMenuButton<int>(
       tooltip: '提前提醒',
       onSelected: (v) {
         setState(() {
           if (v < 0) {
-            _reminderEnabled = 0;
+            _reminderEnabled = false;
           } else {
-            _reminderEnabled = 1;
+            _reminderEnabled = true;
             _remindBeforeMinutes = v;
           }
         });
@@ -683,15 +686,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       borderColor: AppTheme.primaryColor.withValues(alpha: 0.35),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         _aiBusy
-            ? const SizedBox(
+            ? SizedBox(
                 width: 12, height: 12,
                 child: CircularProgressIndicator(
                     strokeWidth: 2, color: AppTheme.primaryColor),
               )
-            : const Icon(Icons.auto_awesome_rounded, size: 12, color: AppTheme.primaryColor),
+            : Icon(Icons.auto_awesome_rounded, size: 12, color: AppTheme.primaryColor),
         const SizedBox(width: 4),
         Text(_aiBusy ? '拆解中…' : 'AI 拆分',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12,
                 color: AppTheme.primaryColor,
                 fontWeight: FontWeight.w600)),
@@ -700,7 +703,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   Widget _divider() =>
-      const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle);
+      Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle);
 
   Widget _dropdownTile({
     required IconData icon,
@@ -717,7 +720,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           const SizedBox(width: 10),
           Text(
             label,
-            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
           ),
           const Spacer(),
           DropdownButtonHideUnderline(
@@ -728,8 +731,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 if (v != null) onChanged(v);
               },
               isDense: true,
-              style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
-              icon: const Icon(
+              style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+              icon: Icon(
                 Icons.arrow_drop_down,
                 size: 18,
                 color: AppTheme.textHint,
@@ -757,7 +760,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             const SizedBox(width: 10),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 color: AppTheme.textSecondary,
               ),
@@ -765,10 +768,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             const Spacer(),
             Text(
               _dateTimeLabel(dateTime),
-              style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+              style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, size: 18, color: AppTheme.textHint),
+            Icon(Icons.chevron_right, size: 18, color: AppTheme.textHint),
           ],
         ),
       ),
@@ -791,7 +794,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             secondary: Icon(
               Icons.notifications_active,
               size: 20,
-              color: _reminderEnabled > 0
+              color: _reminderEnabled
                   ? AppTheme.primaryColor
                   : AppTheme.textHint,
             ),
@@ -800,20 +803,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
             subtitle: Text(
-              _reminderEnabled > 0 ? '将在任务开始前通知您' : '不会发送提醒',
-              style: const TextStyle(
+              _reminderEnabled ? '将在任务开始前通知您' : '不会发送提醒',
+              style: TextStyle(
                 fontSize: 12,
                 color: AppTheme.textSecondary,
               ),
             ),
-            value: _reminderEnabled > 0,
+            value: _reminderEnabled,
             onChanged: (v) {
-              setState(() => _reminderEnabled = v ? 1 : 0);
+              setState(() => _reminderEnabled = v);
               _markChanged();
             },
           ),
-          if (_reminderEnabled > 0) ...[
-            const Divider(
+          if (_reminderEnabled) ...[
+            Divider(
               height: 0.5,
               indent: 52,
               color: AppTheme.borderSubtle,
@@ -859,13 +862,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
       title: Text(
         label,
-        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
       ),
       subtitle: Text(
         displayLabel,
-        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.arrow_drop_down,
         size: 20,
         color: AppTheme.textHint,
@@ -983,17 +986,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
     if (_titleController.text.trim().isEmpty) {
       if (showErrors) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('请输入任务标题')));
+        showAppSnackBar(context, '请输入任务标题');
       }
       return false;
     }
     if (!_endDateTime.isAfter(_startDateTime)) {
       if (showErrors) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('截止时间必须晚于开始时间')));
+        showAppSnackBar(context, '截止时间必须晚于开始时间');
       }
       return false;
     }
@@ -1013,11 +1012,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         startDate: _startDateTime.millisecondsSinceEpoch,
         dueDate: _endDateTime.millisecondsSinceEpoch,
         remindBeforeMinutes: _remindBeforeMinutes,
-        reminderEnabled: _reminderEnabled,
+        reminderEnabled: _reminderEnabled ? 1 : 0,
       ),
     );
     // 调度提醒通知
-    if (_reminderEnabled > 0) {
+    if (_reminderEnabled) {
       NotificationService().scheduleReminderForSchedule(
         scheduleId: widget.task.id,
         title: widget.task.title,

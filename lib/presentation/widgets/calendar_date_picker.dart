@@ -138,7 +138,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppTheme.bgCard,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           boxShadow: [
@@ -171,7 +171,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
               children: [
                 Text(
                   '${_currentMonth.year}年${_currentMonth.month}月',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -194,7 +194,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
                         child: Center(
                           child: Text(
                             label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: AppTheme.textSecondary,
@@ -208,7 +208,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
             // 日历网格
             _buildCalendarGrid(),
             const SizedBox(height: 12),
-            const Divider(color: AppTheme.borderSubtle, height: 1),
+            Divider(color: AppTheme.borderSubtle, height: 1),
             const SizedBox(height: 12),
             // 时间选择
             _buildTimeRow(),
@@ -238,9 +238,9 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
   Widget _buildTimeRow() {
     return Row(
       children: [
-        const Icon(Icons.access_time, size: 20, color: AppTheme.textSecondary),
+        Icon(Icons.access_time, size: 20, color: AppTheme.textSecondary),
         const SizedBox(width: 8),
-        const Text(
+        Text(
           '时间',
           style: TextStyle(
             fontSize: 14,
@@ -291,7 +291,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
                     value: v,
                     child: Text(
                       format(v),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         color: AppTheme.textPrimary,
                       ),
@@ -303,7 +303,7 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
           },
           isDense: true,
           icon: const Icon(Icons.arrow_drop_down, size: 18),
-          style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+          style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
         ),
       ),
     );

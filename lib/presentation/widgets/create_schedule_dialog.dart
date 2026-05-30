@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 /// 提前时间选项
 const List<Map<String, dynamic>> _remindBeforeOptions = [
@@ -145,7 +146,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
           const SizedBox(width: 12),
           Text(
             widget.isEditing ? '编辑日程' : '新建日程',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: AppTheme.textPrimary,
@@ -194,7 +195,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                       _dateLabel(_startDate),
                       () => _pickDate(isStart: true),
                     ),
-                    const Divider(
+                    Divider(
                       height: 0.5,
                       indent: 52,
                       color: AppTheme.borderSubtle,
@@ -205,7 +206,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                       _timeLabel(_startTime),
                       () => _pickTime(isStart: true),
                     ),
-                    const Divider(
+                    Divider(
                       height: 0.5,
                       indent: 52,
                       color: AppTheme.borderSubtle,
@@ -216,7 +217,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                       _dateLabel(_endDate),
                       () => _pickDate(isStart: false),
                     ),
-                    const Divider(
+                    Divider(
                       height: 0.5,
                       indent: 52,
                       color: AppTheme.borderSubtle,
@@ -234,7 +235,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
               // ── 优先级 ──
               Row(
                 children: [
-                  const Text(
+                  Text(
                     '优先级',
                     style: TextStyle(
                       fontSize: 14,
@@ -316,7 +317,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                   ? AppTheme.primaryColor
                   : AppTheme.textHint,
             ),
-            title: const Text(
+            title: Text(
               '启用提醒',
               style: TextStyle(
                 fontSize: 14,
@@ -326,13 +327,13 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
             ),
             subtitle: Text(
               _reminderEnabled ? '将在日程开始前通知您' : '不会发送提醒',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             value: _reminderEnabled,
             onChanged: (v) => setState(() => _reminderEnabled = v),
           ),
           if (_reminderEnabled) ...[
-            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             // ── 提前时间选择 ──
             _buildDropdownTile(
               icon: Icons.timer_outlined,
@@ -341,7 +342,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
               options: _remindBeforeOptions,
               onChanged: (v) => setState(() => _remindBeforeMinutes = v),
             ),
-            const Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             // ── 重复/一次性 ──
             SwitchListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -353,7 +354,7 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
                     ? AppTheme.warning
                     : AppTheme.textHint,
               ),
-              title: const Text(
+              title: Text(
                 '重复提醒',
                 style: TextStyle(
                   fontSize: 14,
@@ -364,13 +365,13 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
               subtitle: Text(
                 _isRepeating ? '将按间隔重复提醒直到您处理' : '仅提醒一次',
                 style:
-                    const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                    TextStyle(fontSize: 12, color: AppTheme.textSecondary),
               ),
               value: _isRepeating,
               onChanged: (v) => setState(() => _isRepeating = v),
             ),
             if (_isRepeating) ...[
-              const Divider(
+              Divider(
                   height: 0.5, indent: 52, color: AppTheme.borderSubtle),
               _buildDropdownTile(
                 icon: Icons.hourglass_bottom,
@@ -402,13 +403,13 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
       leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
       title: Text(
         label,
-        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
       ),
       subtitle: Text(
         selectedLabel,
-        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.arrow_drop_down,
         size: 20,
         color: AppTheme.textHint,
@@ -497,15 +498,11 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
 
   void _save() {
     if (_titleController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请输入标题')));
+      showAppSnackBar(context, '请输入标题');
       return;
     }
     if (!endDateTime.isAfter(startDateTime.add(const Duration(minutes: 14)))) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间至少 15 分钟')));
+      showAppSnackBar(context, '结束时间必须晚于开始时间至少 15 分钟');
       return;
     }
     Navigator.pop(context, {
@@ -538,13 +535,13 @@ class _CreateScheduleDialogState extends State<CreateScheduleDialog> {
       leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
       title: Text(
         label,
-        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
       ),
       subtitle: Text(
         value,
-        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.chevron_right,
         size: 18,
         color: AppTheme.textHint,

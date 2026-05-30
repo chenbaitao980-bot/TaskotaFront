@@ -5,6 +5,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/project_repository.dart';
 import '../../../widgets/calendar_date_picker.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskEditPage extends StatefulWidget {
   final Task task;
@@ -250,25 +251,19 @@ class _TaskEditPageState extends State<TaskEditPage> {
     if (!showErrors && _titleController.text.trim().isEmpty) return false;
     if (_startDate == null) {
       if (showErrors) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('请选择开始时间')));
+        showAppSnackBar(context, '请选择开始时间');
       }
       return false;
     }
     if (_dueDate == null) {
       if (showErrors) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('请选择截止时间')));
+        showAppSnackBar(context, '请选择截止时间');
       }
       return false;
     }
     if (!_dueDate!.isAfter(_startDate!)) {
       if (showErrors) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('截止时间必须晚于开始时间')));
+        showAppSnackBar(context, '截止时间必须晚于开始时间');
       }
       return false;
     }
@@ -324,7 +319,7 @@ class _DateField extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.textHint,
                     ),
@@ -348,7 +343,7 @@ class _DateField extends StatelessWidget {
             if (date != null)
               GestureDetector(
                 onTap: onClear,
-                child: const Icon(
+                child: Icon(
                   Icons.close,
                   size: 16,
                   color: AppTheme.textHint,

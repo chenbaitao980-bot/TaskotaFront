@@ -240,9 +240,7 @@ class _TaskListViewState extends State<TaskListView> {
     return DragTarget<String>(
       onWillAcceptWithDetails: (details) {
         final draggedId = details.data;
-        // 不能拖到自己身上
         if (draggedId == node.task.id) return false;
-        // 不能拖到自己的子节点（防止循环）：检查 dropTarget 是否是 dragged 的后代
         if (_isDescendant(draggedId, node.task.id)) return false;
         return true;
       },
@@ -268,7 +266,35 @@ class _TaskListViewState extends State<TaskListView> {
           ),
           margin: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // 树形连接线区（仅子节点显示）
+              if (node.depth > 0)
+                SizedBox(
+                  width: node.depth * 16.0,
+                  height: 48,
+                  child: CustomPaint(
+                    painter: _TreeLinesPainter(
+                      depth: node.depth,
+                      ancestorIsLast: node.ancestorIsLast,
+                      isLastSibling: node.isLastSibling,
+                    ),
+                  ),
+                ),
+              // 层级标签 R0/R1/R2
+              Container(
+                width: 22,
+                alignment: Alignment.center,
+                child: Text(
+                  'R${node.depth}',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textHint.withValues(alpha: 0.6),
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
               // 拖拽手柄（Draggable）
               _DragHandle(taskId: node.task.id, title: node.task.title),
               // 展开/折叠箭头
@@ -290,13 +316,13 @@ class _TaskListViewState extends State<TaskListView> {
                 )
               else
                 const SizedBox(width: 20),
-              // TaskCard 内容（展开箭头、拖拽手柄已在外层，内层关闭）
+              // TaskCard 内容（depth 传 0，缩进由外层树形线负责）
               Expanded(
                 child: TaskCard(
                   task: node.task,
                   projectName: widget.projectNames[node.task.projectId],
                   progress: widget.taskProgress[node.task.id] ?? 0,
-                  depth: node.depth,
+                  depth: 0,
                   hasChildren: false,
                   isExpanded: false,
                   onToggleExpand: null,
@@ -350,7 +376,7 @@ class _TaskListViewState extends State<TaskListView> {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.textHint, fontSize: 15),
+            style: TextStyle(color: AppTheme.textHint, fontSize: 15),
           ),
         ],
       ),
@@ -364,7 +390,7 @@ class _TaskListViewState extends State<TaskListView> {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: AppTheme.textSecondary,
@@ -379,7 +405,7 @@ class _TaskListViewState extends State<TaskListView> {
             ),
             child: Text(
               '$count',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 color: AppTheme.primaryColor,
                 fontWeight: FontWeight.w600,
@@ -405,7 +431,7 @@ class _TaskListViewState extends State<TaskListView> {
       child: ExpansionTile(
         title: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.check_circle_outline,
               size: 18,
               color: AppTheme.success,
@@ -413,7 +439,7 @@ class _TaskListViewState extends State<TaskListView> {
             const SizedBox(width: 8),
             Text(
               '已完成 (${completedTasks.length})',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 color: AppTheme.textSecondary,
               ),
@@ -425,6 +451,59 @@ class _TaskListViewState extends State<TaskListView> {
       ),
     );
   }
+}
+
+/// 树形连接线绘制
+class _TreeLinesPainter extends CustomPainter {
+  final int depth;
+  final List<bool> ancestorIsLast;
+  final bool isLastSibling;
+
+  const _TreeLinesPainter({
+    required this.depth,
+    required this.ancestorIsLast,
+    required this.isLastSibling,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFCCCCCC).withValues(alpha: 0.6)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    const colWidth = 16.0;
+    final midY = size.height / 2;
+
+    // 祖先层：若祖先非最后子节点，画竖线（贯通整行）
+    for (var i = 0; i < depth - 1; i++) {
+      if (!ancestorIsLast[i]) {
+        final x = i * colWidth + colWidth / 2;
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      }
+    }
+
+    // 当前层连接线
+    final cx = (depth - 1) * colWidth + colWidth / 2;
+    // 竖线：从顶部到中线（最后子节点只画上半段，否则贯通）
+    canvas.drawLine(
+      Offset(cx, 0),
+      Offset(cx, isLastSibling ? midY : size.height),
+      paint,
+    );
+    // 横线：从竖线到右边
+    canvas.drawLine(
+      Offset(cx, midY),
+      Offset(size.width, midY),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TreeLinesPainter old) =>
+      old.depth != depth ||
+      old.isLastSibling != isLastSibling ||
+      old.ancestorIsLast.length != ancestorIsLast.length;
 }
 
 /// 拖拽手柄组件
@@ -449,7 +528,7 @@ class _DragHandle extends StatelessWidget {
           ),
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
               color: AppTheme.textPrimary,
@@ -460,19 +539,19 @@ class _DragHandle extends StatelessWidget {
       childWhenDragging: Opacity(
         opacity: 0.3,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 8),
           child: Icon(
             Icons.drag_indicator_rounded,
-            size: 20,
+            size: 16,
             color: AppTheme.textHint,
           ),
         ),
       ),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 8),
         child: Icon(
           Icons.drag_indicator_rounded,
-          size: 20,
+          size: 16,
           color: AppTheme.textHint.withValues(alpha: 0.5),
         ),
       ),

@@ -42,7 +42,7 @@ class TaskInfoSection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.description_outlined,
                           size: 16, color: AppTheme.textHint),
@@ -59,7 +59,7 @@ class TaskInfoSection extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     task.description,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       color: AppTheme.textPrimary,
                       height: 1.5,
@@ -73,12 +73,12 @@ class TaskInfoSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Row(
               children: [
-                const Icon(Icons.access_time,
+                Icon(Icons.access_time,
                     size: 16, color: AppTheme.textHint),
                 const SizedBox(width: 8),
                 Text(
                   '创建于 ${_formatDateTime(task.createdAt)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppTheme.textHint,
                   ),
@@ -100,7 +100,7 @@ class TaskInfoSection extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             text,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               color: AppTheme.textSecondary,
             ),

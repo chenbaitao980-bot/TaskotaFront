@@ -11,13 +11,18 @@ class ProjectGroupRepository {
 
   Future<List<ProjectGroup>> getAll() async {
     return (_db.select(_db.projectGroups)
+          ..where((g) => g.deleted.equals(0))
           ..orderBy([(g) => OrderingTerm(expression: g.sortOrder)]))
         .get();
   }
 
+  /// 不过滤墓石（用于全量对账上推）
+  Future<List<ProjectGroup>> getAllRaw() =>
+      _db.select(_db.projectGroups).get();
+
   Future<ProjectGroup?> get(String id) async {
     final result = await (_db.select(_db.projectGroups)
-          ..where((g) => g.id.equals(id)))
+          ..where((g) => g.id.equals(id) & g.deleted.equals(0)))
         .get();
     return result.isNotEmpty ? result.first : null;
   }
@@ -59,14 +64,20 @@ class ProjectGroupRepository {
 
   /// 删除分组：所属项目的 group_id 改为 null，不级联删除项目
   Future<void> delete(String id) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
     // 用事务原子完成本地两步，避免被 Realtime 回调中途抢锁
     await _db.transaction(() async {
       await (_db.update(_db.projects)..where((p) => p.groupId.equals(id))).write(
-        const ProjectsCompanion(groupId: Value(null)),
+        ProjectsCompanion(groupId: const Value(null), updatedAt: Value(now)),
       );
-      await (_db.delete(_db.projectGroups)..where((g) => g.id.equals(id))).go();
+      await (_db.update(_db.projectGroups)..where((g) => g.id.equals(id))).write(
+        ProjectGroupsCompanion(deleted: const Value(1), updatedAt: Value(now)),
+      );
     });
-    // 网络 IO 放事务外
-    _syncService?.removeGroup(id);
+    // 网络 IO 放事务外：推送墓石
+    final row = await (_db.select(_db.projectGroups)
+          ..where((g) => g.id.equals(id)))
+        .get();
+    if (row.isNotEmpty) _syncService?.pushGroup(row.first);
   }
 }

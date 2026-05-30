@@ -30,12 +30,40 @@ class AttachmentSyncService {
           .from('task_attachments')
           .select()
           .eq('user_id', userId);
+      final remoteIds = <String>{};
       for (final r in (rows as List)) {
-        await _upsertFromRow(r as Map<String, dynamic>);
+        final m = r as Map<String, dynamic>;
+        remoteIds.add(m['id'] as String);
+        await _upsertFromRow(m);
       }
-      print('[AttachSync] ✓ 拉取完成: ${rows.length}');
+      // 双向对账：本地有、云端缺失的 metadata 补传上云
+      final localRows = await _db!.select(_db!.taskAttachments).get();
+      for (final a in localRows) {
+        if (!remoteIds.contains(a.id)) {
+          await _pushRow(a, userId);
+        }
+      }
+      print('[AttachSync] ✓ 对账完成: 云端 ${rows.length} / 本地 ${localRows.length}');
     } catch (e) {
-      print('[AttachSync] ❌ 拉取失败: $e');
+      print('[AttachSync] ❌ 对账失败: $e');
+    }
+  }
+
+  Future<void> _pushRow(db.TaskAttachment a, String userId) async {
+    try {
+      await _client.from('task_attachments').upsert({
+        'id': a.id,
+        'user_id': userId,
+        'task_id': a.taskId,
+        'file_name': a.fileName,
+        'storage_path': a.storagePath,
+        'size_bytes': a.sizeBytes,
+        'mime_type': a.mimeType,
+        'added_at': a.addedAt,
+        'updated_at': a.updatedAt,
+      });
+    } catch (e) {
+      print('[AttachSync] ❌ 补传 ${a.id} 失败: $e');
     }
   }
 

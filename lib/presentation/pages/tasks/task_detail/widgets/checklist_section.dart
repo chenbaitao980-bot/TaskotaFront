@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../data/database/app_database.dart';
 import '../../../../../services/obsidian_service.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class ChecklistSection extends StatefulWidget {
   final List<ChecklistItem> items;
@@ -57,12 +58,12 @@ class _ChecklistSectionState extends State<ChecklistSection> {
             padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
             child: Row(
               children: [
-                const Icon(Icons.checklist_rounded,
+                Icon(Icons.checklist_rounded,
                     size: 14, color: AppTheme.textSecondary),
                 const SizedBox(width: 4),
                 Text(
                   '检查项 ${total > 0 ? '($completed/$total)' : ''}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textSecondary,
@@ -85,7 +86,8 @@ class _ChecklistSectionState extends State<ChecklistSection> {
               ),
             ),
           // 列表（限高+滚动）
-          Flexible(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -187,7 +189,7 @@ class _ChecklistSectionState extends State<ChecklistSection> {
             // 删除
             GestureDetector(
               onTap: () => widget.onDelete(item.id),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(8),
                 child: Icon(Icons.close, size: 16, color: AppTheme.textHint),
               ),
@@ -232,7 +234,7 @@ class _ChecklistSectionState extends State<ChecklistSection> {
             ),
             if (item.obsidianUri != null && item.obsidianUri!.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.link_off, color: AppTheme.textHint),
+                leading: Icon(Icons.link_off, color: AppTheme.textHint),
                 title: const Text('移除 Obsidian 关联'),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -240,9 +242,9 @@ class _ChecklistSectionState extends State<ChecklistSection> {
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppTheme.error),
+              leading: Icon(Icons.delete_outline, color: AppTheme.error),
               title:
-                  const Text('删除', style: TextStyle(color: AppTheme.error)),
+                  Text('删除', style: TextStyle(color: AppTheme.error)),
               onTap: () {
                 Navigator.pop(ctx);
                 widget.onDelete(item.id);
@@ -308,12 +310,7 @@ class _ChecklistSectionState extends State<ChecklistSection> {
 
     final success = await ObsidianService.openUri(uri);
     if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('无法打开 Obsidian，请确认已安装'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      showAppSnackBar(context, '无法打开 Obsidian，请确认已安装');
     }
   }
 }
@@ -394,9 +391,7 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
 
   void _confirm() {
     if (_relativePath == null || _vaultName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先选择一个 Obsidian Vault 内的 .md 文件')),
-      );
+      showAppSnackBar(context, '请先选择一个 Obsidian Vault 内的 .md 文件');
       return;
     }
 
@@ -453,7 +448,7 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
               _infoRow('路径', _relativePath!),
             ] else if (_selectedFilePath != null) ...[
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '未检测到 Obsidian Vault（.obsidian 目录）',
                 style: TextStyle(fontSize: 12, color: AppTheme.warning),
               ),
@@ -498,7 +493,7 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
           width: 48,
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: AppTheme.textHint,
             ),
@@ -507,7 +502,7 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+            style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
           ),
         ),
       ],

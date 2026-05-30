@@ -5,6 +5,7 @@ import '../../../models/entities/task_breakdown.dart';
 import '../../../services/local_storage_service.dart';
 import 'task_detail_page.dart';
 import 'create_task_page.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskListPage extends StatefulWidget {
   final String status;
@@ -75,9 +76,7 @@ class _TaskListPageState extends State<TaskListPage> {
     );
     await _loadTasks();
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('已设为${_statusLabel(status)}')));
+    showAppSnackBar(context, '已设为${_statusLabel(status)}');
   }
 
   Future<void> _deleteTask(TaskBreakdown task) async {
@@ -103,9 +102,7 @@ class _TaskListPageState extends State<TaskListPage> {
     await _storage.deleteTask(task.id);
     await _loadTasks();
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('任务已删除')));
+    showAppSnackBar(context, '任务已删除');
   }
 
   @override
@@ -142,9 +139,7 @@ class _TaskListPageState extends State<TaskListPage> {
                     _SchedulePendingCard(
                       schedule: schedule,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('请在日历中编辑日程')),
-                        );
+                        showAppSnackBar(context, '请在日历中编辑日程');
                       },
                     ),
                     const SizedBox(height: 8),
@@ -270,7 +265,7 @@ class _TaskCard extends StatelessWidget {
                           children: [
                             Text(
                               task.title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w500,
@@ -302,7 +297,7 @@ class _TaskCard extends StatelessWidget {
                                 const SizedBox(width: 6),
                                 Text(
                                   statusLabel,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: AppTheme.textSecondary,
                                     fontSize: 12,
                                   ),
@@ -311,7 +306,7 @@ class _TaskCard extends StatelessWidget {
                                   const SizedBox(width: 6),
                                   Text(
                                     '截止 $dateLabel',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppTheme.textHint,
                                       fontSize: 12,
                                     ),
@@ -332,13 +327,13 @@ class _TaskCard extends StatelessWidget {
                             onSetStatus(value);
                           }
                         },
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.more_horiz,
                           color: AppTheme.textHint,
                           size: 20,
                         ),
                         itemBuilder: (context) => [
-                          const PopupMenuItem(
+                          PopupMenuItem(
                             value: 'edit',
                             child: Row(
                               children: [
@@ -366,7 +361,7 @@ class _TaskCard extends StatelessWidget {
                             child: Text('设为已完成'),
                           ),
                           const PopupMenuDivider(),
-                          const PopupMenuItem(
+                          PopupMenuItem(
                             value: 'delete',
                             child: Text(
                               '删除',
@@ -436,7 +431,7 @@ class _SchedulePendingCard extends StatelessWidget {
                           color: AppTheme.success.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.event_note,
                           color: AppTheme.success,
                           size: 20,
@@ -449,7 +444,7 @@ class _SchedulePendingCard extends StatelessWidget {
                           children: [
                             Text(
                               schedule.title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w500,
@@ -460,7 +455,7 @@ class _SchedulePendingCard extends StatelessWidget {
                             const SizedBox(height: 3),
                             Text(
                               '日程 · ${_timeLabel(schedule.startTime)} - ${_timeLabel(schedule.endTime)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.textSecondary,
                                 fontSize: 12,
                               ),
@@ -468,7 +463,7 @@ class _SchedulePendingCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const Icon(
+                      Icon(
                         Icons.calendar_today_outlined,
                         size: 18,
                         color: AppTheme.textHint,
@@ -506,7 +501,7 @@ class _EmptyTaskState extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               '$title暂无任务',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 15,
               ),

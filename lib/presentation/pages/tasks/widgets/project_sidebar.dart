@@ -102,7 +102,7 @@ class ProjectSidebar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  const Text(
+                  Text(
                     '项目',
                     style: TextStyle(
                       fontSize: 13,
@@ -138,7 +138,7 @@ class ProjectSidebar extends StatelessWidget {
             // 项目列表（按分组）
             Expanded(
               child: projects.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         '暂无项目，点击 + 创建',
                         style: TextStyle(color: AppTheme.textHint),
@@ -179,7 +179,7 @@ class ProjectSidebar extends StatelessWidget {
                 leading: Icon(Icons.folder_rounded, size: 22, color: groupColor),
                 title: Text(
                   g.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary,
@@ -190,13 +190,13 @@ class ProjectSidebar extends StatelessWidget {
                   children: [
                     Text(
                       '$prog%',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12,
                           color: AppTheme.textHint,
                           fontWeight: FontWeight.w600),
                     ),
                     PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_horiz, size: 16, color: AppTheme.textHint),
+                      icon: Icon(Icons.more_horiz, size: 16, color: AppTheme.textHint),
                       padding: EdgeInsets.zero,
                       onSelected: (action) {
                         if (action == 'edit') onEditGroup?.call(g);
@@ -234,7 +234,7 @@ class ProjectSidebar extends StatelessWidget {
           if (ungrouped.isNotEmpty) ...[
             const SizedBox(height: 8),
             if (groups.isNotEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Text(
                   '未分组',
@@ -324,7 +324,7 @@ class ProjectSidebar extends StatelessWidget {
           children: [
             Text(
               '$progress%',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 color: AppTheme.textHint,
                 fontWeight: FontWeight.w600,
@@ -339,7 +339,7 @@ class ProjectSidebar extends StatelessWidget {
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'edit',
                   child: Row(
                     children: [
@@ -353,7 +353,7 @@ class ProjectSidebar extends StatelessWidget {
                     ],
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'delete',
                   child: Row(
                     children: [
@@ -368,7 +368,7 @@ class ProjectSidebar extends StatelessWidget {
                   ),
                 ),
               ],
-              icon: const Icon(
+              icon: Icon(
                 Icons.more_horiz,
                 size: 18,
                 color: AppTheme.textHint,

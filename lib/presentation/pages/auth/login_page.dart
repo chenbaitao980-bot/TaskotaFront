@@ -7,6 +7,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
+import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -48,9 +49,7 @@ class _LoginPageState extends State<LoginPage>
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入邮箱和密码')),
-      );
+      showAppSnackBar(context, '请输入邮箱和密码');
       return;
     }
 
@@ -67,16 +66,12 @@ class _LoginPageState extends State<LoginPage>
           }
         } else {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('密码错误')),
-            );
+            showAppSnackBar(context, '密码错误');
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('登录失败: $e')),
-          );
+          showAppSnackBar(context, '登录失败: $e');
         }
       } finally {
         if (mounted) setState(() => _isLoading = false);
@@ -95,9 +90,7 @@ class _LoginPageState extends State<LoginPage>
         if (state is Authenticated || state is LocalAuthenticated) {
           AppRouter.navigateToAndReplace(context, AppRouter.home);
         } else if (state is AuthError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+          showAppSnackBar(context, state.message);
         }
       },
       builder: (context, state) {
@@ -131,7 +124,7 @@ class _LoginPageState extends State<LoginPage>
                                 ),
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.smart_toy_rounded,
                                 size: 44,
                                 color: AppTheme.primaryColor,
@@ -150,7 +143,7 @@ class _LoginPageState extends State<LoginPage>
                                 ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             '你的 AI 日程管家',
                             textAlign: TextAlign.center,
                             style: TextStyle(
