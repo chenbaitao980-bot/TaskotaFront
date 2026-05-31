@@ -368,7 +368,9 @@ class TaskRepository {
         return;
       }
       // 反向保护：本地未删除(活任务)不被远端墓石覆盖
-      if (existing.deleted == 0 && remoteDeleted == 1) {
+      if (existing.deleted == 0 &&
+          remoteDeleted == 1 &&
+          existing.updatedAt > remoteUpdated) {
         flog('[syncFromJson] 反向墓石保护: 本地活任务 ${id.substring(0, 8)} 拒绝被远端墓石覆盖, localUpdated=${existing.updatedAt}, remoteUpdated=$remoteUpdated');
         // 本地是活的，远端要删除 → 以本地为准，反推到云端
         return;

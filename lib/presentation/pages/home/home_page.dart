@@ -24,7 +24,6 @@ import '../../blocs/task_new/task_state.dart';
 import '../../widgets/calendar_date_picker.dart';
 import '../../widgets/create_schedule_dialog.dart';
 import '../calendar/calendar_page.dart';
-import '../onboarding/onboarding_page.dart';
 import '../profile/profile_page.dart';
 import '../task/create_task_page.dart';
 import '../task/task_list_page.dart';
@@ -54,9 +53,9 @@ class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
   final LocalStorageService _storage = LocalStorageService();
   bool _storageReady = false;
-  bool _onboardingPromptChecked = false;
   StreamSubscription<sb.AuthState>? _authSub;
   StreamSubscription<void>? _projectChangesSub;
+  StreamSubscription<void>? _taskChangesSub;
   Timer? _projectChangesDebounce;
   bool _projectSyncStarted = false;
 
@@ -73,21 +72,9 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _authSub?.cancel();
     _projectChangesSub?.cancel();
+    _taskChangesSub?.cancel();
     _projectChangesDebounce?.cancel();
     super.dispose();
-  }
-
-  void _checkOnboarding() {
-    if (_onboardingPromptChecked || _storage.onboardingCompleted) return;
-    _onboardingPromptChecked = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_storage.onboardingCompleted && mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const OnboardingPage()),
-        );
-      }
-    });
   }
 
   List<Widget> _buildPages() {
@@ -116,7 +103,6 @@ class _HomePageState extends State<HomePage> {
     // 所有业务数据同步统一在登录后启动（见 _setupProjectSyncOnAuth）
     _setupProjectSyncOnAuth();
     _loadStats();
-    _checkOnboarding();
     if (mounted) setState(() {});
   }
 
@@ -144,15 +130,27 @@ class _HomePageState extends State<HomePage> {
         // 远端变更（Realtime/拉取）后 debounce 触发 LoadTasks，让 sidebar 实时刷新
         _projectChangesSub ??= ProjectSyncService.instance.changes.listen((_) {
           _projectChangesDebounce?.cancel();
-          _projectChangesDebounce =
-              Timer(const Duration(milliseconds: 500), () {
-            if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
-          });
+          _projectChangesDebounce = Timer(
+            const Duration(milliseconds: 500),
+            () {
+              if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+            },
+          );
+        });
+        _taskChangesSub ??= TaskSyncService.instance.changes.listen((_) {
+          _projectChangesDebounce?.cancel();
+          _projectChangesDebounce = Timer(
+            const Duration(milliseconds: 500),
+            () {
+              if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+            },
+          );
         });
       }
       // 每次登录/会话恢复都跑一次全量对账
       runSyncAll();
     }
+
     startIfReady();
     _authSub = client.auth.onAuthStateChange.listen((data) {
       if (data.event == sb.AuthChangeEvent.signedIn ||
@@ -217,7 +215,9 @@ class _HomePageState extends State<HomePage> {
         try {
           if (context.mounted) {
             context.read<ScheduleBloc>().add(
-              CreateSchedule(schedule: newSchedule.copyWith(syncStatus: 'synced')),
+              CreateSchedule(
+                schedule: newSchedule.copyWith(syncStatus: 'synced'),
+              ),
             );
           }
         } catch (_) {
@@ -528,7 +528,15 @@ class _HomeContentState extends State<_HomeContent> {
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
   String _statsPeriod = 'day'; // 完成率统计周期: 'day'|'week'|'month'|'year'
-  String? _filterProjectId;
+  final Set<String> _filterProjectIds = {};
+  String? get _filterProjectId =>
+      _filterProjectIds.length == 1 ? _filterProjectIds.first : null;
+  set _filterProjectId(String? value) {
+    _filterProjectIds
+      ..clear()
+      ..addAll(value == null ? const [] : [value]);
+  }
+
   Timer? _timelineScrollDebounce;
   double _viewportWidth = 0;
 
@@ -549,8 +557,7 @@ class _HomeContentState extends State<_HomeContent> {
       ..addListener(() {
         // 滚动时 debounce 触发高度重算
         _timelineScrollDebounce?.cancel();
-        _timelineScrollDebounce =
-            Timer(const Duration(milliseconds: 120), () {
+        _timelineScrollDebounce = Timer(const Duration(milliseconds: 120), () {
           if (mounted) setState(() {});
         });
       });
@@ -582,6 +589,10 @@ class _HomeContentState extends State<_HomeContent> {
     if (widget.taskRepository != null) {
       dbTasks = await widget.taskRepository!.getAll();
     }
+    final excludedProjectIds = widget.storage.excludedProjectIds;
+    dbTasks = dbTasks
+        .where((task) => !excludedProjectIds.contains(task.projectId))
+        .toList();
 
     // Build timeline items
     final timelineItems = <_TimelineTask>[];
@@ -590,17 +601,19 @@ class _HomeContentState extends State<_HomeContent> {
     // From storage (TaskBreakdown)
     for (final t in storageTasks) {
       final date = t.startDate ?? t.endDate ?? now;
-      timelineItems.add(_TimelineTask(
-        id: t.id,
-        title: t.title,
-        description: t.description,
-        date: date,
-        isCompleted: t.status == 'completed',
-        priority: t.priority,
-        source: 'storage',
-        projectId: null,
-        taskId: t.id,
-      ));
+      timelineItems.add(
+        _TimelineTask(
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          date: date,
+          isCompleted: t.status == 'completed',
+          priority: t.priority,
+          source: 'storage',
+          projectId: null,
+          taskId: t.id,
+        ),
+      );
     }
 
     // From DB (Task)
@@ -608,24 +621,26 @@ class _HomeContentState extends State<_HomeContent> {
       final date = t.startDate != null
           ? DateTime.fromMillisecondsSinceEpoch(t.startDate!)
           : (t.dueDate != null
-              ? DateTime.fromMillisecondsSinceEpoch(t.dueDate!)
-              : now);
+                ? DateTime.fromMillisecondsSinceEpoch(t.dueDate!)
+                : now);
       final end = t.dueDate != null
           ? DateTime.fromMillisecondsSinceEpoch(t.dueDate!)
           : null;
-      timelineItems.add(_TimelineTask(
-        id: t.id,
-        title: t.title,
-        description: t.description,
-        date: date,
-        endDate: end,
-        isCompleted: t.status == 2,
-        priority: _dbPriorityToLabel(t.priority),
-        source: 'db',
-        projectId: t.projectId,
-        taskId: t.id,
-        parentId: t.parentId,
-      ));
+      timelineItems.add(
+        _TimelineTask(
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          date: date,
+          endDate: end,
+          isCompleted: t.status == 2,
+          priority: _dbPriorityToLabel(t.priority),
+          source: 'db',
+          projectId: t.projectId,
+          taskId: t.id,
+          parentId: t.parentId,
+        ),
+      );
     }
 
     // Sort by date, then by title
@@ -655,8 +670,9 @@ class _HomeContentState extends State<_HomeContent> {
 
     // Preserve previous selection if task still exists
     if (_selectedTaskId != null) {
-      final sameTask =
-          _timelineTasks.where((t) => t.id == _selectedTaskId).firstOrNull;
+      final sameTask = _timelineTasks
+          .where((t) => t.id == _selectedTaskId)
+          .firstOrNull;
       if (sameTask != null) {
         _selectedTask = sameTask;
       } else {
@@ -681,11 +697,14 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   void _applyProjectFilter() {
-    if (_filterProjectId == null) {
+    if (_filterProjectIds.isEmpty) {
       _filteredTasks = List.from(_timelineTasks);
     } else {
       _filteredTasks = _timelineTasks
-          .where((t) => t.projectId == _filterProjectId)
+          .where(
+            (t) =>
+                t.projectId != null && _filterProjectIds.contains(t.projectId),
+          )
           .toList();
     }
   }
@@ -731,8 +750,9 @@ class _HomeContentState extends State<_HomeContent> {
       _timelineController.jumpTo(max(0.0, target - midScreen + _hourWidth / 2));
 
       // Select nearest task for today if any
-      final todayTasks = _filteredTasks.where((t) =>
-          _isSameDayDate(t.date, today) && !t.isCompleted).toList();
+      final todayTasks = _filteredTasks
+          .where((t) => _isSameDayDate(t.date, today) && !t.isCompleted)
+          .toList();
       if (todayTasks.isNotEmpty) {
         _selectTask(todayTasks.first);
       }
@@ -809,10 +829,14 @@ class _HomeContentState extends State<_HomeContent> {
   /// Normalize DB priority int to label format.
   String _dbPriorityToLabel(int p) {
     switch (p) {
-      case 5: return 'P0';
-      case 3: return 'P1';
-      case 1: return 'P2';
-      default: return 'P3';
+      case 5:
+        return 'P0';
+      case 3:
+        return 'P1';
+      case 1:
+        return 'P2';
+      default:
+        return 'P3';
     }
   }
 
@@ -837,10 +861,14 @@ class _HomeContentState extends State<_HomeContent> {
 
   String _priorityLabel(String priority) {
     switch (priority) {
-      case 'P0': return '紧急';
-      case 'P1': return '重要';
-      case 'P2': return '普通';
-      case 'P3': return '低';
+      case 'P0':
+        return '紧急';
+      case 'P1':
+        return '重要';
+      case 'P2':
+        return '普通';
+      case 'P3':
+        return '低';
       default:
         if (priority == '5') return '紧急';
         if (priority == '3') return '重要';
@@ -850,7 +878,9 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   Widget _buildParentBanner(String parentId) {
-    final parentTask = _timelineTasks.where((t) => t.taskId == parentId).firstOrNull;
+    final parentTask = _timelineTasks
+        .where((t) => t.taskId == parentId)
+        .firstOrNull;
 
     // Also try to load from subtask cache — parent might not be in timeline
     final parentTitle = parentTask?.title ?? '';
@@ -874,9 +904,7 @@ class _HomeContentState extends State<_HomeContent> {
             Icon(
               Icons.subdirectory_arrow_left_rounded,
               size: 16,
-              color: hasParent
-                  ? AppTheme.primaryColor
-                  : AppTheme.textHint,
+              color: hasParent ? AppTheme.primaryColor : AppTheme.textHint,
             ),
             const SizedBox(width: 6),
             Text(
@@ -886,9 +914,7 @@ class _HomeContentState extends State<_HomeContent> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: hasParent
-                    ? AppTheme.primaryColor
-                    : AppTheme.textHint,
+                color: hasParent ? AppTheme.primaryColor : AppTheme.textHint,
               ),
             ),
             if (hasParent) ...[
@@ -975,9 +1001,9 @@ class _HomeContentState extends State<_HomeContent> {
         const SizedBox(height: 4),
         Text(
           _filteredTasks.isNotEmpty
-              ? (_filterProjectId != null
-                  ? '筛选出 ${_filteredTasks.length} 个任务'
-                  : '时间轴上有 ${_filteredTasks.length} 个任务节点')
+              ? (_filterProjectIds.isNotEmpty
+                    ? '筛选出 ${_filteredTasks.length} 个任务'
+                    : '时间轴上有 ${_filteredTasks.length} 个任务节点')
               : '没有匹配的任务',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
@@ -1015,8 +1041,9 @@ class _HomeContentState extends State<_HomeContent> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    final todayCount =
-        _filteredTasks.where((t) => _isSameDayDate(t.date, today)).length;
+    final todayCount = _filteredTasks
+        .where((t) => _isSameDayDate(t.date, today))
+        .length;
 
     final (start, end) = _periodRange(_statsPeriod);
     final inPeriod = _filteredTasks
@@ -1075,20 +1102,14 @@ class _HomeContentState extends State<_HomeContent> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          Text(
-            label,
-            style: TextStyle(color: AppTheme.textHint, fontSize: 10),
-          ),
+          Text(label, style: TextStyle(color: AppTheme.textHint, fontSize: 10)),
         ],
       ),
     );
   }
 
-  Widget _compactDivider() => Container(
-        width: 0.5,
-        height: 28,
-        color: AppTheme.borderSubtle,
-      );
+  Widget _compactDivider() =>
+      Container(width: 0.5, height: 28, color: AppTheme.borderSubtle);
 
   Widget _buildStatItem({
     required String label,
@@ -1105,10 +1126,10 @@ class _HomeContentState extends State<_HomeContent> {
             Text(
               value,
               style: GoogleFonts.jetBrainsMonoTextTheme().titleLarge?.copyWith(
-                    color: valueColor,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: valueColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             if (showChevron)
               Icon(Icons.chevron_right, size: 16, color: AppTheme.error),
@@ -1126,8 +1147,9 @@ class _HomeContentState extends State<_HomeContent> {
   void _showStatsDetail() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final todayCount =
-        _filteredTasks.where((t) => _isSameDayDate(t.date, today)).length;
+    final todayCount = _filteredTasks
+        .where((t) => _isSameDayDate(t.date, today))
+        .length;
     final overdueCount = _filteredTasks
         .where((t) => t.date.isBefore(today) && !t.isCompleted)
         .length;
@@ -1150,7 +1172,8 @@ class _HomeContentState extends State<_HomeContent> {
                 children: [
                   const SizedBox(height: 8),
                   Container(
-                    width: 40, height: 4,
+                    width: 40,
+                    height: 4,
                     decoration: BoxDecoration(
                       color: AppTheme.textHint.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(2),
@@ -1161,11 +1184,13 @@ class _HomeContentState extends State<_HomeContent> {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _buildStatItem(
-                        label: '今日任务', value: '$todayCount',
+                        label: '今日任务',
+                        value: '$todayCount',
                         valueColor: AppTheme.textPrimary,
                       ),
                       _buildStatItem(
-                        label: '完成率', value: '$completedCount/${inPeriod.length}',
+                        label: '完成率',
+                        value: '$completedCount/${inPeriod.length}',
                         valueColor: AppTheme.primaryColor,
                       ),
                       GestureDetector(
@@ -1176,7 +1201,8 @@ class _HomeContentState extends State<_HomeContent> {
                               }
                             : null,
                         child: _buildStatItem(
-                          label: '逾期', value: '$overdueCount',
+                          label: '逾期',
+                          value: '$overdueCount',
                           valueColor: overdueCount > 0
                               ? AppTheme.error
                               : AppTheme.textPrimary,
@@ -1189,9 +1215,12 @@ class _HomeContentState extends State<_HomeContent> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: ['日', '周', '月', '年'].map((label) {
-                      final p = label == '日' ? 'day'
-                          : label == '周' ? 'week'
-                          : label == '月' ? 'month'
+                      final p = label == '日'
+                          ? 'day'
+                          : label == '周'
+                          ? 'week'
+                          : label == '月'
+                          ? 'month'
                           : 'year';
                       final selected = sheetPeriod == p;
                       return Padding(
@@ -1204,10 +1233,14 @@ class _HomeContentState extends State<_HomeContent> {
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 4),
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: selected
-                                  ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                                  ? AppTheme.primaryColor.withValues(
+                                      alpha: 0.15,
+                                    )
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
@@ -1247,10 +1280,11 @@ class _HomeContentState extends State<_HomeContent> {
   void _showOverdueSheet() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final overdue = _filteredTasks
-        .where((t) => t.date.isBefore(today) && !t.isCompleted)
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final overdue =
+        _filteredTasks
+            .where((t) => t.date.isBefore(today) && !t.isCompleted)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     if (overdue.isEmpty) return;
 
     showModalBottomSheet(
@@ -1263,13 +1297,18 @@ class _HomeContentState extends State<_HomeContent> {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
               child: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded,
-                      size: 18, color: AppTheme.error),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 18,
+                    color: AppTheme.error,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     '逾期任务 (${overdue.length})',
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -1299,8 +1338,11 @@ class _HomeContentState extends State<_HomeContent> {
                       _formatTaskDate(task.date),
                       style: TextStyle(color: AppTheme.error, fontSize: 12),
                     ),
-                    trailing: Icon(Icons.chevron_right,
-                        size: 18, color: AppTheme.textHint),
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: AppTheme.textHint,
+                    ),
                     onTap: () {
                       Navigator.pop(ctx);
                       // 选中时间轴节点并展开详情卡（时间轴随之切换天/小时）
@@ -1343,22 +1385,27 @@ class _HomeContentState extends State<_HomeContent> {
                     value: null,
                     child: Text('全部项目', style: TextStyle(fontSize: 13)),
                   ),
-                  ...projects.map((p) => DropdownMenuItem(
-                    value: p.id,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8, height: 8,
-                          decoration: BoxDecoration(
-                            color: Color(int.parse(p.color.replaceFirst('#', '0xFF'))),
-                            shape: BoxShape.circle,
+                  ...projects.map(
+                    (p) => DropdownMenuItem(
+                      value: p.id,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: Color(
+                                int.parse(p.color.replaceFirst('#', '0xFF')),
+                              ),
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(p.name, style: const TextStyle(fontSize: 13)),
-                      ],
+                          const SizedBox(width: 6),
+                          Text(p.name, style: const TextStyle(fontSize: 13)),
+                        ],
+                      ),
                     ),
-                  )),
+                  ),
                 ],
                 onChanged: (id) {
                   setState(() {
@@ -1367,6 +1414,16 @@ class _HomeContentState extends State<_HomeContent> {
                   });
                 },
               ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _showProjectFilterDialog(projects),
+            child: Icon(
+              Icons.checklist_rtl,
+              size: 16,
+              color: _filterProjectIds.length > 1
+                  ? AppTheme.primaryColor
+                  : AppTheme.textHint,
             ),
           ),
           if (_filterProjectId != null)
@@ -1385,6 +1442,68 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   // ──────────────────────────────────────────────
+  Future<void> _showProjectFilterDialog(List<Project> projects) async {
+    final draft = Set<String>.from(_filterProjectIds);
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('筛选项目'),
+          content: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CheckboxListTile(
+                    value: draft.isEmpty,
+                    title: const Text('全部项目'),
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (_) => setDialogState(draft.clear),
+                  ),
+                  for (final project in projects)
+                    CheckboxListTile(
+                      value: draft.contains(project.id),
+                      title: Text(project.name),
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (checked) {
+                        setDialogState(() {
+                          if (checked == true) {
+                            draft.add(project.id);
+                          } else {
+                            draft.remove(project.id);
+                          }
+                        });
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, draft),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _filterProjectIds
+        ..clear()
+        ..addAll(result);
+      _applyProjectFilter();
+    });
+  }
+
   // Timeline
   // ──────────────────────────────────────────────
 
@@ -1409,20 +1528,21 @@ class _HomeContentState extends State<_HomeContent> {
 
   /// 仅看当前视野内列的最大任务数。1 个任务保持 base 高度
   double _timelineHeight() {
-    final offset =
-        _timelineController.hasClients ? _timelineController.offset : 0.0;
+    final offset = _timelineController.hasClients
+        ? _timelineController.offset
+        : 0.0;
     final viewport = _viewportWidth > 0
         ? _viewportWidth
         : MediaQuery.of(context).size.width;
     int maxInCol = 0;
     if (_timelineMode == 'hour') {
       final firstHour = (offset / _hourWidth).floor().clamp(0, 23);
-      final lastHour =
-          ((offset + viewport) / _hourWidth).ceil().clamp(0, 24);
+      final lastHour = ((offset + viewport) / _hourWidth).ceil().clamp(0, 24);
       for (int h = firstHour; h < lastHour; h++) {
         final n = _filteredTasks
-            .where((t) =>
-                _isSameDayDate(t.date, DateTime.now()) && t.date.hour == h)
+            .where(
+              (t) => _isSameDayDate(t.date, DateTime.now()) && t.date.hour == h,
+            )
             .length;
         if (n > maxInCol) maxInCol = n;
       }
@@ -1430,15 +1550,19 @@ class _HomeContentState extends State<_HomeContent> {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final base = today.subtract(Duration(days: _daysBefore));
-      final firstCol =
-          (offset / _dayWidth).floor().clamp(0, _daysBefore + _daysAfter - 1);
-      final lastCol = ((offset + viewport) / _dayWidth)
-          .ceil()
-          .clamp(0, _daysBefore + _daysAfter);
+      final firstCol = (offset / _dayWidth).floor().clamp(
+        0,
+        _daysBefore + _daysAfter - 1,
+      );
+      final lastCol = ((offset + viewport) / _dayWidth).ceil().clamp(
+        0,
+        _daysBefore + _daysAfter,
+      );
       for (int d = firstCol; d < lastCol; d++) {
         final day = base.add(Duration(days: d));
-        final n =
-            _filteredTasks.where((t) => _isSameDayDate(t.date, day)).length;
+        final n = _filteredTasks
+            .where((t) => _isSameDayDate(t.date, day))
+            .length;
         if (n > maxInCol) maxInCol = n;
       }
     }
@@ -1508,21 +1632,23 @@ class _HomeContentState extends State<_HomeContent> {
                 ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: LayoutBuilder(builder: (ctx, box) {
-                    if (_viewportWidth != box.maxWidth) {
-                      _viewportWidth = box.maxWidth;
-                    }
-                    return SizedBox(
-                      height: _timelineHeight(),
-                      child: ListView.builder(
-                        controller: _timelineController,
-                        scrollDirection: Axis.horizontal,
-                        itemCount: itemCount,
-                        itemExtent: itemExtent,
-                        itemBuilder: itemBuilder,
-                      ),
-                    );
-                  }),
+                  child: LayoutBuilder(
+                    builder: (ctx, box) {
+                      if (_viewportWidth != box.maxWidth) {
+                        _viewportWidth = box.maxWidth;
+                      }
+                      return SizedBox(
+                        height: _timelineHeight(),
+                        child: ListView.builder(
+                          controller: _timelineController,
+                          scrollDirection: Axis.horizontal,
+                          itemCount: itemCount,
+                          itemExtent: itemExtent,
+                          itemBuilder: itemBuilder,
+                        ),
+                      );
+                    },
+                  ),
                 ),
                 const SizedBox(width: 4),
                 // Right scroll button
@@ -1712,8 +1838,7 @@ class _HomeContentState extends State<_HomeContent> {
       return _isSameDayDate(t.date, today) && t.date.hour == hour;
     }).toList();
 
-    final isCurrentHour =
-        now.hour == hour && _isSameDayDate(now, today);
+    final isCurrentHour = now.hour == hour && _isSameDayDate(now, today);
     final isPastHour = hourDateTime.isBefore(now) && !isCurrentHour;
 
     return GestureDetector(
@@ -1739,13 +1864,12 @@ class _HomeContentState extends State<_HomeContent> {
                 '${hour.toString().padLeft(2, '0')}:00',
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight:
-                      isCurrentHour ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight: isCurrentHour ? FontWeight.w700 : FontWeight.w500,
                   color: isCurrentHour
                       ? AppTheme.primaryColor
                       : isPastHour
-                          ? AppTheme.textHint
-                          : AppTheme.textSecondary,
+                      ? AppTheme.textHint
+                      : AppTheme.textSecondary,
                 ),
               ),
             ),
@@ -1812,10 +1936,14 @@ class _HomeContentState extends State<_HomeContent> {
                           ? Border.all(color: AppTheme.primaryColor, width: 2)
                           : null,
                       boxShadow: isSelected
-                          ? [BoxShadow(
-                              color: AppTheme.primaryColor.withValues(alpha: 0.4),
-                              blurRadius: 4,
-                            )]
+                          ? [
+                              BoxShadow(
+                                color: AppTheme.primaryColor.withValues(
+                                  alpha: 0.4,
+                                ),
+                                blurRadius: 4,
+                              ),
+                            ]
                           : null,
                     ),
                   ),
@@ -1828,10 +1956,7 @@ class _HomeContentState extends State<_HomeContent> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 8,
-                      color: AppTheme.textHint,
-                    ),
+                    style: TextStyle(fontSize: 8, color: AppTheme.textHint),
                   ),
                 ),
               ],
@@ -1875,8 +2000,7 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           ),
           // Parent task banner
-          if (task.parentId != null)
-            _buildParentBanner(task.parentId!),
+          if (task.parentId != null) _buildParentBanner(task.parentId!),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -1905,7 +2029,11 @@ class _HomeContentState extends State<_HomeContent> {
                           ),
                         ),
                         child: task.isCompleted
-                            ? const Icon(Icons.check, size: 14, color: Colors.white)
+                            ? const Icon(
+                                Icons.check,
+                                size: 14,
+                                color: Colors.white,
+                              )
                             : null,
                       ),
                     ),
@@ -1966,35 +2094,48 @@ class _HomeContentState extends State<_HomeContent> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.schedule, size: 14, color: AppTheme.textSecondary),
+                    Icon(
+                      Icons.schedule,
+                      size: 14,
+                      color: AppTheme.textSecondary,
+                    ),
                     const SizedBox(width: 4),
                     GestureDetector(
                       onTap: () => _quickEditDate(task, isStart: true),
                       child: Text(
                         _formatTaskDate(task.date),
-                        style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
-                          color: AppTheme.primaryColor,
-                          fontSize: 12,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppTheme.primaryColor.withValues(alpha: 0.3),
-                        ),
+                        style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall
+                            ?.copyWith(
+                              color: AppTheme.primaryColor,
+                              fontSize: 12,
+                              decoration: TextDecoration.underline,
+                              decorationColor: AppTheme.primaryColor.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
                       ),
                     ),
                     if (task.endDate != null) ...[
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 4),
-                        child: Icon(Icons.arrow_forward_rounded, size: 10, color: AppTheme.textHint),
+                        child: Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 10,
+                          color: AppTheme.textHint,
+                        ),
                       ),
                       GestureDetector(
                         onTap: () => _quickEditDate(task, isStart: false),
                         child: Text(
                           _formatTaskDate(task.endDate!),
-                          style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall?.copyWith(
-                            color: AppTheme.primaryColor,
-                            fontSize: 12,
-                            decoration: TextDecoration.underline,
-                            decorationColor: AppTheme.primaryColor.withValues(alpha: 0.3),
-                          ),
+                          style: GoogleFonts.jetBrainsMonoTextTheme().bodySmall
+                              ?.copyWith(
+                                color: AppTheme.primaryColor,
+                                fontSize: 12,
+                                decoration: TextDecoration.underline,
+                                decorationColor: AppTheme.primaryColor
+                                    .withValues(alpha: 0.3),
+                              ),
                         ),
                       ),
                     ],
@@ -2002,19 +2143,27 @@ class _HomeContentState extends State<_HomeContent> {
                     GestureDetector(
                       onTap: () => _quickCyclePriority(task),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: _priorityColor(task.priority).withValues(alpha: 0.12),
+                          color: _priorityColor(
+                            task.priority,
+                          ).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: _priorityColor(task.priority).withValues(alpha: 0.3),
+                            color: _priorityColor(
+                              task.priority,
+                            ).withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Container(
-                              width: 8, height: 8,
+                              width: 8,
+                              height: 8,
                               decoration: BoxDecoration(
                                 color: _priorityColor(task.priority),
                                 shape: BoxShape.circle,
@@ -2047,11 +2196,8 @@ class _HomeContentState extends State<_HomeContent> {
                   const SizedBox(height: 12),
                   _buildDescriptionBox(task),
                 ],
-                // Subtask tree (DB only)
-                if (task.source == 'db')
-                  _buildSubtaskTree(task.taskId),
-                // Resource section: attachment + checklist (DB only, fully interactive)
-                _buildResourceSection(task),
+                // Resource row: subtask tree + attachment + checklist (DB only)
+                _buildResourceRow(task),
               ],
             ),
           ),
@@ -2099,8 +2245,9 @@ class _HomeContentState extends State<_HomeContent> {
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       decoration: TextDecoration.underline,
-                      decorationColor:
-                          AppTheme.primaryColor.withValues(alpha: 0.4),
+                      decorationColor: AppTheme.primaryColor.withValues(
+                        alpha: 0.4,
+                      ),
                     ),
                   ),
                 ),
@@ -2119,8 +2266,7 @@ class _HomeContentState extends State<_HomeContent> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.folder_outlined,
-              size: 14, color: AppTheme.textSecondary),
+          Icon(Icons.folder_outlined, size: 14, color: AppTheme.textSecondary),
           const SizedBox(width: 4),
           Container(
             width: 8,
@@ -2160,7 +2306,10 @@ class _HomeContentState extends State<_HomeContent> {
           children: [
             const Padding(
               padding: EdgeInsets.all(16),
-              child: Text('选择项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              child: Text(
+                '选择项目',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
             ),
             ...projects.map((p) {
               final color = Color(int.parse(p.color.replaceFirst('#', '0xFF')));
@@ -2168,7 +2317,14 @@ class _HomeContentState extends State<_HomeContent> {
                 leading: CircleAvatar(
                   radius: 10,
                   backgroundColor: color.withValues(alpha: 0.2),
-                  child: Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ),
                 title: Text(p.name),
                 selected: p.id == task.projectId,
@@ -2222,7 +2378,11 @@ class _HomeContentState extends State<_HomeContent> {
     await _loadChecklists(taskId);
   }
 
-  Future<void> _homeEditChecklist(String itemId, String title, String taskId) async {
+  Future<void> _homeEditChecklist(
+    String itemId,
+    String title,
+    String taskId,
+  ) async {
     await widget.checklistRepository?.update(itemId, title: title);
     await _loadChecklists(taskId);
   }
@@ -2233,30 +2393,71 @@ class _HomeContentState extends State<_HomeContent> {
     await _loadChecklists(taskId);
   }
 
-  Future<void> _homeSetObsidianUri(String itemId, String? uri, String taskId) async {
+  Future<void> _homeSetObsidianUri(
+    String itemId,
+    String? uri,
+    String taskId,
+  ) async {
     await widget.checklistRepository?.setObsidianUri(itemId, uri);
     await _loadChecklists(taskId);
   }
 
-  Widget _buildResourceSection(_TimelineTask task) {
+  Widget _buildResourceRow(_TimelineTask task) {
     if (task.source != 'db') return const SizedBox.shrink();
     final taskId = task.taskId;
+    final subtasks = _subtaskCache[taskId];
+    if (subtasks == null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _loadSubTasks(taskId),
+      );
+    }
+    final hasSubtasks = subtasks?.isNotEmpty ?? false;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
         Divider(color: AppTheme.borderSubtle, height: 1),
         const SizedBox(height: 10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.taskRepository != null) ...[
-              Expanded(child: _buildAttachmentWidget(taskId)),
-              const SizedBox(width: 8),
-            ],
-            if (widget.checklistRepository != null)
-              Expanded(child: _buildChecklistWidget(task)),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isMobileLayout = constraints.maxWidth < 640;
+            final resourcePanels = <Widget>[
+              if (widget.taskRepository != null) _buildAttachmentWidget(taskId),
+              if (widget.checklistRepository != null)
+                _buildChecklistWidget(task),
+            ];
+
+            if (isMobileLayout) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasSubtasks) ...[
+                    _buildSubtaskTree(taskId),
+                    const SizedBox(height: 10),
+                  ],
+                  for (var i = 0; i < resourcePanels.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 10),
+                    resourcePanels[i],
+                  ],
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (hasSubtasks) ...[
+                  Expanded(child: _buildSubtaskTree(taskId)),
+                  const SizedBox(width: 8),
+                ],
+                for (var i = 0; i < resourcePanels.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(child: resourcePanels[i]),
+                ],
+              ],
+            );
+          },
         ),
       ],
     );
@@ -2275,7 +2476,9 @@ class _HomeContentState extends State<_HomeContent> {
     final taskId = task.taskId;
     final items = _checklistCache[taskId] ?? [];
     if (_checklistCache[taskId] == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadChecklists(taskId));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _loadChecklists(taskId),
+      );
     }
     return ChecklistSection(
       items: items,
@@ -2303,11 +2506,13 @@ class _HomeContentState extends State<_HomeContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 12),
         Row(
           children: [
-            Icon(Icons.account_tree_outlined,
-                size: 14, color: AppTheme.textSecondary),
+            Icon(
+              Icons.account_tree_outlined,
+              size: 14,
+              color: AppTheme.textSecondary,
+            ),
             const SizedBox(width: 4),
             Text(
               '子任务 (${subtasks.length})',
@@ -2321,7 +2526,9 @@ class _HomeContentState extends State<_HomeContent> {
         ),
         const SizedBox(height: 6),
         ...subtasks.map((st) {
-          final tlTask = _timelineTasks.where((t) => t.taskId == st.id).firstOrNull;
+          final tlTask = _timelineTasks
+              .where((t) => t.taskId == st.id)
+              .firstOrNull;
           return Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Row(
@@ -2349,7 +2556,9 @@ class _HomeContentState extends State<_HomeContent> {
                           startDate: st.startDate,
                           dueDate: st.dueDate,
                           isAllDay: st.isAllDay,
-                          completedTime: newStatus == 2 ? DateTime.now().millisecondsSinceEpoch : st.completedTime,
+                          completedTime: newStatus == 2
+                              ? DateTime.now().millisecondsSinceEpoch
+                              : st.completedTime,
                           sortOrder: st.sortOrder,
                           deleted: st.deleted,
                           createdAt: st.createdAt,
@@ -2386,23 +2595,27 @@ class _HomeContentState extends State<_HomeContent> {
                       final date = st.startDate != null
                           ? DateTime.fromMillisecondsSinceEpoch(st.startDate!)
                           : (st.dueDate != null
+                                ? DateTime.fromMillisecondsSinceEpoch(
+                                    st.dueDate!,
+                                  )
+                                : now);
+                      _selectTask(
+                        _TimelineTask(
+                          id: st.id,
+                          title: st.title,
+                          description: '',
+                          date: date,
+                          endDate: st.dueDate != null
                               ? DateTime.fromMillisecondsSinceEpoch(st.dueDate!)
-                              : now);
-                      _selectTask(_TimelineTask(
-                        id: st.id,
-                        title: st.title,
-                        description: '',
-                        date: date,
-                        endDate: st.dueDate != null
-                            ? DateTime.fromMillisecondsSinceEpoch(st.dueDate!)
-                            : null,
-                        isCompleted: st.status == 2,
-                        priority: st.priority.toString(),
-                        source: 'db',
-                        projectId: st.projectId,
-                        taskId: st.id,
-                        parentId: st.parentId,
-                      ));
+                              : null,
+                          isCompleted: st.status == 2,
+                          priority: st.priority.toString(),
+                          source: 'db',
+                          projectId: st.projectId,
+                          taskId: st.id,
+                          parentId: st.parentId,
+                        ),
+                      );
                     }
                   },
                   child: Text(
@@ -2434,9 +2647,12 @@ class _HomeContentState extends State<_HomeContent> {
     final taskDay = DateTime(date.year, date.month, date.day);
     final diff = taskDay.difference(today).inDays;
 
-    if (diff == 0) return '今天 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    if (diff == 1) return '明天 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    if (diff == -1) return '昨天 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    if (diff == 0)
+      return '今天 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    if (diff == 1)
+      return '明天 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    if (diff == -1)
+      return '昨天 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
     return '${date.month}月${date.day}日 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
@@ -2475,16 +2691,31 @@ class _HomeContentState extends State<_HomeContent> {
     );
     if (picked == null || !mounted) return;
     if (isStart) {
-      final updated = DateTime(picked.year, picked.month, picked.day, task.date.hour, task.date.minute);
-      final duration = (task.endDate ?? task.date.add(const Duration(hours: 1))).difference(task.date);
-      await widget.taskRepository!.update(task.taskId,
+      final updated = DateTime(
+        picked.year,
+        picked.month,
+        picked.day,
+        task.date.hour,
+        task.date.minute,
+      );
+      final duration = (task.endDate ?? task.date.add(const Duration(hours: 1)))
+          .difference(task.date);
+      await widget.taskRepository!.update(
+        task.taskId,
         startDate: updated.millisecondsSinceEpoch,
         dueDate: updated.add(duration).millisecondsSinceEpoch,
       );
     } else {
-      final updated = DateTime(picked.year, picked.month, picked.day, initialDate.hour, initialDate.minute);
+      final updated = DateTime(
+        picked.year,
+        picked.month,
+        picked.day,
+        initialDate.hour,
+        initialDate.minute,
+      );
       if (updated.isAfter(task.date)) {
-        await widget.taskRepository!.update(task.taskId,
+        await widget.taskRepository!.update(
+          task.taskId,
           dueDate: updated.millisecondsSinceEpoch,
         );
       } else {
@@ -2509,10 +2740,17 @@ class _HomeContentState extends State<_HomeContent> {
     final listIdx = _timelineTasks.indexOf(task);
     if (listIdx >= 0) {
       _timelineTasks[listIdx] = _TimelineTask(
-        id: task.id, title: task.title, description: task.description,
-        date: task.date, endDate: task.endDate, isCompleted: task.isCompleted,
-        priority: nextLabel, source: task.source,
-        projectId: task.projectId, taskId: task.taskId, parentId: task.parentId,
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        date: task.date,
+        endDate: task.endDate,
+        isCompleted: task.isCompleted,
+        priority: nextLabel,
+        source: task.source,
+        projectId: task.projectId,
+        taskId: task.taskId,
+        parentId: task.parentId,
       );
       _applyProjectFilter();
       if (_selectedTaskId == task.id) _selectedTask = _timelineTasks[listIdx];
@@ -2555,7 +2793,10 @@ class _HomeContentState extends State<_HomeContent> {
         title: const Text('删除任务'),
         content: Text('确定要删除"${task.title}"吗？\n其所有子任务也会被删除。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: AppTheme.error),
@@ -2588,7 +2829,13 @@ class _HomeContentState extends State<_HomeContent> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(task.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              child: Text(
+                task.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
             ),
             const Divider(),
             ListTile(
@@ -2627,10 +2874,19 @@ class _HomeContentState extends State<_HomeContent> {
       final pmap = <String, int>{'P0': 5, 'P1': 3, 'P2': 1, 'P3': 0};
       final p = pmap[t.priority] ?? 0;
       final d = t.date.difference(now).inDays;
-      final u = d < 0 ? 10 : d <= 3 ? 5 : d <= 7 ? 2 : d <= 30 ? 0 : -2;
+      final u = d < 0
+          ? 10
+          : d <= 3
+          ? 5
+          : d <= 7
+          ? 2
+          : d <= 30
+          ? 0
+          : -2;
       scored[t] = p * 2 + u;
     }
-    final sorted = scored.keys.toList()..sort((a, b) => scored[b]!.compareTo(scored[a]!));
+    final sorted = scored.keys.toList()
+      ..sort((a, b) => scored[b]!.compareTo(scored[a]!));
     final q1 = <_TimelineTask>[], q2 = <_TimelineTask>[];
     final q3 = <_TimelineTask>[], q4 = <_TimelineTask>[];
     for (final t in sorted) {
@@ -2645,8 +2901,11 @@ class _HomeContentState extends State<_HomeContent> {
       children: [
         Row(
           children: [
-            Icon(Icons.grid_view_rounded,
-                size: 18, color: AppTheme.textPrimary),
+            Icon(
+              Icons.grid_view_rounded,
+              size: 18,
+              color: AppTheme.textPrimary,
+            ),
             const SizedBox(width: 6),
             Text(
               '四象限',
@@ -2734,8 +2993,11 @@ class _HomeContentState extends State<_HomeContent> {
               if (isOverdueItem)
                 Padding(
                   padding: EdgeInsets.only(right: 3),
-                  child: Icon(Icons.error_rounded,
-                      size: 12, color: AppTheme.error),
+                  child: Icon(
+                    Icons.error_rounded,
+                    size: 12,
+                    color: AppTheme.error,
+                  ),
                 )
               else
                 Container(
@@ -2757,8 +3019,9 @@ class _HomeContentState extends State<_HomeContent> {
                     color: isOverdueItem
                         ? AppTheme.error
                         : AppTheme.textPrimary,
-                    fontWeight:
-                        isOverdueItem ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: isOverdueItem
+                        ? FontWeight.w600
+                        : FontWeight.w400,
                   ),
                 ),
               ),
@@ -2773,10 +3036,7 @@ class _HomeContentState extends State<_HomeContent> {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withValues(alpha: 0.2),
-          width: 1,
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -222,11 +222,11 @@ class LocalStorageService {
     final tasks = getTasks();
     tasks.add(task);
     await _saveTasks(tasks);
-    // 自动刷新父任务的 isParent
+    // 鑷姩鍒锋柊鐖朵换鍔＄殑 isParent
     if (task.parentTaskId != null) {
       await refreshParentFlag(task.parentTaskId!);
     }
-    _syncTasksToCloud(); // 自动同步到云端
+    _syncTasksToCloud(); // 鑷姩鍚屾鍒颁簯绔?
     return task;
   }
 
@@ -237,14 +237,14 @@ class LocalStorageService {
     final oldParentId = tasks[index].parentTaskId;
     tasks[index] = updated.copyWith(updatedAt: DateTime.now());
     await _saveTasks(tasks);
-    // parentTaskId 变化时刷新两端 isParent
+    // parentTaskId 鍙樺寲鏃跺埛鏂颁袱绔?isParent
     if (oldParentId != updated.parentTaskId) {
       if (oldParentId != null) await refreshParentFlag(oldParentId);
       if (updated.parentTaskId != null) {
         await refreshParentFlag(updated.parentTaskId!);
       }
     }
-    _syncTasksToCloud(); // 自动同步到云端
+    _syncTasksToCloud(); // 鑷姩鍚屾鍒颁簯绔?
     return tasks[index];
   }
 
@@ -252,13 +252,15 @@ class LocalStorageService {
     return getTasks().any((task) => task.parentTaskId == id);
   }
 
-  // 获取某任务的所有后代任务（递归）
+  // 鑾峰彇鏌愪换鍔＄殑鎵€鏈夊悗浠ｄ换鍔★紙閫掑綊锛?
   List<TaskBreakdown> getAllDescendantTasks(String taskId) {
     final allTasks = getTasks();
     final result = <TaskBreakdown>[];
 
     void collect(String parentId) {
-      final children = allTasks.where((t) => t.parentTaskId == parentId).toList();
+      final children = allTasks
+          .where((t) => t.parentTaskId == parentId)
+          .toList();
       for (final child in children) {
         result.add(child);
         collect(child.id);
@@ -269,20 +271,22 @@ class LocalStorageService {
     return result;
   }
 
-  // 计算任务进度（基于后代任务完成状态）
+  // 璁＄畻浠诲姟杩涘害锛堝熀浜庡悗浠ｄ换鍔″畬鎴愮姸鎬侊級
   int calculateTaskProgress(String taskId) {
     final descendants = getAllDescendantTasks(taskId);
     if (descendants.isEmpty) {
-      // 叶子节点：返回自身 progress
+      // 鍙跺瓙鑺傜偣锛氳繑鍥炶嚜韬?progress
       final task = getTasks().where((t) => t.id == taskId).firstOrNull;
       return task?.progress ?? 0;
     }
-    // 有后代：按完成后代比例计算
-    final completedCount = descendants.where((t) => t.status == 'completed').length;
+    // 鏈夊悗浠ｏ細鎸夊畬鎴愬悗浠ｆ瘮渚嬭绠?
+    final completedCount = descendants
+        .where((t) => t.status == 'completed')
+        .length;
     return ((completedCount / descendants.length) * 100).round();
   }
 
-  /// 当子任务完成时，检查父任务是否应自动完成（递归向上传播）
+  /// 褰撳瓙浠诲姟瀹屾垚鏃讹紝妫€鏌ョ埗浠诲姟鏄惁搴旇嚜鍔ㄥ畬鎴愶紙閫掑綊鍚戜笂浼犳挱锛?
   Future<void> checkAndAutoCompleteParent(String taskId) async {
     final allTasks = getTasks();
     final task = allTasks.where((t) => t.id == taskId).firstOrNull;
@@ -292,23 +296,20 @@ class LocalStorageService {
     final parent = allTasks.where((t) => t.id == parentId).firstOrNull;
     if (parent == null) return;
 
-    // 获取所有同级子任务
+    // 鑾峰彇鎵€鏈夊悓绾у瓙浠诲姟
     final siblings = allTasks.where((t) => t.parentTaskId == parentId).toList();
     final allCompleted = siblings.every((t) => t.status == 'completed');
 
     if (allCompleted) {
-      // 父任务所有子任务都完成 → 自动完成父任务
-      final updated = parent.copyWith(
-        status: 'completed',
-        progress: 100,
-      );
+      // 鐖朵换鍔℃墍鏈夊瓙浠诲姟閮藉畬鎴?鈫?鑷姩瀹屾垚鐖朵换鍔?
+      final updated = parent.copyWith(status: 'completed', progress: 100);
       await updateTask(updated);
-      // 递归向上传播
+      // 閫掑綊鍚戜笂浼犳挱
       await checkAndAutoCompleteParent(parentId);
     }
   }
 
-  /// 当子任务从 completed 改为其他状态时，将父任务回退
+  /// 褰撳瓙浠诲姟浠?completed 鏀逛负鍏朵粬鐘舵€佹椂锛屽皢鐖朵换鍔″洖閫€
   Future<void> revertParentOnChildIncomplete(String taskId) async {
     final allTasks = getTasks();
     final task = allTasks.where((t) => t.id == taskId).firstOrNull;
@@ -318,7 +319,7 @@ class LocalStorageService {
     final parent = allTasks.where((t) => t.id == parentId).firstOrNull;
     if (parent == null) return;
 
-    // 如果父任务是自动完成的，回退到进行中
+    // 濡傛灉鐖朵换鍔℃槸鑷姩瀹屾垚鐨勶紝鍥為€€鍒拌繘琛屼腑
     if (parent.status == 'completed') {
       final progress = calculateTaskProgress(parentId);
       final updated = parent.copyWith(
@@ -326,12 +327,12 @@ class LocalStorageService {
         progress: progress,
       );
       await updateTask(updated);
-      // 递归向上传播
+      // 閫掑綊鍚戜笂浼犳挱
       await revertParentOnChildIncomplete(parentId);
     }
   }
 
-  /// 刷新任务的 isParent：有子任务 → true，否则 false
+  /// 鍒锋柊浠诲姟鐨?isParent锛氭湁瀛愪换鍔?鈫?true锛屽惁鍒?false
   Future<void> refreshParentFlag(String taskId) async {
     final allTasks = getTasks();
     final task = allTasks.where((t) => t.id == taskId).firstOrNull;
@@ -343,12 +344,15 @@ class LocalStorageService {
     }
   }
 
-  /// 检测任务时间冲突：与已有 Schedule 或其他非父任务 TaskBreakdown 重叠
-  bool detectTaskTimeConflict(DateTime start, DateTime end,
-      {String? excludeId}) {
-    // 1. 检测 Schedule 冲突
+  /// 妫€娴嬩换鍔℃椂闂村啿绐侊細涓庡凡鏈?Schedule 鎴栧叾浠栭潪鐖朵换鍔?TaskBreakdown 閲嶅彔
+  bool detectTaskTimeConflict(
+    DateTime start,
+    DateTime end, {
+    String? excludeId,
+  }) {
+    // 1. 妫€娴?Schedule 鍐茬獊
     if (detectTimeConflict(start, end, excludeId: excludeId)) return true;
-    // 2. 检测 TaskBreakdown 冲突（排除父任务）
+    // 2. 妫€娴?TaskBreakdown 鍐茬獊锛堟帓闄ょ埗浠诲姟锛?
     final tasks = getTasks(excludeParent: true);
     for (final task in tasks) {
       if (excludeId != null && task.id == excludeId) continue;
@@ -369,11 +373,11 @@ class LocalStorageService {
     final parentId = deleted?.parentTaskId;
     tasks.removeWhere((t) => t.id == id);
     await _saveTasks(tasks);
-    // 删除子任务后刷新父任务的 isParent
+    // 鍒犻櫎瀛愪换鍔″悗鍒锋柊鐖朵换鍔＄殑 isParent
     if (parentId != null) {
       await refreshParentFlag(parentId);
     }
-    _syncTasksToCloud(); // 自动同步到云端
+    _syncTasksToCloud(); // 鑷姩鍚屾鍒颁簯绔?
   }
 
   Future<void> _saveTasks(List<TaskBreakdown> tasks) async {
@@ -417,7 +421,7 @@ class LocalStorageService {
     await _prefs?.setBool(_onboardingKey, true);
   }
 
-  // AI 排程：是否跳过周末
+  // AI 鎺掔▼锛氭槸鍚﹁烦杩囧懆鏈?
   static const _skipWeekendsKey = 'ai_schedule_skip_weekends';
 
   bool get skipWeekends => _prefs?.getBool(_skipWeekendsKey) ?? false;
@@ -426,7 +430,18 @@ class LocalStorageService {
     await _prefs?.setBool(_skipWeekendsKey, value);
   }
 
-  // 主题选择
+  static const _excludedProjectIdsKey = 'excluded_project_ids';
+
+  Set<String> get excludedProjectIds {
+    final raw = _prefs?.getStringList(_excludedProjectIdsKey) ?? const [];
+    return raw.toSet();
+  }
+
+  Future<void> setExcludedProjectIds(Set<String> ids) async {
+    await _prefs?.setStringList(_excludedProjectIdsKey, ids.toList()..sort());
+  }
+
+  // 涓婚閫夋嫨
   static const _themeKey = 'app_theme_id';
 
   String? get themeId => _prefs?.getString(_themeKey);
@@ -455,13 +470,13 @@ class LocalStorageService {
     return json.decode(jsonStr) as Map<String, dynamic>;
   }
 
-  // ── 云同步 ──
+  // 鈹€鈹€ 浜戝悓姝?鈹€鈹€
 
-  /// 将本地所有任务推送到 Supabase 云端
+  /// 灏嗘湰鍦版墍鏈変换鍔℃帹閫佸埌 Supabase 浜戠
   Future<void> _syncTasksToCloud() async {
     final svc = SupabaseService();
     try {
-      // 先拉取远端合并，再推送（解决多端覆盖问题）
+      // 鍏堟媺鍙栬繙绔悎骞讹紝鍐嶆帹閫侊紙瑙ｅ喅澶氱瑕嗙洊闂锛?
       await fetchAndMergeFromCloud();
       final tasks = getTasks();
       final jsonList = tasks.map((t) => t.toJson()).toList();
@@ -470,7 +485,7 @@ class LocalStorageService {
     } catch (_) {}
   }
 
-  /// 从云端拉取任务并合并到本地（根据 updatedAt 保留最新版本）
+  /// 浠庝簯绔媺鍙栦换鍔″苟鍚堝苟鍒版湰鍦帮紙鏍规嵁 updatedAt 淇濈暀鏈€鏂扮増鏈級
   Future<void> fetchAndMergeFromCloud() async {
     final svc = SupabaseService();
     try {

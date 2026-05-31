@@ -1,6 +1,19 @@
 # Architecture
 
+> 2026-05-31: 本次修复保留现有 Drift `tasks.parentId` ↔ Supabase `user_tasks.parent_id` 逐行同步架构；`TaskNewBloc` 的任务同步入口改为调用 `TaskSyncService.syncAll()`，不再通过旧 `local_task_sync.tasks_data` JSON 路径同步任务树。`TaskSyncService` 暴露纯映射方法用于验证 `parent_id`/`parentId` 转换。中国节假日展示在 `HolidayService` 中增加 2026 年劳动节本地兜底覆盖，补齐 2026-05-01 至 2026-05-05 休息日和 2026-04-26、2026-05-09 补班日。移动端首页任务详情资源区保持同一数据来源，但窄屏下附件和检查项改为纵向分区展示；桌面端仍为横向布局。我的页退出登录由 `ProfilePage` 派发 `AuthBloc.LoggedOut`。
+
+> 2026-05-31: 思维导图任务视图新增一次性“自动锁定”视角定位。`lib/presentation/pages/tasks/widgets/mind_map_view.dart` 复用 `TransformationController`，按当前可见节点的 `startDate ?? dueDate` 与当前时间距离选择最近任务，并在保持当前缩放比例的情况下平移画布到该节点中心；节点坐标使用 `_positionNotifiers`，因此支持手动拖动后的实际位置。
+
+> 2026-05-31: 新增独立静态站点 `personal_admin_site/`，用于个人动态密钥、动态数据和 App 管理。站点由 `index.html`、`styles.css`、`app.js`、`config.js`、`config.example.js`、`supabase.sql` 和 `README.md` 组成，不接入现有 Flutter 应用运行时。前端通过 Supabase JS CDN 使用 Email OTP 登录；`supabase.sql` 定义 `allowed_users`、`dynamic_secrets`、`dynamic_data`、`managed_apps` 四张表，启用 RLS，并要求登录邮箱存在于 allowlist。密钥值在浏览器端使用 WebCrypto PBKDF2 + AES-GCM 加密后保存，口令不上传、不落库。推荐部署结构为 Cloudflare Pages 静态托管 + Supabase 免费层。
+
+> 2026-05-31: `personal_admin_site/` 补充 Cloudflare Pages 发布配置和上线检查。`_headers` 定义静态站安全响应头；`DEPLOYMENT_PLAN.md` 记录 Cloudflare Pages + Supabase 免费层的 0 美元固定成本方案、官方依据链接和上线步骤；`deploy-check.ps1` 在发布前检查必要文件、阻止占位 Supabase 配置、阻止 `sbp_`/`service_role` 等敏感密钥进入前端，并执行 `node --check app.js`。
+
+> 2026-05-31: `personal_admin_site/` 补充两种配置生成路径：Cloudflare Pages 仓库部署时执行 `build-cloudflare.sh`，从 `PUBLIC_SUPABASE_URL` 和 `PUBLIC_SUPABASE_ANON_KEY` 生成 `config.js`；本地 Direct Upload 前可执行 `build-local.ps1` 生成同样配置。根目录生成 `personal_admin_site_template.zip` 作为上传模板包，仍需真实 Supabase `anon public key` 替换后才能发布为可用站点。
+
+> 2026-05-31: 首页任务详情卡的 DB 任务资源区由独立的“子任务在上、附件/检查项在下”结构调整为同一横向资源行：`_buildResourceRow` 在 `lib/presentation/pages/home/home_page.dart` 中并列承载子任务树、`AttachmentSection`、`ChecklistSection`，仍仅对 `source == 'db'` 任务显示。
+
 > 2026-05-30: 多主题切换。`lib/core/theme/app_theme.dart` 抽出 `AppPalette` 调色板模型（全部颜色 token + `ThemeData build()`），三套实例 `claude`(默认暖珊瑚)/`auroraBlue`(Google Material 3 蓝)/`obsidian`(深色)。`AppTheme` 颜色由 `static const` 改为委托 `_current` 的 `static get`（对外名不变，全 App 653 处引用零改动；代价是 215 处 const 上下文去 const）。`lib/core/theme/theme_controller.dart` 的 `ThemeController`(ChangeNotifier，全局单例 `themeController`)负责持久化(SharedPreferences via `LocalStorageService.themeId`)+ 通知重建；`main.dart` 用 `ListenableBuilder` 包 `MaterialApp`，`themeMode` 随调色板亮/暗切换。选择页 `theme_settings_page.dart`，入口在 profile"主题"菜单。
+> 2026-05-31: 我的模块补全。`profile_page.dart` 移除空的"提醒设置"菜单入口，"设置/帮助与反馈/关于"改为页面跳转。`app_settings_page.dart` 承载 AI 排程跳过周末开关（复用 `LocalStorageService.skipWeekends`）、主题入口、通知和数据说明；`help_feedback_page.dart` 记录任务管理、AI 拆解、日历提醒、主题切换、常见问题和反馈说明；`about_page.dart` 展示智能小管家、版本 `1.0.0+3`、核心能力、数据同步和隐私权限说明。
 
 > 2026-06-06: 四象限模块改为列溢出模式——每列最多 5 条，超出自动新开列，象限内 `SingleChildScrollView` 横向滚动，列间 1px 分隔线。移除硬上限截断 `q.removeRange(5)`、逾期横幅、`"N 逾期"` 提示，保留单条任务前逾期 `!` 图标。
 
@@ -144,3 +157,64 @@
 - `dateFrom` / `dateTo`（新增，避免日期筛选丢失）
 
 调用方传入的 `event.dateFrom`/`event.dateTo` 优先于保留值（`event.dateFrom ?? preservedDateFrom`）。`LoadTasks(clearDateRange: true)` 时强制把 `dateFrom/dateTo` 置 null（用于"清除日期筛选"，否则 `?? preserved` 会保留旧筛选导致清不掉）。
+
+### 任务创建时间冲突处理（2026-05-31）
+
+- `TaskCreateSheet` 在传入 `TaskRepository` 时对所有新建任务做时间冲突检测，弹窗支持取消、并行、自动延后、自动插入。
+- 自动插入由 `SubtaskScheduler.autoInsert` 计算：以新任务原始时间段作为占用区间，只移动未完成、未删除且有开始/截止时间的既有任务；被移动任务保持原持续时长，按 09:00-21:00 工作时段和 15 分钟缓冲级联后移。
+- `CreateTask.shiftedTasks` 携带自动插入产生的后移结果；`TaskNewBloc._onCreateTask` 先创建新任务，再逐条更新被后移任务的 `startDate`/`dueDate`，之后执行原有云同步和列表刷新。
+- 任务页新建、任务详情子任务新建、日历时间轴新建均传递 `shiftedTasks` 到 `CreateTask`；日历创建入口同步传入 `TaskRepository` 以启用同样的冲突处理。
+
+### 日历节假日与休息日展示（2026-05-31）
+
+- `CalendarPage` 接入 `HolidayService`，按当前节假日国家与年份加载并缓存节假日数据。
+- AppBar 提供节假日国家切换；切换后清空页面内节假日缓存并重新加载当前年份。
+- 周视图日期头和月视图日期格展示调休补班、法定节假日、普通周末休息日；中国补班日优先于周末休息标记。
+- `HolidayService` 对中国节日增加本地补充：妇女节、植树节、青年节、儿童节、建党节、建军节、教师节；这些使用 `HolidayType.observance`，只展示节日名，不按休息日处理。
+# 2026-05-31 上线与变现准备文档
+
+- 新增 `docs/launch/` 作为上线准备资料目录，不参与运行时构建，不改变 Flutter 业务代码。
+- `PLATFORM_RESEARCH_CN.md` 记录中国大陆个人开发者的上线平台选择：首发建议 Windows 官网/私域分发 + 国内安卓渠道引流，暂缓 Google Play 和平台内购。
+- `LAUNCH_CHECKLIST.md`、`RISK_REGISTER.md`、`RELEASE_EVIDENCE.md` 记录上线材料、风险和当前发布证据。
+- `PRIVACY_POLICY_DRAFT.md`、`TERMS_OF_SERVICE_DRAFT.md`、`STORE_LISTING_COPY.md`、`PRICING_AND_GO_TO_MARKET.md` 记录隐私政策草案、用户协议草案、商店文案和定价/获客方案。
+- 本次未更换 DeepSeek Key，未修改 Android 签名、包名、业务代码或构建脚本。
+
+### 首页启动引导（2026-05-31）
+
+- `HomePage` 启动后仍会调用 `PermissionService.showNotificationGuideIfNeeded` 做通知权限引导。
+- `HomePage` 不再自动跳转 `OnboardingPage`，`LocalStorageService.onboardingCompleted` 不再参与首页启动导航判断。
+
+### 子任务创建默认项目（2026-05-31）
+
+- `TasksPage` 从任务树/思维导图父节点新增子任务时，创建弹窗的默认项目优先使用父任务 `projectId`，再回退当前项目筛选。
+- `TaskCreateSheet` 在初始化和父任务下拉切换时，会按所选父任务同步 `_selectedProjectId`，确保子任务默认归属父任务项目。
+
+### 首页任务详情移动端资源区（2026-05-31）
+
+- `HomePage._buildResourceRow` 按可用宽度切换布局：桌面保持子任务/附件/检查项横排；窄屏下子任务单独一行，附件和检查项组成独立资源行。
+
+### 任务删除跨端同步（2026-05-31）
+
+- `TaskRepository.syncFromJson` 对远端 `deleted=1` 墓石使用 `updatedAt` 做 LWW：远端更新时覆盖本地活任务，本地更新时跳过过期墓石。
+- `TaskSyncService.syncAll` 不再用本地活任务无条件覆盖云端墓石，避免重启全量对账时把另一端已删除的思维导图节点复活。
+- `TaskSyncService` 增加 `changes` 广播；`HomePage` 监听任务同步变更并 debounce 触发 `LoadTasks`，让任务页/思维导图在远端新增、更新、删除后刷新。
+
+### 手机验证码登录（2026-05-31）
+
+- `SupabaseService` 封装 `signInWithOtp(phone: ...)` 发送短信验证码，封装 `verifyOTP(type: OtpType.sms)` 校验验证码并返回 Supabase 用户会话。
+- `AuthBloc` 新增 `PhoneOtpRequested`、`PhoneOtpVerified`、`PhoneOtpSent`，手机号验证码登录成功后进入现有 `Authenticated` 状态。
+- `LoginPage` 增加邮箱/手机验证码登录模式切换；手机号不带 `+` 且为中国大陆 11 位手机号时自动补 `+86`。
+
+### 全局排除项目（2026-05-31）
+
+- `LocalStorageService.excludedProjectIds` 使用 SharedPreferences 持久化排除项目 ID 列表。
+- `TaskNewBloc._onLoadTasks` 在加载任务列表和计算进度前排除这些项目；被排除项目不进入任务页列表、思维导图和进度计算。
+- `HomePage` 构建首页时间轴数据前排除这些项目，因此时间轴、统计和四象限均使用排除后的任务集合；首页项目筛选状态使用项目 ID 集合，计算按集合过滤，UI 保留快速单选下拉并提供多选弹窗入口。
+- `CalendarPage` 加载日历任务时排除这些项目；日历项目筛选状态使用项目 ID 集合，菜单项可多选/取消。
+- `TaskNewBloc` 的 `LoadTasks.projectIds` 与 `TaskNewLoaded.selectedProjectIds` 承载任务模块多项目筛选；任务页 AppBar 提供项目多选筛选入口和“排除项目”多选设置入口。
+
+### 提醒通知（2026-05-31）
+
+- `NotificationService` 负责本地提醒调度。移动端使用 `flutter_local_notifications` 的 `zonedSchedule`，调度前兜底请求通知权限；Android 同步请求精确闹钟权限，iOS 前台展示显式启用 alert/badge/sound。
+- 桌面端仍用进程内 `Timer` 触发提醒；Windows 触发后改为 PowerShell `MessageBox` 常驻弹窗，用户点击 OK 前不会自动消失。
+- `PermissionService.showNotificationGuideIfNeeded` 仍只在移动端首次展示通知权限引导；Android 确认后同时申请通知权限和精确闹钟权限。

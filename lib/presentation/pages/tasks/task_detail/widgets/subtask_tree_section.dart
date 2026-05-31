@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../data/database/app_database.dart';
+import '../../../../../services/subtask_scheduler.dart';
 import '../../../../blocs/task_new/task_bloc.dart';
 import '../../../../blocs/task_new/task_event.dart';
 import '../../../../blocs/task_new/task_state.dart';
@@ -85,7 +86,10 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                       icon: const Icon(Icons.add_rounded, size: 16),
                       color: AppTheme.primaryColor,
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                      constraints: const BoxConstraints(
+                        minWidth: 24,
+                        minHeight: 24,
+                      ),
                       tooltip: '添加子任务',
                     ),
                   ],
@@ -384,7 +388,10 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
   }
 
   // 复用 TaskCreateSheet：自带开始/截止时间 + 子任务时间冲突检测
-  Future<void> _showAddSubTaskDialog(BuildContext context, String parentId) async {
+  Future<void> _showAddSubTaskDialog(
+    BuildContext context,
+    String parentId,
+  ) async {
     final bloc = context.read<TaskNewBloc>();
     final blocState = bloc.state;
     final availableParents = blocState is TaskNewLoaded
@@ -414,6 +421,8 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
         startDate: result['startDate'] as int?,
         dueDate: result['dueDate'] as int?,
         parentId: (result['parentId'] as String?) ?? parentId,
+        shiftedTasks:
+            (result['shiftedTasks'] as List<ScheduledTaskShift>?) ?? const [],
       ),
     );
     // 刷新当前根任务子树

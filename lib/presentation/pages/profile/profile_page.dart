@@ -1,23 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../services/local_storage_service.dart';
 import '../../../data/repositories/task_repository.dart';
+import '../../blocs/auth/auth_bloc.dart';
+import 'about_page.dart';
+import 'app_settings_page.dart';
+import 'help_feedback_page.dart';
 import 'theme_settings_page.dart';
 import '../../../data/database/app_database.dart';
 
 class ProfilePage extends StatefulWidget {
   final TaskRepository? taskRepository;
-  const ProfilePage({super.key, this.taskRepository});
+  final VoidCallback? onLogout;
+  const ProfilePage({super.key, this.taskRepository, this.onLogout});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final _storage = LocalStorageService();
-  bool _ready = false;
-  bool _skipWeekends = false;
   int _total = 0;
   int _completionRate = 0;
   int _streak = 0;
@@ -29,7 +31,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _init() async {
-    await _storage.init();
     final tasks = await widget.taskRepository?.getAll() ?? [];
     final total = tasks.length;
     final completed = tasks.where((t) => t.status == 2).length;
@@ -37,11 +38,9 @@ class _ProfilePageState extends State<ProfilePage> {
     final streak = _calcStreak(tasks);
     if (!mounted) return;
     setState(() {
-      _skipWeekends = _storage.skipWeekends;
       _total = total;
       _completionRate = rate;
       _streak = streak;
-      _ready = true;
     });
   }
 
@@ -68,9 +67,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的'),
-      ),
+      appBar: AppBar(title: const Text('我的')),
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -78,39 +75,9 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 16),
             _buildStatsSection(context),
             const SizedBox(height: 16),
-            _buildSettingsSection(),
-            const SizedBox(height: 16),
             _buildMenuSection(),
             const SizedBox(height: 32),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsSection() {
-    if (!_ready) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppTheme.bgCard,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: AppTheme.cardShadow,
-        ),
-        child: SwitchListTile(
-          title: const Text('AI 排程跳过周末',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-          subtitle: Text('开启后，AI 拆分子任务时不把任务排到周六/周日',
-              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-          value: _skipWeekends,
-          activeThumbColor: AppTheme.primaryColor,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          onChanged: (v) async {
-            setState(() => _skipWeekends = v);
-            await _storage.setSkipWeekends(v);
-          },
         ),
       ),
     );
@@ -134,12 +101,19 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 2),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.4),
+                width: 2,
+              ),
             ),
             child: CircleAvatar(
               radius: 44,
               backgroundColor: Colors.white,
-              child: Icon(Icons.person_rounded, size: 48, color: AppTheme.textHint),
+              child: Icon(
+                Icons.person_rounded,
+                size: 48,
+                color: AppTheme.textHint,
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -162,7 +136,11 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 18),
           OutlinedButton.icon(
             onPressed: () {},
-            icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 16),
+            icon: const Icon(
+              Icons.edit_outlined,
+              color: Colors.white,
+              size: 16,
+            ),
             label: const Text(
               '编辑资料',
               style: TextStyle(color: Colors.white, fontSize: 14),
@@ -185,11 +163,25 @@ class _ProfilePageState extends State<ProfilePage> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Expanded(child: _buildStatCard('总任务', '$_total', Icons.assignment_rounded)),
+          Expanded(
+            child: _buildStatCard('总任务', '$_total', Icons.assignment_rounded),
+          ),
           const SizedBox(width: 10),
-          Expanded(child: _buildStatCard('完成率', '$_completionRate%', Icons.trending_up_rounded)),
+          Expanded(
+            child: _buildStatCard(
+              '完成率',
+              '$_completionRate%',
+              Icons.trending_up_rounded,
+            ),
+          ),
           const SizedBox(width: 10),
-          Expanded(child: _buildStatCard('连续', '$_streak天', Icons.local_fire_department_rounded)),
+          Expanded(
+            child: _buildStatCard(
+              '连续',
+              '$_streak天',
+              Icons.local_fire_department_rounded,
+            ),
+          ),
         ],
       ),
     );
@@ -235,9 +227,12 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         child: Column(
           children: [
-            _buildMenuItem(Icons.settings_rounded, '设置', () {}, showTop: true),
-            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
-            _buildMenuItem(Icons.notifications_rounded, '提醒设置', () {}),
+            _buildMenuItem(Icons.settings_rounded, '设置', () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppSettingsPage()),
+              );
+            }, showTop: true),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _buildMenuItem(Icons.palette_outlined, '主题', () {
               Navigator.push(
@@ -246,11 +241,30 @@ class _ProfilePageState extends State<ProfilePage> {
               );
             }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
-            _buildMenuItem(Icons.help_outline_rounded, '帮助与反馈', () {}),
+            _buildMenuItem(Icons.help_outline_rounded, '帮助与反馈', () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HelpFeedbackPage()),
+              );
+            }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
-            _buildMenuItem(Icons.info_outline_rounded, '关于', () {}),
+            _buildMenuItem(Icons.info_outline_rounded, '关于', () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutPage()),
+              );
+            }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
-            _buildMenuItem(Icons.logout_rounded, '退出登录', () {}, isDestructive: true, showBottom: true),
+            _buildMenuItem(
+              Icons.logout_rounded,
+              '退出登录',
+              widget.onLogout ??
+                  () {
+                    context.read<AuthBloc>().add(LoggedOut());
+                  },
+              isDestructive: true,
+              showBottom: true,
+            ),
           ],
         ),
       ),
@@ -287,17 +301,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Text(
                   title,
                   style: TextStyle(
-                    color: isDestructive ? AppTheme.error : AppTheme.textPrimary,
+                    color: isDestructive
+                        ? AppTheme.error
+                        : AppTheme.textPrimary,
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: AppTheme.textHint,
-              ),
+              Icon(Icons.chevron_right, size: 20, color: AppTheme.textHint),
             ],
           ),
         ),

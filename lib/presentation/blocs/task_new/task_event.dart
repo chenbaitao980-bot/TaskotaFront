@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../services/subtask_scheduler.dart';
 
 // --- 项目事件 ---
 class LoadProjects extends TaskEvent {}
@@ -65,19 +66,29 @@ class DeleteProject extends TaskEvent {
 // --- 任务事件 ---
 class LoadTasks extends TaskEvent {
   final String? projectId;
+  final Set<String> projectIds;
   final String? filter; // 'all', 'today', 'important'
-  final int? dateFrom; // millisecondsSinceEpoch, filter tasks overlapping [dateFrom, dateTo]
+  final int?
+  dateFrom; // millisecondsSinceEpoch, filter tasks overlapping [dateFrom, dateTo]
   final int? dateTo;
   final bool clearDateRange; // true=清除日期筛选，忽略已保留的日期
   LoadTasks({
     this.projectId,
+    Set<String>? projectIds,
     this.filter,
     this.dateFrom,
     this.dateTo,
     this.clearDateRange = false,
-  });
+  }) : projectIds = projectIds ?? (projectId == null ? const {} : {projectId});
   @override
-  List<Object?> get props => [projectId, filter, dateFrom, dateTo, clearDateRange];
+  List<Object?> get props => [
+    projectId,
+    projectIds,
+    filter,
+    dateFrom,
+    dateTo,
+    clearDateRange,
+  ];
 }
 
 class CreateTask extends TaskEvent {
@@ -88,6 +99,7 @@ class CreateTask extends TaskEvent {
   final int? startDate;
   final int? dueDate;
   final String? parentId;
+  final List<ScheduledTaskShift> shiftedTasks;
   CreateTask({
     required this.projectId,
     required this.title,
@@ -96,10 +108,19 @@ class CreateTask extends TaskEvent {
     this.startDate,
     this.dueDate,
     this.parentId,
+    this.shiftedTasks = const [],
   });
   @override
-  List<Object?> get props =>
-      [projectId, title, description, priority, startDate, dueDate, parentId];
+  List<Object?> get props => [
+    projectId,
+    title,
+    description,
+    priority,
+    startDate,
+    dueDate,
+    parentId,
+    shiftedTasks,
+  ];
 }
 
 class UpdateTask extends TaskEvent {
@@ -125,16 +146,16 @@ class UpdateTask extends TaskEvent {
   });
   @override
   List<Object?> get props => [
-        id,
-        projectId,
-        title,
-        description,
-        priority,
-        startDate,
-        dueDate,
-        remindBeforeMinutes,
-        reminderEnabled,
-      ];
+    id,
+    projectId,
+    title,
+    description,
+    priority,
+    startDate,
+    dueDate,
+    remindBeforeMinutes,
+    reminderEnabled,
+  ];
 }
 
 class DeleteTask extends TaskEvent {
@@ -195,7 +216,11 @@ class SetChecklistItemObsidianUri extends TaskEvent {
   final String id;
   final String taskId;
   final String? obsidianUri;
-  SetChecklistItemObsidianUri({required this.id, required this.taskId, this.obsidianUri});
+  SetChecklistItemObsidianUri({
+    required this.id,
+    required this.taskId,
+    this.obsidianUri,
+  });
   @override
   List<Object?> get props => [id, taskId, obsidianUri];
 }
@@ -212,7 +237,11 @@ class AddSubTask extends TaskEvent {
   final String parentId;
   final String title;
   final String projectId;
-  AddSubTask({required this.parentId, required this.title, required this.projectId});
+  AddSubTask({
+    required this.parentId,
+    required this.title,
+    required this.projectId,
+  });
   @override
   List<Object> get props => [parentId, title, projectId];
 }
@@ -229,7 +258,11 @@ class MoveSubTask extends TaskEvent {
   final String taskId;
   final String? newParentId;
   final String rootTaskId;
-  MoveSubTask({required this.taskId, this.newParentId, required this.rootTaskId});
+  MoveSubTask({
+    required this.taskId,
+    this.newParentId,
+    required this.rootTaskId,
+  });
   @override
   List<Object?> get props => [taskId, newParentId, rootTaskId];
 }
@@ -276,6 +309,7 @@ class ReorderTaskSiblings extends TaskEvent {
 }
 
 class ExpandAllTasks extends TaskEvent {}
+
 class CollapseAllTasks extends TaskEvent {}
 
 class ToggleViewMode extends TaskEvent {}

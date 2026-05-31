@@ -14,7 +14,9 @@ class TaskNewLoaded extends TaskNewState {
   final List<Project> projects;
   final List<ProjectGroup> groups;
   final List<Task> tasks;
-  final String? selectedProjectId;
+  final Set<String> selectedProjectIds;
+  String? get selectedProjectId =>
+      selectedProjectIds.length == 1 ? selectedProjectIds.first : null;
   final String? selectedFilter;
   final Map<String, List<ChecklistItem>> checklistItems;
   final Map<String, List<Task>> subTrees;
@@ -30,7 +32,8 @@ class TaskNewLoaded extends TaskNewState {
     this.projects = const [],
     this.groups = const [],
     this.tasks = const [],
-    this.selectedProjectId,
+    String? selectedProjectId,
+    Set<String> selectedProjectIds = const {},
     this.selectedFilter = 'all',
     this.checklistItems = const {},
     this.subTrees = const {},
@@ -41,13 +44,16 @@ class TaskNewLoaded extends TaskNewState {
     this.dateFrom,
     this.dateTo,
     this.viewMode = 'mindmap',
-  });
+  }) : selectedProjectIds = selectedProjectIds.isNotEmpty
+           ? selectedProjectIds
+           : (selectedProjectId == null ? const {} : {selectedProjectId});
 
   TaskNewLoaded copyWith({
     List<Project>? projects,
     List<ProjectGroup>? groups,
     List<Task>? tasks,
     String? selectedProjectId,
+    Set<String>? selectedProjectIds,
     String? selectedFilter,
     Map<String, List<ChecklistItem>>? checklistItems,
     Map<String, List<Task>>? subTrees,
@@ -64,7 +70,11 @@ class TaskNewLoaded extends TaskNewState {
       projects: projects ?? this.projects,
       groups: groups ?? this.groups,
       tasks: tasks ?? this.tasks,
-      selectedProjectId: selectedProjectId ?? this.selectedProjectId,
+      selectedProjectIds:
+          selectedProjectIds ??
+          (selectedProjectId == null
+              ? this.selectedProjectIds
+              : {selectedProjectId}),
       selectedFilter: selectedFilter ?? this.selectedFilter,
       checklistItems: checklistItems ?? this.checklistItems,
       subTrees: subTrees ?? this.subTrees,
@@ -83,7 +93,7 @@ class TaskNewLoaded extends TaskNewState {
     projects,
     groups,
     tasks,
-    selectedProjectId,
+    selectedProjectIds,
     selectedFilter,
     checklistItems,
     subTrees,

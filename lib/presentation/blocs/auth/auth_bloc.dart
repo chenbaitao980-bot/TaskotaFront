@@ -14,6 +14,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       super(AuthInitial()) {
     on<AppStarted>(_onAppStarted);
     on<LoggedIn>(_onLoggedIn);
+    on<PhoneOtpRequested>(_onPhoneOtpRequested);
+    on<PhoneOtpVerified>(_onPhoneOtpVerified);
     on<Registered>(_onRegistered);
     on<LocalLogin>(_onLocalLogin);
     on<LoggedOut>(_onLoggedOut);
@@ -47,6 +49,42 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(Authenticated(user: response.user!));
       } else {
         emit(const AuthError(message: '登录失败'));
+      }
+    } catch (e) {
+      emit(AuthError(message: _authErrorMessage(e)));
+    }
+  }
+
+  void _onPhoneOtpRequested(
+    PhoneOtpRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+
+    try {
+      await _supabaseService.sendPhoneOtp(phone: event.phone);
+      emit(PhoneOtpSent(phone: event.phone));
+    } catch (e) {
+      emit(AuthError(message: _authErrorMessage(e)));
+    }
+  }
+
+  void _onPhoneOtpVerified(
+    PhoneOtpVerified event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+
+    try {
+      final response = await _supabaseService.verifyPhoneOtp(
+        phone: event.phone,
+        token: event.token,
+      );
+
+      if (response.user != null) {
+        emit(Authenticated(user: response.user!));
+      } else {
+        emit(const AuthError(message: '验证码登录失败'));
       }
     } catch (e) {
       emit(AuthError(message: _authErrorMessage(e)));

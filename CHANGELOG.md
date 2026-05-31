@@ -1,5 +1,71 @@
 # Changelog
 
+## 2026-05-31 (节假日、退出登录、子任务同步、移动端资源布局)
+
+### 修复
+- 原因：用户反馈 2026 年五一休息日未完整展示、我的页退出登录无反应、桌面端子任务无法同步到移动端、移动端首页检查项和附件同排显示。
+- `lib/services/holiday_service.dart`：新增中国 2026 劳动节本地兜底覆盖，补齐 2026-05-01 至 2026-05-05 休息日，以及 2026-04-26、2026-05-09 补班日。
+- `lib/presentation/pages/profile/profile_page.dart`：退出登录菜单派发 `LoggedOut`，并为测试保留可注入 `onLogout` 回调。
+- `lib/presentation/blocs/task_new/task_bloc.dart`、`lib/services/task_sync_service.dart`：任务同步入口改用 `TaskSyncService.syncAll()` 的 `user_tasks` 逐行同步链路；新增 `taskToSyncRow`/`syncRowToTaskJson` 验证 `parent_id` 与 `parentId` 映射。
+- `lib/presentation/pages/home/home_page.dart`：窄屏首页任务详情资源区改为附件、检查项纵向分区；桌面端仍横向展示。
+- 新增 `test/holiday_service_test.dart`、`test/task_sync_service_test.dart`、`test/profile_page_test.dart` 覆盖本次修复。
+- 验证：`flutter test test\holiday_service_test.dart test\task_sync_service_test.dart test\profile_page_test.dart` 通过；全量 `flutter test` 仍失败于既有 `create_schedule_dialog_test.dart` ListTile/DecoratedBox 断言和 `widget_test.dart` 登录页文案断言。
+
+## 2026-05-31 (思维导图：自动锁定最近任务)
+
+### 新增
+- 原因：用户需要在思维导图右上角新增入口，点击后自动把视角切换到当前时间最近的任务节点。
+- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`：新增“自动锁定”小悬浮按钮，按 `startDate ?? dueDate` 查找最近可见任务，保持当前缩放比例并平移画布到节点中心；无带时间节点时显示提示。
+- 影响：仅影响思维导图视角定位，不修改任务数据、布局缓存、拖拽保存或重置布局逻辑。
+- 风险：`flutter analyze` 和 `dart analyze` 在本机均超时，需后续在可用 Flutter 工具链下复跑。
+
+## 2026-05-31 (任务创建自动插入)
+
+### 修改
+- 原因：创建任务发生时间冲突时，需要支持强制保留新任务时间，并把被挤占的后续任务级联后移。
+- `lib/services/subtask_scheduler.dart`：新增 `ScheduledTaskShift` 和 `autoInsert`，按新任务时间段、工作时段、15 分钟缓冲计算被后移任务。
+- `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`：冲突弹窗新增“自动插入”，所有传入 `TaskRepository` 的创建任务都会检测冲突并返回 `shiftedTasks`。
+- `lib/presentation/blocs/task_new/task_event.dart`、`task_bloc.dart`：`CreateTask` 新增 `shiftedTasks`，创建后批量更新被后移任务时间。
+- `tasks_page.dart`、`subtask_tree_section.dart`、`calendar_page.dart`：创建入口传递 `shiftedTasks`；日历创建入口传入 `TaskRepository`。
+- 新增 `test/subtask_scheduler_test.dart` 覆盖同段插入、连续级联后移、跨工作时段后移。
+- 验证：`dart format` 已格式化本次 Dart 修改；`flutter test test\subtask_scheduler_test.dart` 通过；`flutter analyze` 可完成但仓库仍有既有 info/warning；全量 `flutter test` 失败在既有 `create_schedule_dialog_test.dart` ListTile/DecoratedBox 断言和 `widget_test.dart` 找不到“智能小管家”。
+
+## 2026-05-31 (个人控制台静态站点)
+
+### 新增
+- 原因：用户需要一个最低成本、仅本人可访问的网站，用于配置动态密钥、动态数据并管理各类 App。
+- `personal_admin_site/index.html`、`styles.css`、`app.js`：新增静态个人控制台，支持 Supabase Email OTP 登录、动态密钥/动态数据/App 三类管理视图；密钥值在浏览器端加密后保存。
+- `personal_admin_site/supabase.sql`：新增 Supabase 表结构、更新时间触发器、RLS 策略和邮箱 allowlist 示例。
+- `personal_admin_site/config.js`、`config.example.js`、`README.md`：新增前端 Supabase 配置占位、本地配置、Supabase 初始化和 Cloudflare Pages 免费部署说明。
+- 影响：新增独立站点目录，不修改现有 Flutter 应用代码。
+- 风险/TODO：尚未实际线上发布；需要用户撤销已暴露的 Supabase Personal Access Token，并提供 Supabase `Project URL`、`anon public key`、允许登录邮箱及 Cloudflare/Git 托管发布权限后才能完成上线。
+
+### 补充
+- `personal_admin_site/_headers`：新增 Cloudflare Pages 安全响应头。
+- `personal_admin_site/DEPLOYMENT_PLAN.md`：新增 0 美元固定成本部署方案、官方依据链接、上线步骤和发布前检查项。
+- `personal_admin_site/deploy-check.ps1`：新增发布前检查脚本，阻止占位 Supabase 配置和敏感密钥进入前端。
+- `personal_admin_site/build-cloudflare.sh`、`build-local.ps1`：新增 Cloudflare 环境变量构建和本地 Direct Upload 配置生成脚本。
+- `personal_admin_site/app.js`：Supabase 未配置时显示明确提示，避免页面静默初始化失败。
+- `personal_admin_site_template.zip`：新增静态站点上传模板包。
+- 验证：`node --check personal_admin_site\app.js` 通过；本地 Node 静态服务请求 `/` 返回 `200` 且包含 `Personal Control Desk`；用临时环境变量执行 `build-local.ps1` + `deploy-check.ps1` 通过，随后已恢复 `config.js` 为占位配置。
+
+## 2026-05-31 (我的模块补全)
+
+### 修改
+- 原因：用户要求去掉我的模块的"提醒设置"，并补全"设置/帮助与反馈/关于"内容。
+- `lib/presentation/pages/profile/profile_page.dart`：移除"提醒设置"菜单项；"设置/帮助与反馈/关于"接入页面跳转；AI 排程跳过周末开关从我的页移到设置页。
+- 新增 `app_settings_page.dart`、`help_feedback_page.dart`、`about_page.dart`：设置页包含 AI 排程跳过周末、主题入口、通知说明、数据说明；帮助页包含功能帮助、常见问题和反馈说明；关于页展示产品名、版本 `1.0.0+3`、核心能力、数据同步和隐私权限说明。
+- 影响：不改任务/日程详情中的提醒设置与通知调度逻辑。
+- 风险：版本号在关于页按当前 `pubspec.yaml` 静态展示，后续发版需同步更新。
+
+## 2026-05-31 (首页任务详情：资源区同行)
+
+### 修改
+- 原因：用户要求首页的附件和检查项放到同一行。
+- `lib/presentation/pages/home/home_page.dart`：将首页 DB 任务详情底部的资源区改为 `_buildResourceRow`，子任务树、附件、检查项在同一横向行展示；移除子任务树内部额外顶部间距。
+- 影响：仅调整首页任务详情卡布局，不改附件/检查项/子任务的数据读写逻辑。
+- 风险：窄屏下横向三列可用宽度变小。
+
 ## 2026-05-30 (日历周视图：滑动时头部日期与下方网格同步)
 
 ### 优化
@@ -582,3 +648,128 @@
 ### Risks / Notes
 
 - `npx gitnexus detect-changes --repo smart-assistant` reported `critical`, but the report included many unrelated pre-existing dirty-worktree files outside this task. That result should not be interpreted as the blast radius of only the reminder/tray fix.
+# 2026-05-31 上线变现准备文档
+
+## 新增
+- 新增 `docs/launch/PLATFORM_RESEARCH_CN.md`：中国大陆个人开发者上线平台调研，建议首发 Windows 官网/私域 + 国内安卓渠道引流。
+- 新增 `docs/launch/LAUNCH_CHECKLIST.md`：上线材料、合规、技术验收和首发执行清单。
+- 新增 `docs/launch/PRIVACY_POLICY_DRAFT.md`、`docs/launch/TERMS_OF_SERVICE_DRAFT.md`：隐私政策和用户协议草案。
+- 新增 `docs/launch/STORE_LISTING_COPY.md`、`docs/launch/PRICING_AND_GO_TO_MARKET.md`：应用商店文案、定价和获客方案。
+- 新增 `docs/launch/RISK_REGISTER.md`、`docs/launch/RELEASE_EVIDENCE.md`：上线风险登记和当前发布证据记录。
+
+## 说明
+- 本次只新增文档，不修改业务代码、不更换 DeepSeek Key、不改变构建脚本或应用功能。
+- 已知风险继续保留：DeepSeek Key 客户端内置、Android release 使用 debug 签名、Android 包名仍为 `com.example.smart_assistant`。
+
+# 2026-05-31 日历节假日与休息日展示
+
+## 修改
+- `lib/services/holiday_service.dart`：`HolidayCountry` 扩展德国、法国、加拿大、澳大利亚、印度。
+- `lib/presentation/pages/calendar/calendar_page.dart`：接入 `HolidayService`，AppBar 新增节假日国家切换；周视图日期头和月视图日期格展示法定节假日、调休补班、普通周末休息日。
+- `lib/services/holiday_service.dart`：中国节日增加本地补充，儿童节等非放假节日使用 `HolidayType.observance` 展示，不参与休息日判断。
+- `lib/presentation/pages/calendar/calendar_page.dart`：`HolidayType.observance` 使用工作日节日样式展示。
+- `ARCHITECTURE.md`：同步记录日历节假日/休息日展示结构。
+
+## 验证
+- `flutter analyze lib/services/holiday_service.dart lib/presentation/pages/calendar/calendar_page.dart` 已运行，无编译错误；仍有 2 个既有 warning。
+
+## 风险
+- 外部节假日 API 初次不可用且无缓存时，只能展示本地周末休息日。
+
+# 2026-05-31 移除首页认识引导
+
+## 修改
+- `lib/presentation/pages/home/home_page.dart`：移除首页初始化时自动跳转 `OnboardingPage` 的逻辑，保留通知权限引导。
+- `ARCHITECTURE.md`：记录首页启动引导结构变化。
+
+## 验证
+- `flutter analyze lib/presentation/pages/home/home_page.dart` 已运行，无编译错误；仍有 5 个既有 lint/info。
+
+## 风险
+- `OnboardingPage` 文件仍保留，若其他入口引用不会受本次修改影响。
+
+# 2026-05-31 子任务默认继承父任务项目
+
+## 修改
+- `lib/presentation/pages/tasks/tasks_page.dart`：从任务树/思维导图父节点新增子任务时，默认项目优先取父任务项目。
+- `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`：初始化和切换父任务时同步选中父任务的项目。
+- `ARCHITECTURE.md`：记录子任务创建默认项目逻辑。
+
+## 验证
+- `flutter analyze lib/presentation/pages/tasks/tasks_page.dart lib/presentation/pages/tasks/widgets/task_create_sheet.dart` 已运行，无编译错误；仍有 7 个既有 lint/info。
+
+## 风险
+- 仅覆盖新任务弹窗路径；任务详情页子任务入口此前已传入父任务项目。
+
+# 2026-05-31 移动端首页任务详情资源区适配
+
+## 修改
+- `lib/presentation/pages/home/home_page.dart`：首页 DB 任务详情资源区按宽度切换布局；移动端子任务独占一行，附件和检查项单独组成一行。
+- `ARCHITECTURE.md`：记录首页任务详情移动端资源区布局规则。
+
+## 验证
+- `flutter analyze lib/presentation/pages/home/home_page.dart` 已运行，无编译错误；仍有 5 个既有 lint/info。
+
+## 风险
+- 以 `640px` 作为窄屏阈值，实际设备细节仍需真机确认。
+
+# 2026-05-31 思维导图删除跨端同步
+
+## 修改
+- `lib/data/repositories/task_repository.dart`：远端任务墓石不再被本地活任务无条件拒绝，改为按 `updatedAt` LWW 判断。
+- `lib/services/task_sync_service.dart`：全量同步不再用本地活任务无条件覆盖云端墓石；新增任务同步 `changes` 广播。
+- `lib/presentation/pages/home/home_page.dart`：监听 `TaskSyncService.changes`，远端任务新增/更新/删除后触发 `LoadTasks` 刷新任务页和思维导图。
+- `ARCHITECTURE.md`：记录任务删除跨端同步逻辑。
+
+## 验证
+- `flutter analyze lib/data/repositories/task_repository.dart lib/services/task_sync_service.dart lib/presentation/pages/home/home_page.dart` 已运行，无编译错误；仍有 7 个既有 lint/info/warning。
+
+## 风险
+- 需双端登录同一账号真机验证 Realtime 删除传播；本机仅做静态分析。
+
+# 2026-05-31 手机验证码登录
+
+## 修改
+- `lib/services/supabase_service.dart`：新增手机号发送验证码和短信 OTP 校验封装，使用 Supabase Flutter `signInWithOtp` / `verifyOTP`。
+- `lib/presentation/blocs/auth/auth_event.dart`、`auth_state.dart`、`auth_bloc.dart`：新增手机号验证码请求、校验和已发送状态。
+- `lib/presentation/pages/auth/login_page.dart`：登录页新增邮箱/手机验证码模式切换，手机模式支持获取验证码、输入验证码登录；大陆 11 位手机号自动补 `+86`。
+- `ARCHITECTURE.md`：记录手机验证码登录流程。
+
+## 验证
+- `flutter analyze lib/presentation/blocs/auth/auth_bloc.dart lib/services/supabase_service.dart lib/presentation/pages/auth/login_page.dart` 已运行，无编译错误；仍有 12 个既有 `print` info。
+
+## 风险
+- 需要在 Supabase 后台开启 Phone provider 并配置短信服务；本机未实际发送短信。
+
+# 2026-05-31 全局排除项目
+
+## 修改
+- `lib/services/local_storage_service.dart`：新增 `excludedProjectIds` 持久化设置。
+- `lib/presentation/blocs/task_new/task_bloc.dart`：任务模块加载和进度计算前排除设置中的项目。
+- `lib/presentation/pages/home/home_page.dart`：首页时间轴源数据排除设置中的项目，影响时间轴、统计、四象限。
+- `lib/presentation/pages/home/home_page.dart`：首页项目筛选底层状态从单项目 ID 调整为项目 ID 集合，相关计算按集合过滤。
+- `lib/presentation/pages/home/home_page.dart`：首页项目筛选增加多选弹窗入口，原下拉保留为快速单选。
+- `lib/presentation/pages/calendar/calendar_page.dart`：日历任务加载时排除设置中的项目；日历项目筛选改为项目 ID 集合，可在菜单中多选/取消项目。
+- `lib/presentation/pages/tasks/tasks_page.dart`：AppBar 新增“排除项目”多选设置入口。
+- `lib/presentation/blocs/task_new/task_event.dart`、`task_state.dart`、`task_bloc.dart`、`lib/presentation/pages/tasks/tasks_page.dart`：任务模块筛选状态支持多项目集合，任务页 AppBar 新增项目多选筛选入口。
+- `ARCHITECTURE.md`：记录全局排除项目数据流。
+
+## 验证
+- `dart format` 已格式化本次相关 Dart 文件。
+- `flutter analyze lib/presentation/pages/home/home_page.dart lib/presentation/pages/calendar/calendar_page.dart lib/presentation/blocs/task_new/task_event.dart lib/presentation/blocs/task_new/task_state.dart lib/presentation/blocs/task_new/task_bloc.dart lib/presentation/pages/tasks/tasks_page.dart lib/services/notification_service.dart lib/services/permission_service.dart lib/services/local_storage_service.dart` 已运行，无编译错误；仍有 27 个既有 lint/info/warning。
+
+## 风险
+- 首页原项目下拉仍保留快速单选，旁边多选按钮用于多选筛选。
+
+# 2026-05-31 移动端和桌面端提醒通知
+
+## 修改
+- `lib/services/notification_service.dart`：移动端调度通知前兜底请求通知权限和 Android 精确闹钟权限；iOS 前台通知显式启用 alert/badge/sound。
+- `lib/services/notification_service.dart`：Windows 桌面提醒改为 PowerShell MessageBox，用户点击 OK 前不会自动消失。
+- `lib/services/permission_service.dart`：Android 首次通知授权引导同步请求精确闹钟权限。
+
+## 验证
+- `flutter analyze lib/services/notification_service.dart lib/services/permission_service.dart` 已运行，无问题。
+
+## 风险
+- Android 精确闹钟权限会跳转系统授权页，仍需真机确认不同厂商后台保活策略。

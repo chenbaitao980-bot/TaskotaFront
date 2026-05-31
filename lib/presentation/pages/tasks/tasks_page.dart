@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
+import '../../../services/subtask_scheduler.dart';
+import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
@@ -21,13 +23,22 @@ class TasksPage extends StatefulWidget {
 
 class _TasksPageState extends State<TasksPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _storage = LocalStorageService();
+  Set<String> _excludedProjectIds = {};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadExcludedProjectIds();
       context.read<TaskNewBloc>().add(LoadTasks());
     });
+  }
+
+  Future<void> _loadExcludedProjectIds() async {
+    await _storage.init();
+    if (!mounted) return;
+    setState(() => _excludedProjectIds = _storage.excludedProjectIds);
   }
 
   @override
@@ -46,11 +57,7 @@ class _TasksPageState extends State<TasksPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: AppTheme.error,
-                  ),
+                  Icon(Icons.error_outline, size: 48, color: AppTheme.error),
                   const SizedBox(height: 16),
                   Text(
                     '加载失败：${state.message}',
@@ -83,6 +90,26 @@ class _TasksPageState extends State<TasksPage> {
                 onPressed: () => _scaffoldKey.currentState?.openDrawer(),
               ),
               actions: [
+                IconButton(
+                  tooltip: '排除项目',
+                  icon: Icon(
+                    Icons.visibility_off_outlined,
+                    color: _excludedProjectIds.isEmpty
+                        ? null
+                        : AppTheme.primaryColor,
+                  ),
+                  onPressed: () => _showExcludedProjectsDialog(context, state),
+                ),
+                IconButton(
+                  tooltip: '筛选项目',
+                  icon: Icon(
+                    Icons.folder_copy_outlined,
+                    color: state.selectedProjectIds.isEmpty
+                        ? null
+                        : AppTheme.primaryColor,
+                  ),
+                  onPressed: () => _showProjectFilterDialog(context, state),
+                ),
                 _buildViewModeButton(state),
                 _buildDateFilterButton(state),
                 _buildExpandCollapseButton(state),
@@ -113,54 +140,58 @@ class _TasksPageState extends State<TasksPage> {
                   _confirmDeleteProject(context, project),
             ),
             body: state.viewMode == 'mindmap'
-              ? MindMapView(
-              tasks: state.tasks,
-              userId: _getUserId(),
-              projectNames: projectNames,
-              projects: state.projects,
-              taskProgress: state.taskProgress,
-              selectedFilter: selectedFilter,
-              selectedProjectId: state.selectedProjectId,
-              expandedIds: state.expandedNodes['main_tree'] ?? {},
-              onTaskTap: (id) => _openTaskDetail(id, state),
-              onTaskToggle: (id) =>
-                  context.read<TaskNewBloc>().add(ToggleTaskStatus(id: id)),
-              onTaskDelete: (id) => _confirmDeleteTask(id),
-              onToggleExpand: (id) =>
-                  context.read<TaskNewBloc>().add(ToggleTaskExpand(taskId: id)),
-              onMoveToParent: (taskId, newParentId) =>
-                  context.read<TaskNewBloc>().add(
-                    MoveTaskToParent(
-                      taskId: taskId,
-                      newParentId: newParentId,
-                      projectId: state.selectedProjectId,
+                ? MindMapView(
+                    tasks: state.tasks,
+                    userId: _getUserId(),
+                    projectNames: projectNames,
+                    projects: state.projects,
+                    taskProgress: state.taskProgress,
+                    selectedFilter: selectedFilter,
+                    selectedProjectId: state.selectedProjectId,
+                    expandedIds: state.expandedNodes['main_tree'] ?? {},
+                    onTaskTap: (id) => _openTaskDetail(id, state),
+                    onTaskToggle: (id) => context.read<TaskNewBloc>().add(
+                      ToggleTaskStatus(id: id),
                     ),
-                  ),
-              onAddSubtask: (parentId) =>
-                  _showCreateTaskSheet(context, parentId: parentId),
-            )
-              : TaskListView(
-              tasks: state.tasks,
-              projectNames: projectNames,
-              taskProgress: state.taskProgress,
-              selectedFilter: selectedFilter,
-              selectedProjectId: state.selectedProjectId,
-              expandedIds: state.expandedNodes['main_tree'] ?? {},
-              onTaskTap: (id) => _openTaskDetail(id, state),
-              onTaskToggle: (id) =>
-                  context.read<TaskNewBloc>().add(ToggleTaskStatus(id: id)),
-              onTaskDelete: (id) => _confirmDeleteTask(id),
-              onToggleExpand: (id) =>
-                  context.read<TaskNewBloc>().add(ToggleTaskExpand(taskId: id)),
-              onMoveToParent: (taskId, newParentId) =>
-                  context.read<TaskNewBloc>().add(
-                    MoveTaskToParent(
-                      taskId: taskId,
-                      newParentId: newParentId,
-                      projectId: state.selectedProjectId,
+                    onTaskDelete: (id) => _confirmDeleteTask(id),
+                    onToggleExpand: (id) => context.read<TaskNewBloc>().add(
+                      ToggleTaskExpand(taskId: id),
                     ),
+                    onMoveToParent: (taskId, newParentId) =>
+                        context.read<TaskNewBloc>().add(
+                          MoveTaskToParent(
+                            taskId: taskId,
+                            newParentId: newParentId,
+                            projectId: state.selectedProjectId,
+                          ),
+                        ),
+                    onAddSubtask: (parentId) =>
+                        _showCreateTaskSheet(context, parentId: parentId),
+                  )
+                : TaskListView(
+                    tasks: state.tasks,
+                    projectNames: projectNames,
+                    taskProgress: state.taskProgress,
+                    selectedFilter: selectedFilter,
+                    selectedProjectId: state.selectedProjectId,
+                    expandedIds: state.expandedNodes['main_tree'] ?? {},
+                    onTaskTap: (id) => _openTaskDetail(id, state),
+                    onTaskToggle: (id) => context.read<TaskNewBloc>().add(
+                      ToggleTaskStatus(id: id),
+                    ),
+                    onTaskDelete: (id) => _confirmDeleteTask(id),
+                    onToggleExpand: (id) => context.read<TaskNewBloc>().add(
+                      ToggleTaskExpand(taskId: id),
+                    ),
+                    onMoveToParent: (taskId, newParentId) =>
+                        context.read<TaskNewBloc>().add(
+                          MoveTaskToParent(
+                            taskId: taskId,
+                            newParentId: newParentId,
+                            projectId: state.selectedProjectId,
+                          ),
+                        ),
                   ),
-            ),
             floatingActionButton: FloatingActionButton(
               onPressed: () => _showCreateTaskSheet(context),
               elevation: 2,
@@ -185,6 +216,9 @@ class _TasksPageState extends State<TasksPage> {
   String _getTitle(TaskNewLoaded state) {
     if (state.selectedFilter == 'today') return '今天';
     if (state.selectedFilter == 'important') return '重要';
+    if (state.selectedProjectIds.length > 1) {
+      return '${state.selectedProjectIds.length} 个项目';
+    }
     if (state.selectedProjectId != null) {
       final project = state.projects
           .where((p) => p.id == state.selectedProjectId)
@@ -197,9 +231,7 @@ class _TasksPageState extends State<TasksPage> {
   Widget _buildViewModeButton(TaskNewLoaded state) {
     final isMindMap = state.viewMode == 'mindmap';
     return IconButton(
-      icon: Icon(
-        isMindMap ? Icons.account_tree_rounded : Icons.list_rounded,
-      ),
+      icon: Icon(isMindMap ? Icons.account_tree_rounded : Icons.list_rounded),
       tooltip: isMindMap ? '切换到列表' : '切换到思维导图',
       onPressed: () {
         context.read<TaskNewBloc>().add(ToggleViewMode());
@@ -217,11 +249,13 @@ class _TasksPageState extends State<TasksPage> {
       tooltip: hasFilter ? '清除日期筛选' : '按日期筛选',
       onPressed: () async {
         if (hasFilter) {
-          context.read<TaskNewBloc>().add(LoadTasks(
-            projectId: state.selectedProjectId,
-            filter: state.selectedFilter,
-            clearDateRange: true,
-          ));
+          context.read<TaskNewBloc>().add(
+            LoadTasks(
+              projectIds: state.selectedProjectIds,
+              filter: state.selectedFilter,
+              clearDateRange: true,
+            ),
+          );
           return;
         }
         final now = DateTime.now();
@@ -236,14 +270,27 @@ class _TasksPageState extends State<TasksPage> {
           locale: const Locale('zh', 'CN'),
         );
         if (picked != null && mounted) {
-          final from = DateTime(picked.start.year, picked.start.month, picked.start.day);
-          final to = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
-          context.read<TaskNewBloc>().add(LoadTasks(
-            projectId: state.selectedProjectId,
-            filter: state.selectedFilter,
-            dateFrom: from.millisecondsSinceEpoch,
-            dateTo: to.millisecondsSinceEpoch,
-          ));
+          final from = DateTime(
+            picked.start.year,
+            picked.start.month,
+            picked.start.day,
+          );
+          final to = DateTime(
+            picked.end.year,
+            picked.end.month,
+            picked.end.day,
+            23,
+            59,
+            59,
+          );
+          context.read<TaskNewBloc>().add(
+            LoadTasks(
+              projectIds: state.selectedProjectIds,
+              filter: state.selectedFilter,
+              dateFrom: from.millisecondsSinceEpoch,
+              dateTo: to.millisecondsSinceEpoch,
+            ),
+          );
         }
       },
     );
@@ -289,11 +336,150 @@ class _TasksPageState extends State<TasksPage> {
     if (mounted) {
       context.read<TaskNewBloc>().add(
         LoadTasks(
-          projectId: state.selectedProjectId,
+          projectIds: state.selectedProjectIds,
           filter: state.selectedFilter,
         ),
       );
     }
+  }
+
+  Future<void> _showExcludedProjectsDialog(
+    BuildContext context,
+    TaskNewLoaded state,
+  ) async {
+    final draft = Set<String>.from(_excludedProjectIds);
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('排除项目'),
+          content: SizedBox(
+            width: 360,
+            child: state.projects.isEmpty
+                ? const Text('暂无项目')
+                : SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final project in state.projects)
+                          CheckboxListTile(
+                            value: draft.contains(project.id),
+                            title: Text(project.name),
+                            dense: true,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            onChanged: (checked) {
+                              setDialogState(() {
+                                if (checked == true) {
+                                  draft.add(project.id);
+                                } else {
+                                  draft.remove(project.id);
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, <String>{}),
+              child: const Text('清空'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, draft),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null) return;
+    await _storage.init();
+    await _storage.setExcludedProjectIds(result);
+    if (!mounted) return;
+    setState(() => _excludedProjectIds = result);
+    context.read<TaskNewBloc>().add(
+      LoadTasks(
+        projectIds: state.selectedProjectIds.difference(result),
+        filter: state.selectedFilter,
+      ),
+    );
+  }
+
+  Future<void> _showProjectFilterDialog(
+    BuildContext context,
+    TaskNewLoaded state,
+  ) async {
+    final draft = Set<String>.from(state.selectedProjectIds);
+    final availableProjects = state.projects
+        .where((project) => !_excludedProjectIds.contains(project.id))
+        .toList();
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('筛选项目'),
+          content: SizedBox(
+            width: 360,
+            child: availableProjects.isEmpty
+                ? const Text('暂无可筛选项目')
+                : SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CheckboxListTile(
+                          value: draft.isEmpty,
+                          title: const Text('全部项目'),
+                          dense: true,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          onChanged: (_) => setDialogState(draft.clear),
+                        ),
+                        for (final project in availableProjects)
+                          CheckboxListTile(
+                            value: draft.contains(project.id),
+                            title: Text(project.name),
+                            dense: true,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            onChanged: (checked) {
+                              setDialogState(() {
+                                if (checked == true) {
+                                  draft.add(project.id);
+                                } else {
+                                  draft.remove(project.id);
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, <String>{}),
+              child: const Text('清空'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, draft),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    context.read<TaskNewBloc>().add(
+      LoadTasks(projectIds: result, filter: state.selectedFilter),
+    );
   }
 
   void _confirmDeleteTask(String id) {
@@ -326,62 +512,72 @@ class _TasksPageState extends State<TasksPage> {
   Future<void> _showCreateProjectDialog(BuildContext context) async {
     final controller = TextEditingController();
     final blocState = context.read<TaskNewBloc>().state;
-    final groups = blocState is TaskNewLoaded ? blocState.groups : const <ProjectGroup>[];
+    final groups = blocState is TaskNewLoaded
+        ? blocState.groups
+        : const <ProjectGroup>[];
     String? selectedGroupId;
     final result = await showDialog<({String name, String? groupId})>(
       context: context,
-      builder: (context) => StatefulBuilder(builder: (ctx, setLocal) {
-        return AlertDialog(
-          title: const Text('新建项目'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: '项目名称',
-                  border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          return AlertDialog(
+            title: const Text('新建项目'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: '项目名称',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                value: selectedGroupId,
-                decoration: const InputDecoration(
-                  labelText: '所属分组（可选）',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('无分组')),
-                  ...groups.map((g) => DropdownMenuItem<String?>(
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: selectedGroupId,
+                  decoration: const InputDecoration(
+                    labelText: '所属分组（可选）',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('无分组'),
+                    ),
+                    ...groups.map(
+                      (g) => DropdownMenuItem<String?>(
                         value: g.id,
                         child: Text(g.name),
-                      )),
-                ],
-                onChanged: (v) => setLocal(() => selectedGroupId = v),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setLocal(() => selectedGroupId = v),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final n = controller.text.trim();
+                  if (n.isEmpty) return;
+                  Navigator.pop(context, (name: n, groupId: selectedGroupId));
+                },
+                child: const Text('创建'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消')),
-            TextButton(
-              onPressed: () {
-                final n = controller.text.trim();
-                if (n.isEmpty) return;
-                Navigator.pop(context, (name: n, groupId: selectedGroupId));
-              },
-              child: const Text('创建'),
-            ),
-          ],
-        );
-      }),
+          );
+        },
+      ),
     );
     if (result != null) {
       context.read<TaskNewBloc>().add(
-            CreateProject(name: result.name, groupId: result.groupId),
-          );
+        CreateProject(name: result.name, groupId: result.groupId),
+      );
     }
   }
 
@@ -391,69 +587,82 @@ class _TasksPageState extends State<TasksPage> {
   ) async {
     final controller = TextEditingController(text: project.name);
     final blocState = context.read<TaskNewBloc>().state;
-    final groups = blocState is TaskNewLoaded ? blocState.groups : const <ProjectGroup>[];
+    final groups = blocState is TaskNewLoaded
+        ? blocState.groups
+        : const <ProjectGroup>[];
     String? selectedGroupId = project.groupId;
-    final result = await showDialog<({String name, String? groupId, bool clearGroup})>(
-      context: context,
-      builder: (context) => StatefulBuilder(builder: (ctx, setLocal) {
-        return AlertDialog(
-          title: const Text('编辑项目'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: '项目名称',
-                  border: OutlineInputBorder(),
+    final result =
+        await showDialog<({String name, String? groupId, bool clearGroup})>(
+          context: context,
+          builder: (context) => StatefulBuilder(
+            builder: (ctx, setLocal) {
+              return AlertDialog(
+                title: const Text('编辑项目'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: '项目名称',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String?>(
+                      value: selectedGroupId,
+                      decoration: const InputDecoration(
+                        labelText: '所属分组（可选）',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('无分组'),
+                        ),
+                        ...groups.map(
+                          (g) => DropdownMenuItem<String?>(
+                            value: g.id,
+                            child: Text(g.name),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) => setLocal(() => selectedGroupId = v),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                value: selectedGroupId,
-                decoration: const InputDecoration(
-                  labelText: '所属分组（可选）',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('无分组')),
-                  ...groups.map((g) => DropdownMenuItem<String?>(
-                        value: g.id,
-                        child: Text(g.name),
-                      )),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      final n = controller.text.trim();
+                      if (n.isEmpty) return;
+                      Navigator.pop(context, (
+                        name: n,
+                        groupId: selectedGroupId,
+                        clearGroup: selectedGroupId == null,
+                      ));
+                    },
+                    child: const Text('保存'),
+                  ),
                 ],
-                onChanged: (v) => setLocal(() => selectedGroupId = v),
-              ),
-            ],
+              );
+            },
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消')),
-            TextButton(
-              onPressed: () {
-                final n = controller.text.trim();
-                if (n.isEmpty) return;
-                Navigator.pop(context, (
-                  name: n,
-                  groupId: selectedGroupId,
-                  clearGroup: selectedGroupId == null,
-                ));
-              },
-              child: const Text('保存'),
-            ),
-          ],
         );
-      }),
-    );
     if (result != null) {
-      context.read<TaskNewBloc>().add(UpdateProject(
-            id: project.id,
-            name: result.name,
-            groupId: result.groupId,
-            clearGroup: result.clearGroup,
-          ));
+      context.read<TaskNewBloc>().add(
+        UpdateProject(
+          id: project.id,
+          name: result.name,
+          groupId: result.groupId,
+          clearGroup: result.clearGroup,
+        ),
+      );
     }
   }
 
@@ -475,11 +684,13 @@ class _TasksPageState extends State<TasksPage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('创建')),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('创建'),
+          ),
         ],
       ),
     );
@@ -505,16 +716,20 @@ class _TasksPageState extends State<TasksPage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('保存')),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
     if (name != null && name.isNotEmpty && context.mounted) {
-      context.read<TaskNewBloc>().add(UpdateProjectGroup(id: group.id, name: name));
+      context.read<TaskNewBloc>().add(
+        UpdateProjectGroup(id: group.id, name: name),
+      );
     }
   }
 
@@ -525,45 +740,52 @@ class _TasksPageState extends State<TasksPage> {
     bool deleteProjects = false;
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(builder: (ctx, setLocal) {
-        return AlertDialog(
-          title: const Text('删除分组'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('确定删除分组"${group.name}"？'),
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                value: deleteProjects,
-                onChanged: (v) => setLocal(() => deleteProjects = v ?? false),
-                title: const Text('同时删除该分组下的所有项目和任务',
-                    style: TextStyle(fontSize: 13)),
-                subtitle: Text('不勾选则项目变为"未分组"',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textHint)),
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
+      builder: (context) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          return AlertDialog(
+            title: const Text('删除分组'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('确定删除分组"${group.name}"？'),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  value: deleteProjects,
+                  onChanged: (v) => setLocal(() => deleteProjects = v ?? false),
+                  title: const Text(
+                    '同时删除该分组下的所有项目和任务',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    '不勾选则项目变为"未分组"',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textHint),
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+                child: Text(deleteProjects ? '删除分组和项目' : '删除分组'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消')),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: TextButton.styleFrom(foregroundColor: AppTheme.error),
-              child: Text(deleteProjects ? '删除分组和项目' : '删除分组'),
-            ),
-          ],
-        );
-      }),
+          );
+        },
+      ),
     );
     if (confirm == true && context.mounted) {
       context.read<TaskNewBloc>().add(
-            DeleteProjectGroup(id: group.id, deleteProjects: deleteProjects),
-          );
+        DeleteProjectGroup(id: group.id, deleteProjects: deleteProjects),
+      );
     }
   }
 
@@ -594,12 +816,21 @@ class _TasksPageState extends State<TasksPage> {
     }
   }
 
-  Future<void> _showCreateTaskSheet(BuildContext context, {String? parentId}) async {
+  Future<void> _showCreateTaskSheet(
+    BuildContext context, {
+    String? parentId,
+  }) async {
     final repo = context.read<TaskNewBloc>().projectRepository;
     final blocState = context.read<TaskNewBloc>().state;
-    final initialProjectId = blocState is TaskNewLoaded
-        ? blocState.selectedProjectId
+    final parentProjectId = blocState is TaskNewLoaded && parentId != null
+        ? blocState.tasks
+              .where((task) => task.id == parentId)
+              .firstOrNull
+              ?.projectId
         : null;
+    final initialProjectId =
+        parentProjectId ??
+        (blocState is TaskNewLoaded ? blocState.selectedProjectId : null);
 
     final taskRepo = context.read<TaskNewBloc>().taskRepository;
     final result = await showModalBottomSheet<Map<String, dynamic>>(
@@ -621,13 +852,19 @@ class _TasksPageState extends State<TasksPage> {
       final resultParentId = result['parentId'] as String?;
       context.read<TaskNewBloc>().add(
         CreateTask(
-          projectId: (result['projectId'] as String?) ?? 'inbox',
+          projectId:
+              (result['projectId'] as String?) ??
+              parentProjectId ??
+              initialProjectId ??
+              'inbox',
           title: result['title'] as String,
           description: result['description'] as String? ?? '',
           priority: result['priority'] as int? ?? 1,
           startDate: result['startDate'] as int?,
           dueDate: result['dueDate'] as int?,
           parentId: resultParentId,
+          shiftedTasks:
+              (result['shiftedTasks'] as List<ScheduledTaskShift>?) ?? const [],
         ),
       );
       if (resultParentId != null) {

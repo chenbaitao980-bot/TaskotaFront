@@ -28,6 +28,21 @@ class SupabaseService {
       password: password,
     );
   }
+
+  Future<void> sendPhoneOtp({required String phone}) async {
+    await _client.auth.signInWithOtp(phone: phone);
+  }
+
+  Future<AuthResponse> verifyPhoneOtp({
+    required String phone,
+    required String token,
+  }) async {
+    return await _client.auth.verifyOTP(
+      phone: phone,
+      token: token,
+      type: OtpType.sms,
+    );
+  }
   
   Future<void> signOut() async {
     await _client.auth.signOut();

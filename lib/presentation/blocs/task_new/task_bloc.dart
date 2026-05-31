@@ -9,6 +9,8 @@ import '../../../data/repositories/checklist_repository.dart';
 import '../../../domain/tasks/task_progress_calculator.dart';
 import '../../../services/supabase_service.dart';
 import '../../../core/utils/file_logger.dart';
+import '../../../services/local_storage_service.dart';
+import '../../../services/task_sync_service.dart';
 
 class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   final ProjectRepository projectRepository;
@@ -16,6 +18,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   final TaskRepository taskRepository;
   final ChecklistRepository checklistRepository;
   final SupabaseService? supabaseService;
+  final LocalStorageService _storage = LocalStorageService();
 
   TaskNewBloc({
     required this.projectRepository,
@@ -82,7 +85,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         expandedNodes = current.expandedNodes;
       }
 
-      final groups = await (projectGroupRepository?.getAll() ?? Future.value(<ProjectGroup>[]));
+      final groups =
+          await (projectGroupRepository?.getAll() ??
+              Future.value(<ProjectGroup>[]));
       emit(
         TaskNewLoaded(
           projects: projects,
@@ -92,7 +97,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           expandedNodes: expandedNodes,
           taskProgress: progress.taskProgress,
           projectProgress: progress.projectProgress,
-            groupProgress: progress.groupProgress,
+          groupProgress: progress.groupProgress,
         ),
       );
     } catch (e) {
@@ -150,7 +155,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   ) async {
     if (projectGroupRepository == null) return;
     try {
-      await projectGroupRepository!.create(name: event.name, color: event.color);
+      await projectGroupRepository!.create(
+        name: event.name,
+        color: event.color,
+      );
       final groups = await projectGroupRepository!.getAll();
       if (state is TaskNewLoaded) {
         emit((state as TaskNewLoaded).copyWith(groups: groups));
@@ -166,8 +174,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   ) async {
     if (projectGroupRepository == null) return;
     try {
-      await projectGroupRepository!
-          .update(event.id, name: event.name, color: event.color);
+      await projectGroupRepository!.update(
+        event.id,
+        name: event.name,
+        color: event.color,
+      );
       final groups = await projectGroupRepository!.getAll();
       if (state is TaskNewLoaded) {
         emit((state as TaskNewLoaded).copyWith(groups: groups));
@@ -198,14 +209,16 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final allTasks = await taskRepository.getAll();
       final progress = await _calculateProgress(allTasks);
       if (state is TaskNewLoaded) {
-        emit((state as TaskNewLoaded).copyWith(
-          groups: groups,
-          projects: projects,
-          tasks: allTasks,
-          taskProgress: progress.taskProgress,
-          projectProgress: progress.projectProgress,
-          groupProgress: progress.groupProgress,
-        ));
+        emit(
+          (state as TaskNewLoaded).copyWith(
+            groups: groups,
+            projects: projects,
+            tasks: allTasks,
+            taskProgress: progress.taskProgress,
+            projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
+          ),
+        );
       }
     } catch (e) {
       emit(TaskNewError(e.toString()));
@@ -258,14 +271,27 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     emit(TaskNewLoading());
     try {
       final projects = await projectRepository.getActive();
-      final allTasks = await taskRepository.getAll();
+      await _storage.init();
+      final excludedProjectIds = _storage.excludedProjectIds;
+      final allTasks = (await taskRepository.getAll())
+          .where((t) => !excludedProjectIds.contains(t.projectId))
+          .toList();
+      final selectedProjectIds = event.projectIds
+          .where((id) => !excludedProjectIds.contains(id))
+          .toSet();
       List<Task> tasks;
       if (event.filter == 'today') {
-        tasks = await taskRepository.getToday();
+        tasks = (await taskRepository.getToday())
+            .where((t) => !excludedProjectIds.contains(t.projectId))
+            .toList();
       } else if (event.filter == 'important') {
-        tasks = await taskRepository.getImportant();
-      } else if (event.projectId != null) {
-        tasks = await taskRepository.getByProject(event.projectId!);
+        tasks = (await taskRepository.getImportant())
+            .where((t) => !excludedProjectIds.contains(t.projectId))
+            .toList();
+      } else if (selectedProjectIds.isNotEmpty) {
+        tasks = allTasks
+            .where((t) => selectedProjectIds.contains(t.projectId))
+            .toList();
       } else {
         tasks = allTasks;
       }
@@ -285,13 +311,21 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       // DEBUG: 诊断子任务消失
       final allChildTasks = allTasks.where((t) => t.parentId != null).toList();
       final childTasks = tasks.where((t) => t.parentId != null).toList();
-      flog('[LoadTasks] filter=${event.filter}, projectId=${event.projectId}');
-      flog('[LoadTasks] allTasks总数=${allTasks.length}, allChildren=${allChildTasks.length}');
-      flog('[LoadTasks] 过滤后tasks=${tasks.length}, filteredChildren=${childTasks.length}');
+      flog(
+        '[LoadTasks] filter=${event.filter}, projectIds=$selectedProjectIds',
+      );
+      flog(
+        '[LoadTasks] allTasks总数=${allTasks.length}, allChildren=${allChildTasks.length}',
+      );
+      flog(
+        '[LoadTasks] 过滤后tasks=${tasks.length}, filteredChildren=${childTasks.length}',
+      );
       for (final c in allChildTasks) {
         final inFiltered = tasks.any((t) => t.id == c.id);
         final parentInFiltered = tasks.any((t) => t.id == c.parentId);
-        flog('[LoadTasks]   child: id=${c.id.substring(0, 8)}, title=${c.title}, parentId=${c.parentId?.substring(0, 8)}, projectId=${c.projectId}, deleted=${c.deleted}, inFiltered=$inFiltered, parentInFiltered=$parentInFiltered');
+        flog(
+          '[LoadTasks]   child: id=${c.id.substring(0, 8)}, title=${c.title}, parentId=${c.parentId?.substring(0, 8)}, projectId=${c.projectId}, deleted=${c.deleted}, inFiltered=$inFiltered, parentInFiltered=$parentInFiltered',
+        );
       }
 
       final progress = await _calculateProgress(allTasks);
@@ -306,21 +340,27 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         newExpanded['main_tree'] = allParentIds;
       }
 
-      final groups = await (projectGroupRepository?.getAll() ?? Future.value(<ProjectGroup>[]));
+      final groups =
+          await (projectGroupRepository?.getAll() ??
+              Future.value(<ProjectGroup>[]));
       emit(
         TaskNewLoaded(
           projects: projects,
           groups: groups,
           tasks: tasks,
-          selectedProjectId: event.projectId,
+          selectedProjectIds: selectedProjectIds,
           selectedFilter: event.filter ?? 'all',
           subTrees: preservedSubTrees,
           expandedNodes: newExpanded,
           taskProgress: progress.taskProgress,
           projectProgress: progress.projectProgress,
           groupProgress: progress.groupProgress,
-          dateFrom: event.clearDateRange ? null : (event.dateFrom ?? preservedDateFrom),
-          dateTo: event.clearDateRange ? null : (event.dateTo ?? preservedDateTo),
+          dateFrom: event.clearDateRange
+              ? null
+              : (event.dateFrom ?? preservedDateFrom),
+          dateTo: event.clearDateRange
+              ? null
+              : (event.dateTo ?? preservedDateTo),
           viewMode: preservedViewMode,
         ),
       );
@@ -334,24 +374,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     SyncFromCloud event,
     Emitter<TaskNewState> emit,
   ) async {
-    final svc = supabaseService;
-    if (svc == null) {
-      print('[Sync] supabaseService 为空，跳过拉取');
-      return;
-    }
     try {
-      final remoteJson = await svc.fetchRemoteLocalTasks();
-      if (remoteJson == null || remoteJson.isEmpty) {
-        print('[Sync] 云端无可同步任务');
-        return;
-      }
-      print('[Sync] 从云端拉取 ${remoteJson.length} 条任务');
-      for (final json in remoteJson) {
-        await taskRepository.syncFromJson(json);
-        print('[Sync] 已合并任务: ${json['id']} - ${json['title']}');
-      }
+      await TaskSyncService.instance.syncAll();
       add(LoadTasks());
-      print('[Sync] 同步完成');
+      print('[Sync] user_tasks 同步完成');
     } catch (e) {
       print('[Sync] 拉取失败: $e');
     }
@@ -359,17 +385,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
   /// 将当前所有本地任务同步到 Supabase 云端
   Future<void> _syncTasksToCloud() async {
-    final svc = supabaseService;
-    if (svc == null) {
-      print('[Sync] supabaseService 为空，跳过推送');
-      return;
-    }
     try {
-      final allTasks = await taskRepository.getAll();
-      final jsonList = allTasks.map((t) => t.toJson()).toList();
-      print('[Sync] 推送 ${jsonList.length} 条任务到云端');
-      await svc.syncLocalTasks(jsonList);
-      print('[Sync] 推送完成');
+      await TaskSyncService.instance.syncAll();
+      print('[Sync] user_tasks 推送完成');
     } catch (e) {
       print('[Sync] 推送失败: $e');
     }
@@ -390,27 +408,44 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         dueDate: event.dueDate,
         parentId: event.parentId,
       );
-      flog('[CreateTask] 写入完成: id=${newTask.id.substring(0, 8)}, title=${newTask.title}, parentId=${newTask.parentId?.substring(0, 8)}, projectId=${newTask.projectId}');
+      for (final shifted in event.shiftedTasks) {
+        await taskRepository.update(
+          shifted.taskId,
+          startDate: shifted.start.millisecondsSinceEpoch,
+          dueDate: shifted.end.millisecondsSinceEpoch,
+        );
+      }
+      flog(
+        '[CreateTask] 写入完成: id=${newTask.id.substring(0, 8)}, title=${newTask.title}, parentId=${newTask.parentId?.substring(0, 8)}, projectId=${newTask.projectId}',
+      );
       // 回读验证
       final verify = await taskRepository.get(newTask.id);
       if (verify == null) {
         flog('[CreateTask] ⚠️ 回读验证失败！任务 ${newTask.id.substring(0, 8)} 写入后查不到');
       } else {
-        flog('[CreateTask] 回读验证OK: parentId=${verify.parentId?.substring(0, 8)}, deleted=${verify.deleted}');
+        flog(
+          '[CreateTask] 回读验证OK: parentId=${verify.parentId?.substring(0, 8)}, deleted=${verify.deleted}',
+        );
       }
       await _syncTasksToCloud();
       // syncTasksToCloud 后再次验证
       final verify2 = await taskRepository.get(newTask.id);
       if (verify2 == null) {
-        flog('[CreateTask] ⚠️ syncTasksToCloud后任务消失！id=${newTask.id.substring(0, 8)}');
+        flog(
+          '[CreateTask] ⚠️ syncTasksToCloud后任务消失！id=${newTask.id.substring(0, 8)}',
+        );
       } else if (verify2.parentId != newTask.parentId) {
-        flog('[CreateTask] ⚠️ syncTasksToCloud后parentId变化！${newTask.parentId?.substring(0, 8)} → ${verify2.parentId?.substring(0, 8)}');
+        flog(
+          '[CreateTask] ⚠️ syncTasksToCloud后parentId变化！${newTask.parentId?.substring(0, 8)} → ${verify2.parentId?.substring(0, 8)}',
+        );
       }
       if (current is TaskNewLoaded) {
-        add(LoadTasks(
-          projectId: current.selectedProjectId,
-          filter: current.selectedFilter,
-        ));
+        add(
+          LoadTasks(
+            projectIds: current.selectedProjectIds,
+            filter: current.selectedFilter,
+          ),
+        );
       } else {
         add(LoadTasks());
       }
@@ -439,7 +474,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
-          projectId: current.selectedProjectId,
+          projectIds: current.selectedProjectIds,
           filter: current.selectedFilter,
         ),
       );
@@ -458,7 +493,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
-          projectId: current.selectedProjectId,
+          projectIds: current.selectedProjectIds,
           filter: current.selectedFilter,
         ),
       );
@@ -477,7 +512,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
-          projectId: current.selectedProjectId,
+          projectIds: current.selectedProjectIds,
           filter: current.selectedFilter,
         ),
       );
@@ -748,7 +783,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
-          projectId: current.selectedProjectId,
+          projectIds: current.selectedProjectIds,
           filter: current.selectedFilter,
         ),
       );
@@ -796,7 +831,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final current = state as TaskNewLoaded;
       add(
         LoadTasks(
-          projectId: current.selectedProjectId,
+          projectIds: current.selectedProjectIds,
           filter: current.selectedFilter,
         ),
       );
@@ -833,10 +868,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
-  void _onToggleViewMode(
-    ToggleViewMode event,
-    Emitter<TaskNewState> emit,
-  ) {
+  void _onToggleViewMode(ToggleViewMode event, Emitter<TaskNewState> emit) {
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       final newMode = current.viewMode == 'mindmap' ? 'list' : 'mindmap';

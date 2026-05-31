@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Personal Control Desk</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./config.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="auth-panel" id="authPanel">
+        <div>
+          <p class="eyebrow">Private Ops</p>
+          <h1>Personal Control Desk</h1>
+          <p class="subtle">动态密钥、动态数据和 App 管理，只保留必要入口。</p>
+        </div>
+        <form id="loginForm" class="login-form">
+          <label>
+            登录邮箱
+            <input id="emailInput" type="email" autocomplete="email" required />
+          </label>
+          <button type="submit">发送登录链接</button>
+          <p id="loginMessage" class="message"></p>
+        </form>
+      </section>
+
+      <section class="dashboard hidden" id="dashboard">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Command Surface</p>
+            <h1>控制台</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="refreshButton" type="button">刷新</button>
+            <button id="logoutButton" type="button" class="ghost">退出</button>
+          </div>
+        </header>
+
+        <section class="unlock-panel" id="unlockPanel">
+          <label>
+            本地加密口令
+            <input id="passphraseInput" type="password" autocomplete="current-password" placeholder="不上传，只用于本机加解密" />
+          </label>
+          <button id="unlockButton" type="button">解锁密钥值</button>
+          <p class="message" id="cryptoMessage"></p>
+        </section>
+
+        <section class="grid">
+          <article class="panel">
+            <div class="panel-head">
+              <h2>动态密钥</h2>
+              <span id="keyCount">0</span>
+            </div>
+            <form id="keyForm" class="stack">
+              <input name="name" placeholder="名称，例如 OPENAI_API_KEY" required />
+              <input name="environment" placeholder="环境，例如 prod / dev" />
+              <textarea name="secret" placeholder="密钥值，会在浏览器端加密后保存" required></textarea>
+              <button type="submit">保存密钥</button>
+            </form>
+            <div class="list" id="keyList"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>动态数据</h2>
+              <span id="dataCount">0</span>
+            </div>
+            <form id="dataForm" class="stack">
+              <input name="key" placeholder="Key，例如 current_model" required />
+              <textarea name="value" placeholder='Value，支持 JSON 或文本' required></textarea>
+              <button type="submit">保存数据</button>
+            </form>
+            <div class="list" id="dataList"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2>App 管理</h2>
+              <span id="appCount">0</span>
+            </div>
+            <form id="appForm" class="stack">
+              <input name="name" placeholder="App 名称" required />
+              <input name="url" placeholder="入口 URL" type="url" />
+              <select name="status">
+                <option value="active">active</option>
+                <option value="paused">paused</option>
+                <option value="archived">archived</option>
+              </select>
+              <textarea name="notes" placeholder="备注"></textarea>
+              <button type="submit">保存 App</button>
+            </form>
+            <div class="list" id="appList"></div>
+          </article>
+        </section>
+      </section>
+    </main>
+    <template id="itemTemplate">
+      <div class="item">
+        <div class="item-main"></div>
+        <div class="item-actions"></div>
+      </div>
+    </template>
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -53,7 +53,9 @@ class NotificationService {
 
       _plugin = FlutterLocalNotificationsPlugin();
 
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidSettings = AndroidInitializationSettings(
+        '@mipmap/ic_launcher',
+      );
       const iosSettings = DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
@@ -116,7 +118,11 @@ class NotificationService {
     enableVibration: true,
     playSound: true,
   );
-  static const _iosDetails = DarwinNotificationDetails();
+  static const _iosDetails = DarwinNotificationDetails(
+    presentAlert: true,
+    presentBadge: true,
+    presentSound: true,
+  );
   static const _notifDetails = NotificationDetails(
     android: _androidDetails,
     iOS: _iosDetails,
@@ -147,6 +153,7 @@ class NotificationService {
     // Android / iOS：用 zonedSchedule — 进程被杀后系统 AlarmManager 仍会触发
     if (_useOsNotifications && _plugin != null) {
       try {
+        await _ensureMobileNotificationPermissions();
         final tzScheduled = tz.TZDateTime.from(scheduledDate, tz.local);
         await _plugin!.zonedSchedule(
           id,
@@ -160,7 +167,12 @@ class NotificationService {
         return;
       } catch (e) {
         // 降级到 show（立即显示）
-        await _showOsNotification(id: id, title: title, body: body, payload: payload);
+        await _showOsNotification(
+          id: id,
+          title: title,
+          body: body,
+          payload: payload,
+        );
       }
     }
   }
@@ -180,7 +192,12 @@ class NotificationService {
     if (Platform.isAndroid || Platform.isIOS) {
       // 移动端：调度第一条，触发后在回调里重新调度（通过 Timer 补位）
       final target = firstFireAt.isAfter(now) ? firstFireAt : now;
-      await scheduleNotification(id: id, title: title, body: body, scheduledDate: target);
+      await scheduleNotification(
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: target,
+      );
       // 用 Timer 追踪下一次（如果 App 在前台）
       final delay = target.difference(now);
       _timers[id] = Timer(delay, () async {
@@ -198,7 +215,10 @@ class NotificationService {
     // 桌面端：递归 Timer
     void fireAndReschedule([Timer? _]) {
       _showDesktopNativeNotification(id, title, body);
-      _timers[id] = Timer(Duration(milliseconds: intervalMs), fireAndReschedule);
+      _timers[id] = Timer(
+        Duration(milliseconds: intervalMs),
+        fireAndReschedule,
+      );
     }
 
     if (firstFireAt.isAfter(now)) {
@@ -228,7 +248,9 @@ class NotificationService {
         isWindows: Platform.isWindows,
         hasNativeWindowsPlugin: _useNativeWindowsNotifications,
       );
-      if (channel == DesktopNotificationChannel.nativePlugin) {
+      if (Platform.isWindows) {
+        _showWindowsPersistentNotification(title, body);
+      } else if (channel == DesktopNotificationChannel.nativePlugin) {
         unawaited(_showWindowsPluginNotification(id, title, body));
       } else if (channel == DesktopNotificationChannel.windowsScript) {
         _showWindowsNotification(title, body);
@@ -238,11 +260,17 @@ class NotificationService {
         _showLinuxNotification(title, body);
       }
     } catch (_) {
-      _pendingNotifications.add(PendingNotification(id: id, title: title, body: body));
+      _pendingNotifications.add(
+        PendingNotification(id: id, title: title, body: body),
+      );
     }
   }
 
-  Future<void> _showWindowsPluginNotification(int id, String title, String body) async {
+  Future<void> _showWindowsPluginNotification(
+    int id,
+    String title,
+    String body,
+  ) async {
     final plugin = _windowsPlugin;
     if (plugin == null) {
       _showWindowsNotification(title, body);
@@ -262,9 +290,34 @@ class NotificationService {
     }
   }
 
+  void _showWindowsPersistentNotification(String title, String body) {
+    try {
+      final psPath =
+          '${Directory.systemTemp.path}\\sa_notify_modal_${DateTime.now().microsecondsSinceEpoch}.ps1';
+      final safeTitle = title.replaceAll("'", "''");
+      final safeBody = body.replaceAll("'", "''");
+      File(psPath).writeAsStringSync(
+        "Add-Type -AssemblyName PresentationFramework\n"
+        "[System.Windows.MessageBox]::Show('$safeBody', '$safeTitle', 'OK', 'Information') > \$null\n"
+        "Remove-Item -LiteralPath '$psPath' -Force -ErrorAction SilentlyContinue\n",
+      );
+      Process.start('powershell', [
+        '-NoProfile',
+        '-STA',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        psPath,
+      ]);
+    } catch (_) {
+      _showWindowsNotification(title, body);
+    }
+  }
+
   void _showWindowsNotification(String title, String body) {
     try {
-      final psPath = '${Directory.systemTemp.path}\\sa_notify_${DateTime.now().microsecondsSinceEpoch}.ps1';
+      final psPath =
+          '${Directory.systemTemp.path}\\sa_notify_${DateTime.now().microsecondsSinceEpoch}.ps1';
       final safeTitle = title.replaceAll("'", "''");
       final safeBody = body.replaceAll("'", "''");
       File(psPath).writeAsStringSync(
@@ -274,18 +327,44 @@ class NotificationService {
         "\$textNodes.Item(0).AppendChild(\$template.CreateTextNode('$safeTitle')) > \$null\n"
         "\$textNodes.Item(1).AppendChild(\$template.CreateTextNode('$safeBody')) > \$null\n"
         "\$toast = [Windows.UI.Notifications.ToastNotification]::new(\$template)\n"
-        "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Smart Assistant').Show(\$toast)\n"
+        "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Smart Assistant').Show(\$toast)\n",
       );
       Process.run('powershell', ['-NoProfile', '-File', psPath]);
     } catch (_) {}
   }
 
   void _showMacOSNotification(String title, String body) {
-    Process.run('osascript', ['-e', 'display notification "$body" with title "$title"']);
+    Process.run('osascript', [
+      '-e',
+      'display notification "$body" with title "$title"',
+    ]);
   }
 
   void _showLinuxNotification(String title, String body) {
     Process.run('notify-send', [title, body]);
+  }
+
+  Future<void> _ensureMobileNotificationPermissions() async {
+    final plugin = _plugin;
+    if (plugin == null) return;
+
+    if (Platform.isAndroid) {
+      final android = plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await android?.requestNotificationsPermission();
+      await android?.requestExactAlarmsPermission();
+      return;
+    }
+
+    if (Platform.isIOS) {
+      final ios = plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
+      await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    }
   }
 
   /// 根据日程信息调度提醒

@@ -468,6 +468,43 @@ class _MindMapViewState extends State<MindMapView> {
     return Size(maxX + _kCanvasPadding * 2 + 300, maxY + _kCanvasPadding * 2 + 300);
   }
 
+  void _focusNearestTask(Size viewportSize) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _LayoutNode? nearest;
+    int? nearestDiff;
+
+    for (final node in _cachedPendingNodes) {
+      final timestamp = node.task.startDate ?? node.task.dueDate;
+      if (timestamp == null) continue;
+      final diff = (timestamp - now).abs();
+      if (nearestDiff == null || diff < nearestDiff) {
+        nearest = node;
+        nearestDiff = diff;
+      }
+    }
+
+    if (nearest == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有带时间的任务节点')),
+      );
+      return;
+    }
+
+    final nodePosition = _positionNotifiers[nearest.task.id]?.value ??
+        Offset(nearest.x, nearest.y);
+    final targetCenter = nodePosition +
+        const Offset(_kCanvasShift, _kCanvasShift) +
+        const Offset(_kNodeWidth / 2, _kNodeHeight / 2);
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    final next = Matrix4.copy(_transformController.value)
+      ..setTranslationRaw(
+        viewportSize.width / 2 - targetCenter.dx * scale,
+        viewportSize.height / 2 - targetCenter.dy * scale,
+        0,
+      );
+    _transformController.value = next;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_cachedPendingNodes.isEmpty) {
@@ -648,8 +685,12 @@ class _MindMapViewState extends State<MindMapView> {
       ),
     );
 
-    return Stack(
-      children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportSize =
+            Size(constraints.maxWidth, constraints.maxHeight);
+        return Stack(
+          children: [
         // 背景点击取消框选：Listener 放在 InteractiveViewer 外层，
         // 绕过 InteractiveViewer 内部的 ScaleGestureRecognizer 拦截
         Listener(
@@ -667,6 +708,21 @@ class _MindMapViewState extends State<MindMapView> {
             }
           },
           child: viewer,
+        ),
+        Positioned(
+          right: 80,
+          top: 16,
+          child: FloatingActionButton.small(
+            heroTag: 'focus_nearest_task',
+            backgroundColor: AppTheme.bgCard,
+            tooltip: '自动锁定',
+            onPressed: () => _focusNearestTask(viewportSize),
+            child: Icon(
+              Icons.center_focus_strong_rounded,
+              color: AppTheme.textSecondary,
+              size: 20,
+            ),
+          ),
         ),
         Positioned(
           right: 16,
@@ -691,7 +747,9 @@ class _MindMapViewState extends State<MindMapView> {
             ),
           ),
         ),
-      ],
+          ],
+        );
+      },
     );
   }
 

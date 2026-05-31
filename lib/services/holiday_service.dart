@@ -2,14 +2,19 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum HolidayType { statutory, makeupWork, traditional }
+enum HolidayType { statutory, makeupWork, traditional, observance }
 
 enum HolidayCountry {
   china('CN', '🇨🇳 中国'),
   usa('US', '🇺🇸 美国'),
   japan('JP', '🇯🇵 日本'),
   uk('GB', '🇬🇧 英国'),
-  korea('KR', '🇰🇷 韩国');
+  korea('KR', '🇰🇷 韩国'),
+  germany('DE', '🇩🇪 德国'),
+  france('FR', '🇫🇷 法国'),
+  canada('CA', '🇨🇦 加拿大'),
+  australia('AU', '🇦🇺 澳大利亚'),
+  india('IN', '🇮🇳 印度');
 
   const HolidayCountry(this.code, this.label);
   final String code;
@@ -23,7 +28,9 @@ class HolidayInfo {
 }
 
 class HolidayService {
-  static final _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 8)));
+  static final _dio = Dio(
+    BaseOptions(connectTimeout: const Duration(seconds: 8)),
+  );
   static const _cacheTtlMs = 7 * 24 * 3600 * 1000; // 7 天
 
   static String _cacheKey(HolidayCountry country, int year) =>
@@ -44,7 +51,11 @@ class HolidayService {
         final ts = json['ts'] as int;
         final fresh = DateTime.now().millisecondsSinceEpoch - ts < _cacheTtlMs;
         if (fresh) {
-          return _deserialize(json['data'] as Map<String, dynamic>);
+          return _withLocalSupplement(
+            country,
+            year,
+            _deserialize(json['data'] as Map<String, dynamic>),
+          );
         }
         // 过期但先保留，网络失败时回退
       } catch (_) {}
@@ -54,20 +65,25 @@ class HolidayService {
       final data = country == HolidayCountry.china
           ? await _fetchChina(year)
           : await _fetchNager(country, year);
+      final mergedData = _withLocalSupplement(country, year, data);
 
       // 写缓存
       final payload = jsonEncode({
         'ts': DateTime.now().millisecondsSinceEpoch,
-        'data': _serialize(data),
+        'data': _serialize(mergedData),
       });
       await prefs.setString(key, payload);
-      return data;
+      return mergedData;
     } catch (_) {
       // 网络失败 → 读过期缓存
       if (cached != null) {
         try {
           final json = jsonDecode(cached) as Map<String, dynamic>;
-          return _deserialize(json['data'] as Map<String, dynamic>);
+          return _withLocalSupplement(
+            country,
+            year,
+            _deserialize(json['data'] as Map<String, dynamic>),
+          );
         } catch (_) {}
       }
       return {};
@@ -83,12 +99,53 @@ class HolidayService {
     return holidays[key];
   }
 
+  static Map<String, HolidayInfo> _withLocalSupplement(
+    HolidayCountry country,
+    int year,
+    Map<String, HolidayInfo> holidays,
+  ) {
+    if (country != HolidayCountry.china) return holidays;
+    final result = Map<String, HolidayInfo>.from(holidays);
+    result.addAll(chinaOfficialOverridesForYear(year));
+    const observances = <String, String>{
+      '03-08': '妇女节',
+      '03-12': '植树节',
+      '05-04': '青年节',
+      '06-01': '儿童节',
+      '07-01': '建党节',
+      '08-01': '建军节',
+      '09-10': '教师节',
+    };
+    for (final entry in observances.entries) {
+      result.putIfAbsent(
+        '$year-${entry.key}',
+        () => HolidayInfo(name: entry.value, type: HolidayType.observance),
+      );
+    }
+    return result;
+  }
+
   // ── 中国：timor.tools ──
+
+  static Map<String, HolidayInfo> chinaOfficialOverridesForYear(int year) {
+    if (year != 2026) return const {};
+    return const {
+      '2026-04-26': HolidayInfo(name: '劳动节调休补班', type: HolidayType.makeupWork),
+      '2026-05-01': HolidayInfo(name: '劳动节', type: HolidayType.statutory),
+      '2026-05-02': HolidayInfo(name: '劳动节', type: HolidayType.statutory),
+      '2026-05-03': HolidayInfo(name: '劳动节', type: HolidayType.statutory),
+      '2026-05-04': HolidayInfo(name: '劳动节', type: HolidayType.statutory),
+      '2026-05-05': HolidayInfo(name: '劳动节', type: HolidayType.statutory),
+      '2026-05-09': HolidayInfo(name: '劳动节调休补班', type: HolidayType.makeupWork),
+    };
+  }
 
   static Future<Map<String, HolidayInfo>> _fetchChina(int year) async {
     try {
       final res = await _dio.get('https://timor.tools/api/holiday/year/$year');
-      final body = res.data is String ? jsonDecode(res.data as String) : res.data;
+      final body = res.data is String
+          ? jsonDecode(res.data as String)
+          : res.data;
       final holiday = body['holiday'] as Map<String, dynamic>;
       final result = <String, HolidayInfo>{};
       for (final entry in holiday.entries) {
@@ -125,7 +182,8 @@ class HolidayService {
     for (final item in list) {
       final map = item as Map<String, dynamic>;
       final date = map['date'] as String;
-      final name = (map['localName'] as String? ?? map['name'] as String? ?? '').trim();
+      final name = (map['localName'] as String? ?? map['name'] as String? ?? '')
+          .trim();
       if (name.isNotEmpty) {
         result[date] = HolidayInfo(name: name, type: HolidayType.statutory);
       }

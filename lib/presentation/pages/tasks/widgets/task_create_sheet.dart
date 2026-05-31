@@ -45,17 +45,19 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
   @override
   void initState() {
     super.initState();
-    _selectedProjectId = widget.initialProjectId;
     _parentTaskId = widget.initialParentId;
+    _selectedProjectId = widget.initialProjectId ?? _projectIdOfParent(_parentTaskId);
     if (widget.initialStartDateMillis != null) {
-      _startDate =
-          DateTime.fromMillisecondsSinceEpoch(widget.initialStartDateMillis!);
+      _startDate = DateTime.fromMillisecondsSinceEpoch(
+        widget.initialStartDateMillis!,
+      );
     } else {
       _startDate = DateTime.now();
     }
     if (widget.initialDueDateMillis != null) {
-      _dueDate =
-          DateTime.fromMillisecondsSinceEpoch(widget.initialDueDateMillis!);
+      _dueDate = DateTime.fromMillisecondsSinceEpoch(
+        widget.initialDueDateMillis!,
+      );
     } else {
       _dueDate = _startDate!.add(const Duration(hours: 1));
     }
@@ -67,6 +69,14 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     _titleController.dispose();
     _descController.dispose();
     super.dispose();
+  }
+
+  String? _projectIdOfParent(String? parentTaskId) {
+    if (parentTaskId == null) return null;
+    for (final task in widget.availableParentTasks) {
+      if (task.id == parentTaskId) return task.projectId;
+    }
+    return null;
   }
 
   @override
@@ -89,47 +99,48 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppTheme.borderSubtle,
-                    borderRadius: BorderRadius.circular(2),
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.borderSubtle,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '新建任务',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _titleController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '任务标题',
-                  hintText: '输入任务名称',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 20),
+                Text(
+                  '新建任务',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
                 ),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? '请输入标题' : null,
-              ),
-              const SizedBox(height: 12),
-              FutureBuilder<List<Project>>(
-                future: _projectsFuture,
-                builder: (context, snapshot) {
-                  final projects = snapshot.data ?? [];
-                  return DropdownButtonFormField<String>(
-                    value: _selectedProjectId,
-                    decoration: const InputDecoration(
-                      labelText: '所属项目',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: projects
-                        .map((p) => DropdownMenuItem(
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _titleController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: '任务标题',
+                    hintText: '输入任务名称',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入标题' : null,
+                ),
+                const SizedBox(height: 12),
+                FutureBuilder<List<Project>>(
+                  future: _projectsFuture,
+                  builder: (context, snapshot) {
+                    final projects = snapshot.data ?? [];
+                    return DropdownButtonFormField<String>(
+                      value: _selectedProjectId,
+                      decoration: const InputDecoration(
+                        labelText: '所属项目',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: projects
+                          .map(
+                            (p) => DropdownMenuItem(
                               value: p.id,
                               child: Row(
                                 children: [
@@ -137,8 +148,11 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                                     width: 10,
                                     height: 10,
                                     decoration: BoxDecoration(
-                                      color: Color(int.parse(
-                                          p.color.replaceFirst('#', '0xFF'))),
+                                      color: Color(
+                                        int.parse(
+                                          p.color.replaceFirst('#', '0xFF'),
+                                        ),
+                                      ),
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -146,105 +160,108 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                                   Text(p.name),
                                 ],
                               ),
-                            ))
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedProjectId = v),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              if (widget.availableParentTasks.isNotEmpty)
-                DropdownButtonFormField<String>(
-                  value: _parentTaskId,
-                  decoration: const InputDecoration(
-                    labelText: '父任务（可选）',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('无（根任务）'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedProjectId = v),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (widget.availableParentTasks.isNotEmpty)
+                  DropdownButtonFormField<String>(
+                    value: _parentTaskId,
+                    decoration: const InputDecoration(
+                      labelText: '父任务（可选）',
+                      border: OutlineInputBorder(),
                     ),
-                    ...widget.availableParentTasks.map((t) =>
-                        DropdownMenuItem(
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('无（根任务）'),
+                      ),
+                      ...widget.availableParentTasks.map(
+                        (t) => DropdownMenuItem(
                           value: t.id,
                           child: Text(
                             t.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        )),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() {
+                      _parentTaskId = v;
+                      final parentProjectId = _projectIdOfParent(v);
+                      if (parentProjectId != null) {
+                        _selectedProjectId = parentProjectId;
+                      }
+                    }),
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('优先级：', style: TextStyle(fontSize: 14)),
+                    const SizedBox(width: 8),
+                    ..._buildPriorityChips(),
                   ],
-                  onChanged: (v) => setState(() => _parentTaskId = v),
                 ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text('优先级：', style: TextStyle(fontSize: 14)),
-                  const SizedBox(width: 8),
-                  ..._buildPriorityChips(),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DateButton(
-                      label: '开始时间',
-                      date: _startDate,
-                      onTap: () => _pickDateTime(true),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DateButton(
+                        label: '开始时间',
+                        date: _startDate,
+                        onTap: () => _pickDateTime(true),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _DateButton(
-                      label: '截止时间',
-                      date: _dueDate,
-                      onTap: () => _pickDateTime(false),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DateButton(
+                        label: '截止时间',
+                        date: _dueDate,
+                        onTap: () => _pickDateTime(false),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _descController,
-                decoration: const InputDecoration(
-                  labelText: '描述（选填）',
-                  border: OutlineInputBorder(),
+                  ],
                 ),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _descController,
+                  decoration: const InputDecoration(
+                    labelText: '描述（选填）',
+                    border: OutlineInputBorder(),
                   ),
-                  child: const Text('保存任务', style: TextStyle(fontSize: 16)),
+                  maxLines: 2,
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('保存任务', style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 
   List<Widget> _buildPriorityChips() {
-    final priorities = [
-      (0, '无'),
-      (1, '低'),
-      (3, '中'),
-      (5, '高'),
-    ];
+    final priorities = [(0, '无'), (1, '低'), (3, '中'), (5, '高')];
     return priorities.map((p) {
       final isSelected = _priority == p.$1;
       return Padding(
@@ -313,12 +330,17 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
 
     var finalStart = _startDate!;
     var finalEnd = _dueDate!;
+    var shiftedTasks = const <ScheduledTaskShift>[];
 
     // 子任务才做冲突检测
-    if (_parentTaskId != null && widget.taskRepository != null) {
+    if (widget.taskRepository != null) {
       final conflict = await _checkConflict(finalStart, finalEnd);
       if (conflict != null && mounted) {
-        final choice = await _showConflictDialog(conflict, finalStart, finalEnd);
+        final choice = await _showConflictDialog(
+          conflict,
+          finalStart,
+          finalEnd,
+        );
         if (!mounted) return;
         switch (choice) {
           case _ConflictChoice.cancel:
@@ -327,11 +349,16 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
             break; // 保持原时间
           case _ConflictChoice.autoDelay:
             final delayed = await _calcDelayedSlot(
-                finalStart, finalEnd, conflict.conflictEnd);
+              finalStart,
+              finalEnd,
+              conflict.conflictEnd,
+            );
             if (delayed != null) {
               finalStart = delayed.start;
               finalEnd = delayed.end;
             }
+          case _ConflictChoice.autoInsert:
+            shiftedTasks = await _calcInsertedShifts(finalStart, finalEnd);
           case null:
             return; // 弹窗关闭视为取消
         }
@@ -347,12 +374,15 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
       'startDate': finalStart.millisecondsSinceEpoch,
       'dueDate': finalEnd.millisecondsSinceEpoch,
       'parentId': _parentTaskId,
+      'shiftedTasks': shiftedTasks,
     });
   }
 
   /// 检测 [newStart, newEnd) 与已有任务的时间重叠，返回首个冲突信息。
   Future<_ConflictInfo?> _checkConflict(
-      DateTime newStart, DateTime newEnd) async {
+    DateTime newStart,
+    DateTime newEnd,
+  ) async {
     final all = await widget.taskRepository!.getAll();
     for (final t in all) {
       if (t.startDate == null || t.dueDate == null) continue;
@@ -368,8 +398,11 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
 
   /// 显示冲突弹窗，返回用户选择。
   Future<_ConflictChoice?> _showConflictDialog(
-      _ConflictInfo conflict, DateTime newStart, DateTime newEnd) {
-    final fmt = (DateTime d) =>
+    _ConflictInfo conflict,
+    DateTime newStart,
+    DateTime newEnd,
+  ) {
+    String fmt(DateTime d) =>
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     return showDialog<_ConflictChoice>(
       context: context,
@@ -388,6 +421,10 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
             onPressed: () => Navigator.pop(ctx, _ConflictChoice.parallel),
             child: const Text('并行'),
           ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _ConflictChoice.autoInsert),
+            child: const Text('自动插入'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, _ConflictChoice.autoDelay),
             child: const Text('自动延后'),
@@ -399,22 +436,30 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
 
   /// 利用 SubtaskScheduler 计算从 [from] 开始的第一个空闲时段。
   Future<ScheduledSlot?> _calcDelayedSlot(
-      DateTime start, DateTime end, DateTime from) async {
+    DateTime start,
+    DateTime end,
+    DateTime from,
+  ) async {
     final duration = end.difference(start).inMinutes.clamp(1, 480);
     final all = await widget.taskRepository!.getAll();
-    final scheduler = SubtaskScheduler(
-      existingTasks: all,
-      skipWeekends: false,
-    );
-    final slots = scheduler.scheduleLeaves(
-      [LeafToSchedule(taskId: 'tmp', minutes: duration)],
-      from: from,
-    );
+    final scheduler = SubtaskScheduler(existingTasks: all, skipWeekends: false);
+    final slots = scheduler.scheduleLeaves([
+      LeafToSchedule(taskId: 'tmp', minutes: duration),
+    ], from: from);
     return slots.isNotEmpty ? slots.first : null;
+  }
+
+  Future<List<ScheduledTaskShift>> _calcInsertedShifts(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final all = await widget.taskRepository!.getAll();
+    final scheduler = SubtaskScheduler(existingTasks: all, skipWeekends: false);
+    return scheduler.autoInsert(insertStart: start, insertEnd: end);
   }
 }
 
-enum _ConflictChoice { cancel, parallel, autoDelay }
+enum _ConflictChoice { cancel, parallel, autoDelay, autoInsert }
 
 class _ConflictInfo {
   final String title;
@@ -454,13 +499,15 @@ class _DateButton extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style: TextStyle(fontSize: 12, color: AppTheme.textHint)),
+            Text(
+              label,
+              style: TextStyle(fontSize: 12, color: AppTheme.textHint),
+            ),
             const SizedBox(height: 4),
             Text(
               date != null
                   ? '${date!.month}/${date!.day} '
-                      '${date!.hour.toString().padLeft(2, '0')}:${date!.minute.toString().padLeft(2, '0')}'
+                        '${date!.hour.toString().padLeft(2, '0')}:${date!.minute.toString().padLeft(2, '0')}'
                   : '选择时间',
               style: TextStyle(
                 fontSize: 14,
