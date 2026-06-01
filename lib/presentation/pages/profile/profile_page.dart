@@ -2,18 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
+import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import 'about_page.dart';
 import 'app_settings_page.dart';
 import 'help_feedback_page.dart';
+import 'profile_edit_page.dart';
+import 'task_export_page.dart';
 import 'theme_settings_page.dart';
 import '../../../data/database/app_database.dart';
 
 class ProfilePage extends StatefulWidget {
   final TaskRepository? taskRepository;
+  final ProjectRepository? projectRepository;
   final VoidCallback? onLogout;
-  const ProfilePage({super.key, this.taskRepository, this.onLogout});
+  const ProfilePage({
+    super.key,
+    this.taskRepository,
+    this.projectRepository,
+    this.onLogout,
+  });
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -23,6 +33,7 @@ class _ProfilePageState extends State<ProfilePage> {
   int _total = 0;
   int _completionRate = 0;
   int _streak = 0;
+  Map<String, dynamic>? _profile;
 
   @override
   void initState() {
@@ -32,6 +43,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _init() async {
     final tasks = await widget.taskRepository?.getAll() ?? [];
+    final storage = LocalStorageService();
+    await storage.init();
+    final profile = storage.getExplicitProfile();
     final total = tasks.length;
     final completed = tasks.where((t) => t.status == 2).length;
     final rate = total == 0 ? 0 : (completed * 100 / total).round();
@@ -41,6 +55,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _total = total;
       _completionRate = rate;
       _streak = streak;
+      _profile = profile;
     });
   }
 
@@ -84,6 +99,18 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildProfileHeader(BuildContext context) {
+    final displayName = _profileText('name', fallback: '用户昵称');
+    final subtitleParts = [
+      _profileText('occupation'),
+      _profileText('city'),
+    ].where((item) => item.isNotEmpty).toList();
+    final email = _authIdentity(context);
+    final subtitle = subtitleParts.isNotEmpty
+        ? subtitleParts.join(' · ')
+        : email.isNotEmpty
+        ? email
+        : '完善资料，让 AI 更懂你的安排';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 40, 24, 28),
@@ -117,8 +144,8 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            '用户昵称',
+          Text(
+            displayName,
             style: TextStyle(
               color: Colors.white,
               fontSize: 22,
@@ -127,7 +154,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 4),
           Text(
-            'user@example.com',
+            subtitle,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.75),
               fontSize: 14,
@@ -135,7 +162,15 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 18),
           OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: () async {
+              final changed = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileEditPage(accountText: email),
+                ),
+              );
+              if (changed == true) await _init();
+            },
             icon: const Icon(
               Icons.edit_outlined,
               color: Colors.white,
@@ -241,6 +276,18 @@ class _ProfilePageState extends State<ProfilePage> {
               );
             }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            _buildMenuItem(Icons.ios_share_rounded, '导出', () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TaskExportPage(
+                    taskRepository: widget.taskRepository,
+                    projectRepository: widget.projectRepository,
+                  ),
+                ),
+              );
+            }),
+            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _buildMenuItem(Icons.help_outline_rounded, '帮助与反馈', () {
               Navigator.push(
                 context,
@@ -315,5 +362,24 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
+  }
+
+  String _profileText(String key, {String fallback = ''}) {
+    final value = _profile?[key];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    return fallback;
+  }
+
+  String _authIdentity(BuildContext context) {
+    try {
+      final state = context.read<AuthBloc>().state;
+      if (state is LocalAuthenticated) return state.email;
+      if (state is Authenticated) {
+        return state.user.email ?? state.user.phone ?? '';
+      }
+    } catch (_) {}
+    return '';
   }
 }

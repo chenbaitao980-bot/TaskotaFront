@@ -64,7 +64,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<ToggleViewMode>(_onToggleViewMode);
   }
 
-  // --- 项目 ---
+  // --- 椤圭洰 ---
 
   Future<void> _onLoadProjects(
     LoadProjects event,
@@ -76,7 +76,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final tasks = await taskRepository.getAll();
       final progress = await _calculateProgress(tasks);
 
-      // 保留子树状态
+      // 淇濈暀瀛愭爲鐘舵€?
       Map<String, List<Task>> subTrees = const {};
       Map<String, Set<String>> expandedNodes = const {};
       if (state is TaskNewLoaded) {
@@ -148,7 +148,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
-  // --- 项目分组 ---
+  // --- 椤圭洰鍒嗙粍 ---
   Future<void> _onCreateProjectGroup(
     CreateProjectGroup event,
     Emitter<TaskNewState> emit,
@@ -194,12 +194,12 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   ) async {
     if (projectGroupRepository == null) return;
     try {
-      // 可选：先删除组内所有项目（会级联删任务+同步）
+      // 鍙€夛細鍏堝垹闄ょ粍鍐呮墍鏈夐」鐩紙浼氱骇鑱斿垹浠诲姟+鍚屾锛?
       if (event.deleteProjects) {
         final all = await projectRepository.getAll();
         final inGroup = all.where((p) => p.groupId == event.id).toList();
         for (final p in inGroup) {
-          if (p.id == 'inbox') continue; // 默认收件箱不可删
+          if (p.id == 'inbox') continue; // 榛樿鏀朵欢绠变笉鍙垹
           await projectRepository.delete(p.id);
         }
       }
@@ -250,10 +250,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
-  // --- 任务 ---
+  // --- 浠诲姟 ---
 
   Future<void> _onLoadTasks(LoadTasks event, Emitter<TaskNewState> emit) async {
-    // 在 emit loading 前先保留子树状态，避免被 loading 覆盖
+    // 鍦?emit loading 鍓嶅厛淇濈暀瀛愭爲鐘舵€侊紝閬垮厤琚?loading 瑕嗙洊
     Map<String, List<Task>> preservedSubTrees = const {};
     Map<String, Set<String>> preservedExpanded = const {};
     String preservedViewMode = 'mindmap';
@@ -296,7 +296,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         tasks = allTasks;
       }
 
-      // 日期区间过滤：任务的 [startDate, dueDate] 与 [dateFrom, dateTo] 有交集
+      // 鏃ユ湡鍖洪棿杩囨护锛氫换鍔＄殑 [startDate, dueDate] 涓?[dateFrom, dateTo] 鏈変氦闆?
       if (event.dateFrom != null && event.dateTo != null) {
         tasks = tasks.where((t) {
           final s = t.startDate ?? t.dueDate;
@@ -308,17 +308,17 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         }).toList();
       }
 
-      // DEBUG: 诊断子任务消失
+      // DEBUG: 璇婃柇瀛愪换鍔℃秷澶?
       final allChildTasks = allTasks.where((t) => t.parentId != null).toList();
       final childTasks = tasks.where((t) => t.parentId != null).toList();
       flog(
         '[LoadTasks] filter=${event.filter}, projectIds=$selectedProjectIds',
       );
       flog(
-        '[LoadTasks] allTasks总数=${allTasks.length}, allChildren=${allChildTasks.length}',
+        '[LoadTasks] allTasks鎬绘暟=${allTasks.length}, allChildren=${allChildTasks.length}',
       );
       flog(
-        '[LoadTasks] 过滤后tasks=${tasks.length}, filteredChildren=${childTasks.length}',
+        '[LoadTasks] 杩囨护鍚巘asks=${tasks.length}, filteredChildren=${childTasks.length}',
       );
       for (final c in allChildTasks) {
         final inFiltered = tasks.any((t) => t.id == c.id);
@@ -330,7 +330,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
       final progress = await _calculateProgress(allTasks);
 
-      // 默认展开所有有子节点的任务
+      // 榛樿灞曞紑鎵€鏈夋湁瀛愯妭鐐圭殑浠诲姟
       final newExpanded = Map<String, Set<String>>.from(preservedExpanded);
       if (!newExpanded.containsKey('main_tree')) {
         final allParentIds = tasks
@@ -338,6 +338,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
             .map((t) => t.id)
             .toSet();
         newExpanded['main_tree'] = allParentIds;
+      }
+      if (event.focusTaskId != null) {
+        final mainTree = Set<String>.from(newExpanded['main_tree'] ?? {});
+        mainTree.addAll(_ancestorIds(event.focusTaskId!, allTasks));
+        newExpanded['main_tree'] = mainTree;
       }
 
       final groups =
@@ -361,7 +366,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           dateTo: event.clearDateRange
               ? null
               : (event.dateTo ?? preservedDateTo),
-          viewMode: preservedViewMode,
+          viewMode: event.focusTaskId != null ? 'mindmap' : preservedViewMode,
+          focusTaskId: event.focusTaskId,
+          focusRequestToken: event.focusRequestToken,
         ),
       );
     } catch (e) {
@@ -369,7 +376,17 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
-  /// 从云端拉取任务并合并到本地数据库
+  Set<String> _ancestorIds(String taskId, List<Task> tasks) {
+    final byId = {for (final task in tasks) task.id: task};
+    final ancestors = <String>{};
+    String? parentId = byId[taskId]?.parentId;
+    while (parentId != null && ancestors.add(parentId)) {
+      parentId = byId[parentId]?.parentId;
+    }
+    return ancestors;
+  }
+
+  /// 浠庝簯绔媺鍙栦换鍔″苟鍚堝苟鍒版湰鍦版暟鎹簱
   Future<void> _onSyncFromCloud(
     SyncFromCloud event,
     Emitter<TaskNewState> emit,
@@ -377,28 +394,105 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     try {
       await TaskSyncService.instance.syncAll();
       add(LoadTasks());
-      print('[Sync] user_tasks 同步完成');
+      print('[Sync] user_tasks 鍚屾瀹屾垚');
     } catch (e) {
-      print('[Sync] 拉取失败: $e');
+      print('[Sync] 鎷夊彇澶辫触: $e');
     }
   }
 
-  /// 将当前所有本地任务同步到 Supabase 云端
-  Future<void> _syncTasksToCloud() async {
-    try {
-      await TaskSyncService.instance.syncAll();
-      print('[Sync] user_tasks 推送完成');
-    } catch (e) {
-      print('[Sync] 推送失败: $e');
+  Future<void> _runOptimisticTaskChange(
+    Emitter<TaskNewState> emit,
+    Future<void> Function() action,
+  ) async {
+    if (state is! TaskNewLoaded) {
+      await action();
+      add(LoadTasks());
+      return;
     }
+
+    final previous = state as TaskNewLoaded;
+    final rollbackSnapshot = await taskRepository.getAllRaw();
+    try {
+      await action();
+      await _emitTaskSnapshot(previous, emit);
+      try {
+        await TaskSyncService.instance.syncAll(rethrowErrors: true);
+      } catch (_) {
+        await taskRepository.restoreRawTasks(rollbackSnapshot);
+        emit(previous.copyWith(syncRollbackMessage: '鍚屾澶辫触锛屽凡鍥為€€鏈鎿嶄綔'));
+      }
+    } catch (e) {
+      await taskRepository.restoreRawTasks(rollbackSnapshot);
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _emitTaskSnapshot(
+    TaskNewLoaded previous,
+    Emitter<TaskNewState> emit,
+  ) async {
+    final projects = await projectRepository.getActive();
+    await _storage.init();
+    final excludedProjectIds = _storage.excludedProjectIds;
+    final allTasks = (await taskRepository.getAll())
+        .where((t) => !excludedProjectIds.contains(t.projectId))
+        .toList();
+    final selectedProjectIds = previous.selectedProjectIds
+        .where((id) => !excludedProjectIds.contains(id))
+        .toSet();
+    final filter = previous.selectedFilter ?? 'all';
+
+    List<Task> tasks;
+    if (filter == 'today') {
+      tasks = (await taskRepository.getToday())
+          .where((t) => !excludedProjectIds.contains(t.projectId))
+          .toList();
+    } else if (filter == 'important') {
+      tasks = (await taskRepository.getImportant())
+          .where((t) => !excludedProjectIds.contains(t.projectId))
+          .toList();
+    } else if (selectedProjectIds.isNotEmpty) {
+      tasks = allTasks
+          .where((t) => selectedProjectIds.contains(t.projectId))
+          .toList();
+    } else {
+      tasks = allTasks;
+    }
+
+    if (previous.dateFrom != null && previous.dateTo != null) {
+      tasks = tasks.where((t) {
+        final s = t.startDate ?? t.dueDate;
+        final d = t.dueDate ?? t.startDate;
+        if (s == null && d == null) return false;
+        final taskStart = s ?? d!;
+        final taskEnd = d ?? s!;
+        return taskStart <= previous.dateTo! && taskEnd >= previous.dateFrom!;
+      }).toList();
+    }
+
+    final progress = await _calculateProgress(allTasks);
+    final groups =
+        await (projectGroupRepository?.getAll() ??
+            Future.value(<ProjectGroup>[]));
+    emit(
+      previous.copyWith(
+        projects: projects,
+        groups: groups,
+        tasks: tasks,
+        selectedProjectIds: selectedProjectIds,
+        selectedFilter: filter,
+        taskProgress: progress.taskProgress,
+        projectProgress: progress.projectProgress,
+        groupProgress: progress.groupProgress,
+      ),
+    );
   }
 
   Future<void> _onCreateTask(
     CreateTask event,
     Emitter<TaskNewState> emit,
   ) async {
-    try {
-      final current = state;
+    await _runOptimisticTaskChange(emit, () async {
       final newTask = await taskRepository.create(
         projectId: event.projectId,
         title: event.title,
@@ -407,58 +501,27 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         startDate: event.startDate,
         dueDate: event.dueDate,
         parentId: event.parentId,
+        syncImmediately: false,
       );
       for (final shifted in event.shiftedTasks) {
         await taskRepository.update(
           shifted.taskId,
           startDate: shifted.start.millisecondsSinceEpoch,
           dueDate: shifted.end.millisecondsSinceEpoch,
+          syncImmediately: false,
         );
       }
       flog(
-        '[CreateTask] 写入完成: id=${newTask.id.substring(0, 8)}, title=${newTask.title}, parentId=${newTask.parentId?.substring(0, 8)}, projectId=${newTask.projectId}',
+        '[CreateTask] local commit: id=${newTask.id.substring(0, 8)}, title=${newTask.title}, parentId=${newTask.parentId?.substring(0, 8)}, projectId=${newTask.projectId}',
       );
-      // 回读验证
-      final verify = await taskRepository.get(newTask.id);
-      if (verify == null) {
-        flog('[CreateTask] ⚠️ 回读验证失败！任务 ${newTask.id.substring(0, 8)} 写入后查不到');
-      } else {
-        flog(
-          '[CreateTask] 回读验证OK: parentId=${verify.parentId?.substring(0, 8)}, deleted=${verify.deleted}',
-        );
-      }
-      await _syncTasksToCloud();
-      // syncTasksToCloud 后再次验证
-      final verify2 = await taskRepository.get(newTask.id);
-      if (verify2 == null) {
-        flog(
-          '[CreateTask] ⚠️ syncTasksToCloud后任务消失！id=${newTask.id.substring(0, 8)}',
-        );
-      } else if (verify2.parentId != newTask.parentId) {
-        flog(
-          '[CreateTask] ⚠️ syncTasksToCloud后parentId变化！${newTask.parentId?.substring(0, 8)} → ${verify2.parentId?.substring(0, 8)}',
-        );
-      }
-      if (current is TaskNewLoaded) {
-        add(
-          LoadTasks(
-            projectIds: current.selectedProjectIds,
-            filter: current.selectedFilter,
-          ),
-        );
-      } else {
-        add(LoadTasks());
-      }
-    } catch (e) {
-      emit(TaskNewError(e.toString()));
-    }
+    });
   }
 
   Future<void> _onUpdateTask(
     UpdateTask event,
     Emitter<TaskNewState> emit,
   ) async {
-    try {
+    await _runOptimisticTaskChange(emit, () async {
       await taskRepository.update(
         event.id,
         projectId: event.projectId,
@@ -469,17 +532,55 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         dueDate: event.dueDate,
         remindBeforeMinutes: event.remindBeforeMinutes,
         reminderEnabled: event.reminderEnabled,
+        syncImmediately: false,
       );
-      await _syncTasksToCloud();
-      final current = state as TaskNewLoaded;
-      add(
-        LoadTasks(
-          projectIds: current.selectedProjectIds,
-          filter: current.selectedFilter,
-        ),
-      );
-    } catch (e) {
-      emit(TaskNewError(e.toString()));
+
+      if ((event.startDate != null || event.dueDate != null) &&
+          state is TaskNewLoaded) {
+        final tasks = (state as TaskNewLoaded).tasks;
+        final updatedTask = tasks.where((t) => t.id == event.id).firstOrNull;
+        if (updatedTask != null) {
+          final childStart = event.startDate ?? updatedTask.startDate;
+          final childEnd = event.dueDate ?? updatedTask.dueDate;
+          await _expandAncestorDates(
+            updatedTask.parentId,
+            childStart,
+            childEnd,
+            tasks,
+            syncImmediately: false,
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> _expandAncestorDates(
+    String? parentId,
+    int? childStart,
+    int? childEnd,
+    List<Task> tasks, {
+    bool syncImmediately = true,
+  }) async {
+    String? currentParentId = parentId;
+    while (currentParentId != null) {
+      final parent = tasks.where((t) => t.id == currentParentId).firstOrNull;
+      if (parent == null) break;
+
+      int? ns = parent.startDate;
+      int? nd = parent.dueDate;
+      if (childStart != null)
+        ns = (ns == null || childStart < ns) ? childStart : ns;
+      if (childEnd != null) nd = (nd == null || childEnd > nd) ? childEnd : nd;
+
+      if (ns != parent.startDate || nd != parent.dueDate) {
+        await taskRepository.update(
+          parent.id,
+          startDate: ns,
+          dueDate: nd,
+          syncImmediately: syncImmediately,
+        );
+      }
+      currentParentId = parent.parentId;
     }
   }
 
@@ -487,41 +588,22 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     DeleteTask event,
     Emitter<TaskNewState> emit,
   ) async {
-    try {
-      await taskRepository.delete(event.id);
-      await _syncTasksToCloud();
-      final current = state as TaskNewLoaded;
-      add(
-        LoadTasks(
-          projectIds: current.selectedProjectIds,
-          filter: current.selectedFilter,
-        ),
-      );
-    } catch (e) {
-      emit(TaskNewError(e.toString()));
-    }
+    await _runOptimisticTaskChange(
+      emit,
+      () => taskRepository.delete(event.id, syncImmediately: false),
+    );
   }
 
   Future<void> _onToggleTaskStatus(
     ToggleTaskStatus event,
     Emitter<TaskNewState> emit,
   ) async {
-    try {
-      await taskRepository.toggleStatus(event.id);
-      await _syncTasksToCloud();
-      final current = state as TaskNewLoaded;
-      add(
-        LoadTasks(
-          projectIds: current.selectedProjectIds,
-          filter: current.selectedFilter,
-        ),
-      );
-    } catch (e) {
-      emit(TaskNewError(e.toString()));
-    }
+    await _runOptimisticTaskChange(
+      emit,
+      () => taskRepository.toggleStatus(event.id, syncImmediately: false),
+    );
   }
-
-  // --- 检查项 ---
+  // --- 妫€鏌ラ」 ---
 
   Future<void> _onLoadChecklistItems(
     LoadChecklistItems event,
@@ -613,7 +695,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
-  // --- 子任务树 ---
+  // --- 瀛愪换鍔℃爲 ---
 
   Future<void> _onLoadSubTree(
     LoadSubTree event,
@@ -736,7 +818,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
-  /// 从任意节点 ID 递归找到根节点 ID
+  /// 浠庝换鎰忚妭鐐?ID 閫掑綊鎵惧埌鏍硅妭鐐?ID
   String _findRootId(String taskId) {
     if (state is TaskNewLoaded) {
       final loaded = state as TaskNewLoaded;
@@ -765,34 +847,52 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     );
   }
 
-  // --- 树形拖拽 ---
+  // --- 鏍戝舰鎷栨嫿 ---
 
   Future<void> _onMoveTaskToParent(
     MoveTaskToParent event,
     Emitter<TaskNewState> emit,
   ) async {
-    try {
-      // 循环检测：不能将任务移到自己的后代下
+    await _runOptimisticTaskChange(emit, () async {
       if (event.newParentId != null && state is TaskNewLoaded) {
         final tasks = (state as TaskNewLoaded).tasks;
         if (_isDescendantOf(event.taskId, event.newParentId!, tasks)) {
-          return; // 会形成循环，忽略操作
+          return;
         }
       }
-      await taskRepository.moveTask(event.taskId, event.newParentId);
-      final current = state as TaskNewLoaded;
-      add(
-        LoadTasks(
-          projectIds: current.selectedProjectIds,
-          filter: current.selectedFilter,
-        ),
+      await taskRepository.moveTask(
+        event.taskId,
+        event.newParentId,
+        syncImmediately: false,
       );
-    } catch (e) {
-      emit(TaskNewError(e.toString()));
-    }
+
+      if (event.newParentId != null && state is TaskNewLoaded) {
+        final tasks = (state as TaskNewLoaded).tasks;
+        final parent = tasks
+            .where((t) => t.id == event.newParentId)
+            .firstOrNull;
+        final child = tasks.where((t) => t.id == event.taskId).firstOrNull;
+        if (parent != null && child != null) {
+          int? ns = parent.startDate;
+          int? nd = parent.dueDate;
+          final cs = child.startDate;
+          final cd = child.dueDate;
+          if (cs != null) ns = (ns == null || cs < ns) ? cs : ns;
+          if (cd != null) nd = (nd == null || cd > nd) ? cd : nd;
+          if (ns != parent.startDate || nd != parent.dueDate) {
+            await taskRepository.update(
+              parent.id,
+              startDate: ns,
+              dueDate: nd,
+              syncImmediately: false,
+            );
+          }
+        }
+      }
+    });
   }
 
-  /// 检查 targetId 是否是 ancestorId 的后代
+  /// 妫€鏌?targetId 鏄惁鏄?ancestorId 鐨勫悗浠?
   bool _isDescendantOf(String ancestorId, String targetId, List<Task> tasks) {
     String? current = targetId;
     final visited = <String>{};
@@ -826,18 +926,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     ReorderTaskSiblings event,
     Emitter<TaskNewState> emit,
   ) async {
-    try {
-      await taskRepository.reorderSubTasks(event.parentId, event.orderedIds);
-      final current = state as TaskNewLoaded;
-      add(
-        LoadTasks(
-          projectIds: current.selectedProjectIds,
-          filter: current.selectedFilter,
-        ),
-      );
-    } catch (e) {
-      emit(TaskNewError(e.toString()));
-    }
+    await _runOptimisticTaskChange(
+      emit,
+      () => taskRepository.reorderSubTasks(
+        event.parentId,
+        event.orderedIds,
+        syncImmediately: false,
+      ),
+    );
   }
 
   Future<void> _onExpandAllTasks(

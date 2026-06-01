@@ -136,6 +136,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         raw.contains('invalid login credentials')) {
       return '邮箱或密码错误，或账号尚未注册。';
     }
+    if (raw.contains('invalid phone')) {
+      return '手机号格式不正确，请使用 +8613812345678 格式。';
+    }
+    if ((raw.contains('sms') || raw.contains('phone')) &&
+        (raw.contains('disabled') ||
+            raw.contains('not enabled') ||
+            raw.contains('not configured') ||
+            raw.contains('provider'))) {
+      return '手机验证码发送失败：请确认 Supabase 已启用 Phone Auth，并配置短信服务商。';
+    }
     if (raw.contains('user_already_exists') ||
         raw.contains('already registered') ||
         raw.contains('already been registered') ||

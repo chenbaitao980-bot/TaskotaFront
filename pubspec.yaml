@@ -52,6 +52,9 @@ dependencies:
   # 文件选择器 + 打开文件
   file_picker: ^8.3.7
   open_filex: ^4.5.0
+  excel: ^4.0.6
+  archive: ^3.6.1
+  xml: ">=5.0.0 <7.0.0"
   
   # 工具
   intl: ^0.20.0

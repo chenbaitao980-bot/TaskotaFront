@@ -50,4 +50,17 @@ void main() {
       );
     },
   );
+
+  test('persists project sidebar time sort direction', () async {
+    final storage = LocalStorageService();
+    await storage.init();
+
+    expect(storage.projectSidebarTimeSortDesc, isTrue);
+
+    await storage.setProjectSidebarTimeSortDesc(false);
+
+    final reloaded = LocalStorageService();
+    await reloaded.init();
+    expect(reloaded.projectSidebarTimeSortDesc, isFalse);
+  });
 }

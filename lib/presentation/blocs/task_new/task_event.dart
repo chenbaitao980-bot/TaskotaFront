@@ -72,6 +72,8 @@ class LoadTasks extends TaskEvent {
   dateFrom; // millisecondsSinceEpoch, filter tasks overlapping [dateFrom, dateTo]
   final int? dateTo;
   final bool clearDateRange; // true=清除日期筛选，忽略已保留的日期
+  final String? focusTaskId;
+  final int? focusRequestToken;
   LoadTasks({
     this.projectId,
     Set<String>? projectIds,
@@ -79,6 +81,8 @@ class LoadTasks extends TaskEvent {
     this.dateFrom,
     this.dateTo,
     this.clearDateRange = false,
+    this.focusTaskId,
+    this.focusRequestToken,
   }) : projectIds = projectIds ?? (projectId == null ? const {} : {projectId});
   @override
   List<Object?> get props => [
@@ -88,6 +92,8 @@ class LoadTasks extends TaskEvent {
     dateFrom,
     dateTo,
     clearDateRange,
+    focusTaskId,
+    focusRequestToken,
   ];
 }
 

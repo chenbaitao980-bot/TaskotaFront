@@ -431,6 +431,8 @@ class LocalStorageService {
   }
 
   static const _excludedProjectIdsKey = 'excluded_project_ids';
+  static const _projectSidebarTimeSortDescKey =
+      'project_sidebar_time_sort_desc';
 
   Set<String> get excludedProjectIds {
     final raw = _prefs?.getStringList(_excludedProjectIdsKey) ?? const [];
@@ -439,6 +441,13 @@ class LocalStorageService {
 
   Future<void> setExcludedProjectIds(Set<String> ids) async {
     await _prefs?.setStringList(_excludedProjectIdsKey, ids.toList()..sort());
+  }
+
+  bool get projectSidebarTimeSortDesc =>
+      _prefs?.getBool(_projectSidebarTimeSortDescKey) ?? true;
+
+  Future<void> setProjectSidebarTimeSortDesc(bool value) async {
+    await _prefs?.setBool(_projectSidebarTimeSortDescKey, value);
   }
 
   // 涓婚閫夋嫨

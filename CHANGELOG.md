@@ -1,389 +1,325 @@
-# Changelog
+﻿# Changelog
 
-## 2026-05-31 (节假日、退出登录、子任务同步、移动端资源布局)
-
-### 修复
-- 原因：用户反馈 2026 年五一休息日未完整展示、我的页退出登录无反应、桌面端子任务无法同步到移动端、移动端首页检查项和附件同排显示。
-- `lib/services/holiday_service.dart`：新增中国 2026 劳动节本地兜底覆盖，补齐 2026-05-01 至 2026-05-05 休息日，以及 2026-04-26、2026-05-09 补班日。
-- `lib/presentation/pages/profile/profile_page.dart`：退出登录菜单派发 `LoggedOut`，并为测试保留可注入 `onLogout` 回调。
-- `lib/presentation/blocs/task_new/task_bloc.dart`、`lib/services/task_sync_service.dart`：任务同步入口改用 `TaskSyncService.syncAll()` 的 `user_tasks` 逐行同步链路；新增 `taskToSyncRow`/`syncRowToTaskJson` 验证 `parent_id` 与 `parentId` 映射。
-- `lib/presentation/pages/home/home_page.dart`：窄屏首页任务详情资源区改为附件、检查项纵向分区；桌面端仍横向展示。
-- 新增 `test/holiday_service_test.dart`、`test/task_sync_service_test.dart`、`test/profile_page_test.dart` 覆盖本次修复。
-- 验证：`flutter test test\holiday_service_test.dart test\task_sync_service_test.dart test\profile_page_test.dart` 通过；全量 `flutter test` 仍失败于既有 `create_schedule_dialog_test.dart` ListTile/DecoratedBox 断言和 `widget_test.dart` 登录页文案断言。
-
-## 2026-05-31 (思维导图：自动锁定最近任务)
-
-### 新增
-- 原因：用户需要在思维导图右上角新增入口，点击后自动把视角切换到当前时间最近的任务节点。
-- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`：新增“自动锁定”小悬浮按钮，按 `startDate ?? dueDate` 查找最近可见任务，保持当前缩放比例并平移画布到节点中心；无带时间节点时显示提示。
-- 影响：仅影响思维导图视角定位，不修改任务数据、布局缓存、拖拽保存或重置布局逻辑。
-- 风险：`flutter analyze` 和 `dart analyze` 在本机均超时，需后续在可用 Flutter 工具链下复跑。
-
-## 2026-05-31 (任务创建自动插入)
-
-### 修改
-- 原因：创建任务发生时间冲突时，需要支持强制保留新任务时间，并把被挤占的后续任务级联后移。
-- `lib/services/subtask_scheduler.dart`：新增 `ScheduledTaskShift` 和 `autoInsert`，按新任务时间段、工作时段、15 分钟缓冲计算被后移任务。
-- `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`：冲突弹窗新增“自动插入”，所有传入 `TaskRepository` 的创建任务都会检测冲突并返回 `shiftedTasks`。
-- `lib/presentation/blocs/task_new/task_event.dart`、`task_bloc.dart`：`CreateTask` 新增 `shiftedTasks`，创建后批量更新被后移任务时间。
-- `tasks_page.dart`、`subtask_tree_section.dart`、`calendar_page.dart`：创建入口传递 `shiftedTasks`；日历创建入口传入 `TaskRepository`。
-- 新增 `test/subtask_scheduler_test.dart` 覆盖同段插入、连续级联后移、跨工作时段后移。
-- 验证：`dart format` 已格式化本次 Dart 修改；`flutter test test\subtask_scheduler_test.dart` 通过；`flutter analyze` 可完成但仓库仍有既有 info/warning；全量 `flutter test` 失败在既有 `create_schedule_dialog_test.dart` ListTile/DecoratedBox 断言和 `widget_test.dart` 找不到“智能小管家”。
-
-## 2026-05-31 (个人控制台静态站点)
-
-### 新增
-- 原因：用户需要一个最低成本、仅本人可访问的网站，用于配置动态密钥、动态数据并管理各类 App。
-- `personal_admin_site/index.html`、`styles.css`、`app.js`：新增静态个人控制台，支持 Supabase Email OTP 登录、动态密钥/动态数据/App 三类管理视图；密钥值在浏览器端加密后保存。
-- `personal_admin_site/supabase.sql`：新增 Supabase 表结构、更新时间触发器、RLS 策略和邮箱 allowlist 示例。
-- `personal_admin_site/config.js`、`config.example.js`、`README.md`：新增前端 Supabase 配置占位、本地配置、Supabase 初始化和 Cloudflare Pages 免费部署说明。
-- 影响：新增独立站点目录，不修改现有 Flutter 应用代码。
-- 风险/TODO：尚未实际线上发布；需要用户撤销已暴露的 Supabase Personal Access Token，并提供 Supabase `Project URL`、`anon public key`、允许登录邮箱及 Cloudflare/Git 托管发布权限后才能完成上线。
-
-### 补充
-- `personal_admin_site/_headers`：新增 Cloudflare Pages 安全响应头。
-- `personal_admin_site/DEPLOYMENT_PLAN.md`：新增 0 美元固定成本部署方案、官方依据链接、上线步骤和发布前检查项。
-- `personal_admin_site/deploy-check.ps1`：新增发布前检查脚本，阻止占位 Supabase 配置和敏感密钥进入前端。
-- `personal_admin_site/build-cloudflare.sh`、`build-local.ps1`：新增 Cloudflare 环境变量构建和本地 Direct Upload 配置生成脚本。
-- `personal_admin_site/app.js`：Supabase 未配置时显示明确提示，避免页面静默初始化失败。
-- `personal_admin_site_template.zip`：新增静态站点上传模板包。
-- 验证：`node --check personal_admin_site\app.js` 通过；本地 Node 静态服务请求 `/` 返回 `200` 且包含 `Personal Control Desk`；用临时环境变量执行 `build-local.ps1` + `deploy-check.ps1` 通过，随后已恢复 `config.js` 为占位配置。
-
-## 2026-05-31 (我的模块补全)
-
-### 修改
-- 原因：用户要求去掉我的模块的"提醒设置"，并补全"设置/帮助与反馈/关于"内容。
-- `lib/presentation/pages/profile/profile_page.dart`：移除"提醒设置"菜单项；"设置/帮助与反馈/关于"接入页面跳转；AI 排程跳过周末开关从我的页移到设置页。
-- 新增 `app_settings_page.dart`、`help_feedback_page.dart`、`about_page.dart`：设置页包含 AI 排程跳过周末、主题入口、通知说明、数据说明；帮助页包含功能帮助、常见问题和反馈说明；关于页展示产品名、版本 `1.0.0+3`、核心能力、数据同步和隐私权限说明。
-- 影响：不改任务/日程详情中的提醒设置与通知调度逻辑。
-- 风险：版本号在关于页按当前 `pubspec.yaml` 静态展示，后续发版需同步更新。
-
-## 2026-05-31 (首页任务详情：资源区同行)
-
-### 修改
-- 原因：用户要求首页的附件和检查项放到同一行。
-- `lib/presentation/pages/home/home_page.dart`：将首页 DB 任务详情底部的资源区改为 `_buildResourceRow`，子任务树、附件、检查项在同一横向行展示；移除子任务树内部额外顶部间距。
-- 影响：仅调整首页任务详情卡布局，不改附件/检查项/子任务的数据读写逻辑。
-- 风险：窄屏下横向三列可用宽度变小。
-
-## 2026-05-30 (日历周视图：滑动时头部日期与下方网格同步)
-
-### 优化
-- 原因：周视图左右拖动切换日期时，仅下方 body（时间列+网格+任务块）跟手平移，顶部"星期+日期"头部不动，导致两者横向错位、视觉脱离
-- `lib/presentation/pages/calendar/calendar_page.dart`：
-  - `_buildDayStripHeader` 的"星期+日期"行外层包裹 `ClipRect` + `Transform.translate(offset: Offset(_dragOffset, 0))`，复用 body 同款 `_dragOffset`，使头部与下方网格列拖动过程中横向同步平移
-  - 月份导航行（`< 年月 >`）保持固定，不参与平移
-- 影响：仅头部渲染包装，未改 `_dragOffset` 赋值/拖动回调/吸附切换逻辑；月视图、纵向滚动、缩放、任务块拖拽均不受影响
-- 风险：低
-
-## 2026-05-30 (首页任务详情：新增资源区)
-
-### 新增
-- 原因：首页任务详情卡的检查项区域仅为只读预览（最多5条），且无附件入口，无法在首页直接操作
-- `lib/presentation/pages/home/home_page.dart`：
-  - 新增 `_dbTaskCache`（`Map<String, Task?>`）缓存 DB Task 对象，供 `AttachmentSection` 使用
-  - 新增 `_loadDbTask` / `_homeToggleChecklist` / `_homeDeleteChecklist` / `_homeEditChecklist` / `_homeAddChecklist` / `_homeSetObsidianUri` 六个方法，对接 `ChecklistRepository` CRUD
-  - 新增 `_buildResourceSection` / `_buildAttachmentWidget` / `_buildChecklistWidget`：左右两列布局，左列复用 `AttachmentSection`，右列复用 `ChecklistSection`（支持勾选/添加/双击编辑/长按 Obsidian 关联）
-  - 删除只读的 `_buildChecklistPreview` 方法
-  - `_buildTaskDetail` 底部替换为资源区，仅对 `source == 'db'` 任务显示
-- 风险：低；附件/检查项依赖已有 service/repo，行为与任务详情页完全一致；时间轴行高不受影响
-
-## 2026-07-17 (思维导图：修复点击空白处取消框选不生效)
-
-### 修改
-- 原因：原有 `Listener` 放在 `InteractiveViewer` 内部 Stack 底层，桌面端 `InteractiveViewer` 的 `ScaleGestureRecognizer` 拦截指针事件，导致子级 `Listener.onPointerUp` 收不到 → 点击空白处无法清空 `_selectedIds`
-- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`：
-  - 删除 Stack 内层的 `Positioned.fill` + `Listener`（含 debugPrint）
-  - 在 `_buildMindMapCanvas` 的外层 Stack 中，用 `Listener`（`HitTestBehavior.translucent`）包裹 `InteractiveViewer`，同样逻辑：pointerDown 记录位置，pointerUp 距离 <8px 且 `_selectedIds` 非空则清空
-  - 外层 Listener 不阻塞子级手势（拖拽节点、Ctrl+框选、平移画布均正常）
-- 风险：低，仅改变 Listener 层级位置，行为逻辑不变
-
-## 2026-05-30 (思维导图：点击空白处取消框选)
-
-### 修改
-- 原因：Ctrl+左键框选节点后，松开 Ctrl 选中高亮持续保留，无手势可清空，体验上"无法取消"
-- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`：
-  - `canvasContent()` 的 `Stack` 最底层新增全屏背景 `Listener`（`HitTestBehavior.translucent`），`onPointerUp` 时若按下到抬起位移 <8px 且 `_selectedIds` 非空则清空并 `setState`
-  - 新增字段 `_bgPointerDownPos` 记录按下位置，用于区分"点击"与"平移"
-  - 改用 `Listener`（绕过手势竞技场）而非 `GestureDetector.onTap`：后者作为 `InteractiveViewer` 子节点时空白处 tap 会被其缩放识别器抢走，导致首版无效
-- 风险：低，未改动现有框选/拖拽/键盘逻辑；平移仍正常（位移>8px 不触发清空）
-
-## 2026-07-15 (日历周视图拖拽改为 Transform 跟手平移)
-
-### 修改
-- 原因：拖拽不跟手——阈值方式不提供视觉反馈，桌面鼠标 delta 大时一次跳多天
-- `lib/presentation/pages/calendar/calendar_page.dart`：
-  - 新增 `_dragOffset` / `_cachedDayWidth` 字段
-  - `_buildWeekTimeline`：`GestureDetector` + `Transform.translate` 包裹多日栏+时间线，`_dragOffset` 驱动平移
-  - `_onCalendarHorizontalDragUpdate`：累加 `details.delta.dx` 到 `_dragOffset` + `setState`
-  - `_onCalendarHorizontalDragEnd`：`-(_dragOffset / _cachedDayWidth).round()` 算天数偏移 → 更新 `_focusedDay` → 归零 `_dragOffset`
-
-## 2026-05-30 (多主题切换：极光蓝 + 曜石黑)
-
-### 新增
-- 原因：原仅一套写死的 Claude 暖珊瑚色主题，profile"主题"菜单为空壳（`onTap: () {}`）；需在默认主题外增加两套大厂标准可切换主题
-- 重构 `lib/core/theme/app_theme.dart`：抽出 `AppPalette` 调色板模型（持有全部颜色 token + `ThemeData build()`），定义三套实例 `claude`/`auroraBlue`（Google Material 3 蓝）/`obsidian`（深色模式）；`AppTheme` 颜色 token 由 `static const` 改为委托 `_current` 调色板的 `static get`，对外 API 名不变，653 处引用零改动
-- 新增 `lib/core/theme/theme_controller.dart`：`ThemeController`（ChangeNotifier）持久化 + 通知重建，全局单例 `themeController`
-- 新增 `lib/presentation/pages/profile/theme_settings_page.dart`：三张预览卡选择页，实时切换
-- `lib/services/local_storage_service.dart`：新增 `_themeKey`/`themeId`/`setThemeId`（SharedPreferences 持久化）
-- `lib/main.dart`：`main()` 加 `await themeController.load()`；`MaterialApp` 外包 `ListenableBuilder`，`theme/darkTheme: AppTheme.themeData`，`themeMode` 随当前调色板亮/暗切换
-- `profile_page.dart`：主题菜单接入 `Navigator.push` 到设置页
-- 影响：因颜色 token 由 const 变 getter，215 处 const 上下文引用（25 文件）去除 `const`（脚本批量 + 5 处 const 列表字面量手工改 final）
-- 风险：去 const 后产生 ~89 个 `prefer_const` info 级提示（非致命）；曜石黑深色下个别写死 `Colors.white/black` 处需目检对比度；切换页一次性计算，性能影响可忽略
-
-## 2026-05-30 (个人中心统计卡真实数据)
-
-### 修改
-- 原因：个人中心"总任务/完成率/连续"为写死的 128/78%/15天，需按真实任务数据渲染
-- `ProfilePage` 增加 `taskRepository` 可空参数；`_init()` 中拉取 `getAll()` 计算总任务数、完成率（status==2 占比四舍五入）、连续天数（按 `completedTime` 本地日期连续回溯，今日未完成则从昨日起算）
-- `_buildStatsSection` 用 `_total/_completionRate/_streak` 替换写死值
-- `home_page.dart` 将 `const ProfilePage()` 改为传入 `widget.taskRepository`
-- 文件：lib/presentation/pages/profile/profile_page.dart, lib/presentation/pages/home/home_page.dart
-- 风险：`taskRepository` 为空时统计显示 0；切换到"我的"页时一次性计算，新增/完成任务后需重进该页刷新
-
-## 2026-06-06 (四象限列溢出 + 去逾期提示)
-
-### 修改
-- 移除 `_buildQuadrantChart` 中 `q.removeRange(5, q.length)` 硬上限截断
-- 移除顶部 `"N 个任务已逾期"` 红色横幅及 `overdueCount` 变量
-- 移除 `_buildQuadrant` 底部 `"N 逾期"` 红色文字
-- 重写 `_buildQuadrant`：任务按每列 5 条分片，多列 `SingleChildScrollView` 横向滚动，列间 1px 分隔线，移除 `tasks.take(4)` + `"+N 更多"`
-- 文件：lib/presentation/pages/home/home_page.dart
-
-## 2026-06-06 (思维导图 Ctrl+框选多节点功能)
+## 2026-06-01 (子任务自动延后只计算子任务)
 
 ### 修复
-- 负坐标节点再拖动→全联动：画布尺寸 `abs()` → 恢复原始正向扩展，避免 InteractiveViewer 重调 viewport
-- 节点所有方向自由拖拽：移除 `clamp(0,∞)` / `clamp(6,∞)` 限制
-- Ctrl+框选重写：`ValueNotifier<_ctrlPressed>` + `ValueListenableBuilder` + `IgnorePointer` 即时切换架构；`GestureDetector` overlay 拦截框选手势
-- 选中节点蓝色边框高亮 + Esc 清除选中
-- 文件：lib/presentation/pages/tasks/widgets/mind_map_view.dart
+- 原因：父任务或普通根任务的时间范围会参与子任务创建冲突/延后计算，导致 2026-06-01 创建子任务时被父任务长条推迟到 2026-06-05 后。
+- `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`：新增统一过滤规则，冲突检测、自动延后和自动插入只把未完成、未删除、`parentId != null`、非跨天的子任务传给 `SubtaskScheduler`。
+- `test/subtask_scheduler_test.dart`：补充父任务/根任务被排除、不同父任务子任务仍参与避让的回归测试。
+- 验证：`flutter test test\subtask_scheduler_test.dart` 通过。
+- 风险/TODO：本次不调整 `SubtaskScheduler` 通用算法；后续若需要“仅同父子任务避让”，需再改变过滤范围。
 
-## 2026-06-06 (思维导图手势修复 + 首页统计优化)
-
-### 修复
-- 思维导图节点上拖后"+"按钮点不动：`_MindMapNodeCard` 自由拖拽模式 GestureDetector 改用 `onPanDown`（比 `onPanStart` 更早触发，设 `_nodeDragging=true`）+ 新增 `onPanCancel` 清理。+ 按钮加 `HitTestBehavior.opaque` + 热区 28×28。
-- 拖重叠节点导致整棵树一起拖动：同上，`onPanDown` 替代 `onPanStart` 确保 InteractiveViewer 的 pan 在 hit test 阶段被禁用，`onPanCancel` 防止 `_nodeDragging` 残留。
-
-### 优化
-- 首页"下午好"与统计卡片（今日任务/完成率/逾期）合并为同一行 Row 布局，统计卡片改为紧凑 inline 样式，点击可展开完整详情（含周期切换）。
-- 周期切换移至详情弹窗内，主页面仅显示当前周期数据。
-
-## 2026-05-30 (任务模块 6 项 Bug 修复)
-
-### 修复
-- 日期筛选清除失效：`LoadTasks` 新增 `clearDateRange`，`task_bloc._onLoadTasks` 清除时强制把 `dateFrom/dateTo` 置 null（原 `?? preservedDateFrom` 会保留旧筛选导致清不掉、无法重设）。`tasks_page` 清除分支传 `clearDateRange: true`。
-- 节假日不显示：`holiday_service._fetchChina` 数据源 `timor.tools` 已不可达，失败/空结果时回退 `date.nager.at`（CN，仅法定节假日，无调休补班）。
-- 子任务时间冲突检测仅思维导图入口生效：详情页 `subtask_tree_section._showAddSubTaskDialog` 原为纯标题对话框、无时间无检测，改为复用 `TaskCreateSheet`（含开始/截止时间 + `_checkConflict` 冲突检测），返回后派发 `CreateTask(parentId)` 并刷新子树。
-- 思维导图节点上拖后"+"点不动：`mind_map_view` `onDragUpdate` 钳制节点坐标 `dx>=0/dy>=6`，防止越出画布 `SizedBox` 导致 `Clip.none` 溢出区无法命中。
-- 拖单个节点整片画布联动：新增 `_nodeDragging` 标记，节点拖拽期间 `InteractiveViewer.panEnabled = !_nodeDragging`，避免画布平移与节点拖拽同时触发（撤销上一版"恒为 true"的判断）。
+## 2026-06-01 (日历顶部横条折叠展开)
 
 ### 修改
-- `tasks_page.dart`：移除 AppBar 右上角"新建项目"按钮（抽屉内入口保留）。
+- 原因：周视图顶部跨天/父任务横条数量多时占用时间轴视野。
+- `lib/presentation/pages/calendar/calendar_page.dart`：新增 `_isMultiDayLaneCollapsed`，顶部多日任务区域支持折叠为 30px 高的展开按钮行，展开状态保留原有最多 6 行滚动横条并增加右上折叠按钮。
+- 影响：不改任务模型、仓库、Bloc、排程逻辑和多日任务判定规则。
+- 验证：`flutter analyze lib\presentation\pages\calendar\calendar_page.dart` 已运行，仅剩 `_startOfWeek` 和 `_isDragging` 两个既有 warning。
 
+## 2026-06-01 (任务节点乐观刷新)
+
+### 修改
+- 原因：完成、创建等任务节点操作需要先展示动画和本地刷新，避免等待云同步和全量加载造成卡顿。
+- `lib/presentation/blocs/task_new/task_bloc.dart`：创建、更新、删除、完成切换、父节点移动、同级排序改为本地写入后即时刷新 `TaskNewLoaded`，再执行云同步；同步失败恢复任务表快照并发出回退提示。
+- `lib/data/repositories/task_repository.dart`、`lib/services/task_sync_service.dart`、`lib/presentation/blocs/task_new/task_state.dart`、`lib/presentation/pages/tasks/tasks_page.dart`：新增跳过即时 push、任务快照恢复、同步失败抛出和回退 SnackBar 提示。
+- 验证：`dart analyze lib\presentation\blocs\task_new lib\data\repositories\task_repository.dart lib\services\task_sync_service.dart lib\presentation\pages\tasks\tasks_page.dart` 通过但仍有既有 info；`flutter test test\task_progress_calculator_test.dart`、`flutter test test\task_sync_service_test.dart` 通过。
+- 风险/TODO：同步失败回退以任务表快照为准，任务操作期间若并发写入其他任务也会被一并恢复。
+## 2026-06-01 (棣栭〉宓屽婊氳疆涓叉粴淇)
+
+### 淇
+- 鍘熷洜锛氱敤鎴峰弽棣堥紶鏍囧仠鍦ㄩ椤甸檮浠躲€佹鏌ラ」鎴栨椂闂磋酱浠诲姟鑺傜偣涓婃粴杞椂锛屽灞傞椤典篃浼氳甯﹀姩涓婁笅婊氬姩銆?- `lib/presentation/pages/home/home_page.dart`锛氫负鏃堕棿杞翠换鍔¤妭鐐广€侀椤甸檮浠跺尯鍜屾鏌ラ」鍖哄鍔犲眬閮ㄦ粴杞竟鐣岋紱棣栭〉闄勪欢鍖哄鍔犲彈闄愰珮搴﹀唴閮ㄦ粴鍔ㄥ鍣ㄣ€?- 褰卞搷锛氫粎璋冩暣棣栭〉灞€閮ㄦ粴杞簨浠惰竟鐣屽拰闄勪欢鍖烘粴鍔ㄥ澹筹紝涓嶆敼浠诲姟銆侀檮浠躲€佹鏌ラ」鏁版嵁璇诲啓閫昏緫銆?- 椋庨櫓/TODO锛氫粛闇€鍦ㄦ闈㈢瀹為檯榧犳爣婊氳疆楠岃瘉涓夊灞€閮ㄦ粴鍔ㄦ墜鎰熴€?
+## 2026-06-01 (瀵煎嚭鍏ㄩ儴椤圭洰鍖呭惈鏈垎閰嶄换鍔?
+
+### 淇
+- 鍘熷洜锛氱敤鎴烽€夋嫨 2026-06 鏃堕棿鑼冨洿鍜屽叏閮ㄩ」鐩鍑烘椂锛屽瓨鍦ㄩ」鐩爣绛炬樉绀轰负鈥滄湭鍒嗛厤鈥濈殑浠诲姟锛屼絾瀵煎嚭缁撴灉鎻愮ず鏃犳暟鎹€?- `lib/presentation/pages/profile/task_export_page.dart`锛氬綋鍏ㄩ儴椤圭洰琚€変腑鏃讹紝瀵煎嚭璋冪敤鏀逛负浼犵┖椤圭洰闆嗗悎锛岃〃绀轰笉鎸夐」鐩繃婊わ紝浠庤€屽寘鍚湭鍒嗛厤/鏈尮閰嶉」鐩换鍔°€?- `test/task_export_service_test.dart`锛氭柊澧炴湭鍖归厤椤圭洰浠诲姟鍦ㄧ┖椤圭洰绛涢€変笅浠嶄細杩涘叆瀵煎嚭宸ヤ綔绨跨殑鏂█銆?- 楠岃瘉锛歚flutter test test\task_export_service_test.dart` 閫氳繃锛沗dart analyze lib\presentation\pages\profile\task_export_page.dart lib\services\task_export_service.dart test\task_export_service_test.dart` 閫氳繃銆?- 椋庨櫓/TODO锛氬鏋滃彧鍕鹃€夋煇涓叿浣撻」鐩紝鏈垎閰嶄换鍔′粛涓嶄細瀵煎嚭锛涢渶閫夆€滃叏閮ㄩ」鐩€濆寘鍚湭鍒嗛厤浠诲姟銆?
+## 2026-06-01 (鎬濈淮瀵煎浘鑺傜偣杩炵嚎鍔熻兘)
+
+### 鏂板
+- 鍘熷洜锛氭€濈淮瀵煎浘鍙兘閫氳繃 `+` 鎸夐挳鏂板缓瀛愯妭鐐癸紝鏃犳硶鎶婁袱涓凡鏈夎妭鐐规墜鍔ㄨ繛绾垮缓绔嬬埗瀛愬叧绯汇€?- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`锛?  - `+` 鎸夐挳鏀寔闀挎寜鎷栨嫿鍑烘鐨瓔杩炵嚎鍒扮洰鏍囪妭鐐癸紝鏉炬墜鍚庣洰鏍囪妭鐐规垚涓哄綋鍓嶈妭鐐圭殑瀛愯妭鐐癸紙璋冪敤宸叉湁 `onMoveToParent`锛夛紱
+  - `_MindMapLinesPainter` 澧炲姞 `connectingFrom`/`connectingTo` 鍙傛暟锛屾嫋鎷借繃绋嬩腑缁樺埗铏氱嚎璐濆灏旀鐨瓔 + 缁堢偣鍦嗙偣锛?  - `_MindMapNodeCard` 鏂板 `onConnectStart/Update/End/Cancel` 鍥涗釜鍥炶皟锛?  - 鍙抽敭鐐瑰嚮鑺傜偣杩炵嚎鍖哄煙寮瑰嚭"鏂紑杩炴帴"鑿滃崟锛屾柇寮€鍚庡瓙鑺傜偣鍥炲埌鏍圭骇锛?  - ESC 閿悓鏃舵竻闄よ繛绾挎嫋鎷界姸鎬侊紱
+  - 杩炵嚎鏈熼棿 `_nodeDragging=true`锛岄槻姝㈢敾甯冭窡闅忓钩绉汇€?- `lib/presentation/blocs/task_new/task_bloc.dart`锛歚_onMoveTaskToParent` 寤虹珛鐖跺瓙鍏崇郴鍚庤嚜鍔ㄦ墿灞曠埗鑺傜偣鐨勬棩鏈熻寖鍥达紙startDate 鍙栨渶鏃┿€乨ueDate 鍙栨渶鏅氾級浠ュ寘鍚瓙鑺傜偣鏃ユ湡锛屼娇鏃ュ巻妯潯鑷姩瑕嗙洊姝ｇ‘鍖洪棿銆?- 鏃ュ巻鏃ュ巻宸叉湁 `_isMultiDayTask 鈫?_hasChildren` 閫昏緫锛岀埗鑺傜偣杩炵嚎鍚庤嚜鍔ㄥ憟鐜颁负妯潯锛屾棤闇€棰濆鏀瑰姩銆?- 楠岃瘉锛歚flutter analyze --no-fatal-infos` 鏃?error銆?- 椋庨櫓/TODO锛氭鐨瓔杩炵嚎缁堢偣鍛戒腑妫€娴嬩互鑺傜偣鍖呭洿鐩掍负鍑嗭紙_hitTestNode锛夛紝鑺傜偣绱у瘑鎺掑垪鏃剁洰鏍囧彲鑳戒笉濡傞鏈燂紱鍙抽敭鍒犻櫎绾跨殑鍛戒腑鍗婂緞鍥哄畾 24px锛屽彲鎸夐渶璋冩暣銆?
+## 2026-06-01 (鐧诲綍淇涓庢垜鐨勬ā鍧楀鍑?
+
+### 淇/鏂板
+- 鍘熷洜锛氱敤鎴峰弽棣堢櫥褰曢〉涔辩爜銆佹墜鏈哄彿鍙戦€侀獙璇佺爜鍚庨〉闈㈣烦鍥炲垵濮嬫€侊紝骞惰姹傗€滄垜鐨勨€濇ā鍧楁敮鎸佹寜鏃堕棿鑼冨洿銆侀」鐩拰閲嶈绾у埆瀵煎嚭 Excel銆?- `lib/presentation/pages/auth/login_page.dart`锛氫慨澶嶇櫥褰曢〉娈嬬暀涔辩爜鏂囨銆?- `lib/main.dart`銆乣lib/presentation/blocs/auth/auth_bloc.dart`锛氶潪璁よ瘉鎴愬姛鐘舵€佺户缁繚鐣?`LoginPage`锛岄伩鍏嶉獙璇佺爜鍙戦€佷腑涓㈠け鎵嬫満妯″紡锛涙墜鏈哄彿鏍煎紡鍜?Supabase Phone Auth/SMS Provider 閰嶇疆闂杩斿洖涓枃鎻愮ず銆?- `lib/services/task_export_service.dart`銆乣lib/presentation/pages/profile/task_export_page.dart`銆乣lib/presentation/pages/profile/profile_page.dart`銆乣lib/presentation/pages/home/home_page.dart`锛氭柊澧炴垜鐨勯〉瀵煎嚭鍏ュ彛銆佺瓫閫夐〉鍜屽 Sheet 鏍戝舰 Excel 瀵煎嚭锛涙柊澧?`excel`銆乣archive`銆乣xml` 渚濊禆锛屼笉鏀规暟鎹簱缁撴瀯銆?- `test/login_page_test.dart`銆乣test/task_export_service_test.dart`銆乣test/profile_page_test.dart`銆乣test/widget_test.dart`锛氭柊澧?鏇存柊楠岃瘉鐮佺姸鎬併€佸鍑烘湇鍔°€佸鍑哄叆鍙ｅ拰鐧诲綍椤典腑鏂囨枃妗堟祴璇曘€?- 楠岃瘉锛歚flutter test test\login_page_test.dart test\profile_page_test.dart test\widget_test.dart` 閫氳繃锛沗flutter test test\task_export_service_test.dart` 閫氳繃锛沗flutter analyze` 鍙畬鎴愪絾浠撳簱浠嶆湁鏃㈡湁 97 涓?info/warning銆?- 椋庨櫓/TODO锛氳嫢椤甸潰涓嶅啀璺冲洖鍚庝粛鏀朵笉鍒扮煭淇★紝闇€瑕佸湪 Supabase 鎺у埗鍙扮‘璁?Phone Auth 宸插惎鐢ㄥ苟閰嶇疆鐭俊鏈嶅姟鍟嗐€?
+## 2026-06-01 (鎴戠殑妯″潡缂栬緫璧勬枡)
+
+### 鏂板
+- 鍘熷洜锛氱敤鎴疯姹傝皟鐮斺€滄垜鐨勨€濇ā鍧楀簲鍏佽缂栬緫鍝簺璧勬枡锛屽苟澧炲姞缂栬緫璧勬枡鍔熻兘銆?- `lib/presentation/pages/profile/profile_page.dart`锛氳鍙栨湰鍦版樉寮忚祫鏂欙紝澶撮儴鏄剧ず鏄电О銆佽亴涓?韬唤鍜屽煄甯傦紱鈥滅紪杈戣祫鏂欌€濇寜閽烦杞紪杈戦〉骞跺湪淇濆瓨鍚庡埛鏂般€?- 鏂板 `lib/presentation/pages/profile/profile_edit_page.dart`锛氬厑璁哥紪杈戞樀绉般€佽亴涓氭垨韬唤銆佹墍鍦ㄥ煄甯傘€佺洰鏍囧煄甯傘€佷富瑕佺洰鏍囷紱璐﹀彿閭/鎵嬫満鍙蜂綔涓鸿璇佷俊鎭彧璇绘彁绀猴紱淇濆瓨鍒?`LocalStorageService.saveExplicitProfile()`銆?- `test/profile_page_test.dart`锛氭柊澧炵紪杈戣祫鏂欎繚瀛樺悗鍥炴樉鍜屾湰鍦板瓨鍌ㄦ柇瑷€銆?- 楠岃瘉锛歚dart analyze lib\presentation\pages\profile\profile_page.dart lib\presentation\pages\profile\profile_edit_page.dart test\profile_page_test.dart` 閫氳繃锛沗flutter test test\profile_page_test.dart` 閫氳繃銆?- 椋庨櫓/TODO锛氬綋鍓嶈祫鏂欏彧鍐欐湰鍦?SharedPreferences锛屾湭鍚屾 Supabase `user_profiles`銆?
+## 2026-05-31 (鑺傚亣鏃ャ€侀€€鍑虹櫥褰曘€佸瓙浠诲姟鍚屾銆佺Щ鍔ㄧ璧勬簮甯冨眬)
+
+### 淇
+- 鍘熷洜锛氱敤鎴峰弽棣?2026 骞翠簲涓€浼戞伅鏃ユ湭瀹屾暣灞曠ず銆佹垜鐨勯〉閫€鍑虹櫥褰曟棤鍙嶅簲銆佹闈㈢瀛愪换鍔℃棤娉曞悓姝ュ埌绉诲姩绔€佺Щ鍔ㄧ棣栭〉妫€鏌ラ」鍜岄檮浠跺悓鎺掓樉绀恒€?- `lib/services/holiday_service.dart`锛氭柊澧炰腑鍥?2026 鍔冲姩鑺傛湰鍦板厹搴曡鐩栵紝琛ラ綈 2026-05-01 鑷?2026-05-05 浼戞伅鏃ワ紝浠ュ強 2026-04-26銆?026-05-09 琛ョ彮鏃ャ€?- `lib/presentation/pages/profile/profile_page.dart`锛氶€€鍑虹櫥褰曡彍鍗曟淳鍙?`LoggedOut`锛屽苟涓烘祴璇曚繚鐣欏彲娉ㄥ叆 `onLogout` 鍥炶皟銆?- `lib/presentation/blocs/task_new/task_bloc.dart`銆乣lib/services/task_sync_service.dart`锛氫换鍔″悓姝ュ叆鍙ｆ敼鐢?`TaskSyncService.syncAll()` 鐨?`user_tasks` 閫愯鍚屾閾捐矾锛涙柊澧?`taskToSyncRow`/`syncRowToTaskJson` 楠岃瘉 `parent_id` 涓?`parentId` 鏄犲皠銆?- `lib/presentation/pages/home/home_page.dart`锛氱獎灞忛椤典换鍔¤鎯呰祫婧愬尯鏀逛负闄勪欢銆佹鏌ラ」绾靛悜鍒嗗尯锛涙闈㈢浠嶆í鍚戝睍绀恒€?- 鏂板 `test/holiday_service_test.dart`銆乣test/task_sync_service_test.dart`銆乣test/profile_page_test.dart` 瑕嗙洊鏈淇銆?- 楠岃瘉锛歚flutter test test\holiday_service_test.dart test\task_sync_service_test.dart test\profile_page_test.dart` 閫氳繃锛涘叏閲?`flutter test` 浠嶅け璐ヤ簬鏃㈡湁 `create_schedule_dialog_test.dart` ListTile/DecoratedBox 鏂█鍜?`widget_test.dart` 鐧诲綍椤垫枃妗堟柇瑷€銆?
+## 2026-05-31 (鎬濈淮瀵煎浘锛氳嚜鍔ㄩ攣瀹氭渶杩戜换鍔?
+
+### 鏂板
+- 鍘熷洜锛氱敤鎴烽渶瑕佸湪鎬濈淮瀵煎浘鍙充笂瑙掓柊澧炲叆鍙ｏ紝鐐瑰嚮鍚庤嚜鍔ㄦ妸瑙嗚鍒囨崲鍒板綋鍓嶆椂闂存渶杩戠殑浠诲姟鑺傜偣銆?- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`锛氭柊澧炩€滆嚜鍔ㄩ攣瀹氣€濆皬鎮诞鎸夐挳锛屾寜 `startDate ?? dueDate` 鏌ユ壘鏈€杩戝彲瑙佷换鍔★紝淇濇寔褰撳墠缂╂斁姣斾緥骞跺钩绉荤敾甯冨埌鑺傜偣涓績锛涙棤甯︽椂闂磋妭鐐规椂鏄剧ず鎻愮ず銆?- 褰卞搷锛氫粎褰卞搷鎬濈淮瀵煎浘瑙嗚瀹氫綅锛屼笉淇敼浠诲姟鏁版嵁銆佸竷灞€缂撳瓨銆佹嫋鎷戒繚瀛樻垨閲嶇疆甯冨眬閫昏緫銆?- 椋庨櫓锛歚flutter analyze` 鍜?`dart analyze` 鍦ㄦ湰鏈哄潎瓒呮椂锛岄渶鍚庣画鍦ㄥ彲鐢?Flutter 宸ュ叿閾句笅澶嶈窇銆?
+## 2026-05-31 (浠诲姟鍒涘缓鑷姩鎻掑叆)
+
+### 淇敼
+- 鍘熷洜锛氬垱寤轰换鍔″彂鐢熸椂闂村啿绐佹椂锛岄渶瑕佹敮鎸佸己鍒朵繚鐣欐柊浠诲姟鏃堕棿锛屽苟鎶婅鎸ゅ崰鐨勫悗缁换鍔＄骇鑱斿悗绉汇€?- `lib/services/subtask_scheduler.dart`锛氭柊澧?`ScheduledTaskShift` 鍜?`autoInsert`锛屾寜鏂颁换鍔℃椂闂存銆佸伐浣滄椂娈点€?5 鍒嗛挓缂撳啿璁＄畻琚悗绉讳换鍔°€?- `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`锛氬啿绐佸脊绐楁柊澧炩€滆嚜鍔ㄦ彃鍏モ€濓紝鎵€鏈変紶鍏?`TaskRepository` 鐨勫垱寤轰换鍔￠兘浼氭娴嬪啿绐佸苟杩斿洖 `shiftedTasks`銆?- `lib/presentation/blocs/task_new/task_event.dart`銆乣task_bloc.dart`锛歚CreateTask` 鏂板 `shiftedTasks`锛屽垱寤哄悗鎵归噺鏇存柊琚悗绉讳换鍔℃椂闂淬€?- `tasks_page.dart`銆乣subtask_tree_section.dart`銆乣calendar_page.dart`锛氬垱寤哄叆鍙ｄ紶閫?`shiftedTasks`锛涙棩鍘嗗垱寤哄叆鍙ｄ紶鍏?`TaskRepository`銆?- 鏂板 `test/subtask_scheduler_test.dart` 瑕嗙洊鍚屾鎻掑叆銆佽繛缁骇鑱斿悗绉汇€佽法宸ヤ綔鏃舵鍚庣Щ銆?- 楠岃瘉锛歚dart format` 宸叉牸寮忓寲鏈 Dart 淇敼锛沗flutter test test\subtask_scheduler_test.dart` 閫氳繃锛沗flutter analyze` 鍙畬鎴愪絾浠撳簱浠嶆湁鏃㈡湁 info/warning锛涘叏閲?`flutter test` 澶辫触鍦ㄦ棦鏈?`create_schedule_dialog_test.dart` ListTile/DecoratedBox 鏂█鍜?`widget_test.dart` 鎵句笉鍒扳€滄櫤鑳藉皬绠″鈥濄€?
+## 2026-05-31 (涓汉鎺у埗鍙伴潤鎬佺珯鐐?
+
+### 鏂板
+- 鍘熷洜锛氱敤鎴烽渶瑕佷竴涓渶浣庢垚鏈€佷粎鏈汉鍙闂殑缃戠珯锛岀敤浜庨厤缃姩鎬佸瘑閽ャ€佸姩鎬佹暟鎹苟绠＄悊鍚勭被 App銆?- `personal_admin_site/index.html`銆乣styles.css`銆乣app.js`锛氭柊澧為潤鎬佷釜浜烘帶鍒跺彴锛屾敮鎸?Supabase Email OTP 鐧诲綍銆佸姩鎬佸瘑閽?鍔ㄦ€佹暟鎹?App 涓夌被绠＄悊瑙嗗浘锛涘瘑閽ュ€煎湪娴忚鍣ㄧ鍔犲瘑鍚庝繚瀛樸€?- `personal_admin_site/supabase.sql`锛氭柊澧?Supabase 琛ㄧ粨鏋勩€佹洿鏂版椂闂磋Е鍙戝櫒銆丷LS 绛栫暐鍜岄偖绠?allowlist 绀轰緥銆?- `personal_admin_site/config.js`銆乣config.example.js`銆乣README.md`锛氭柊澧炲墠绔?Supabase 閰嶇疆鍗犱綅銆佹湰鍦伴厤缃€丼upabase 鍒濆鍖栧拰 Cloudflare Pages 鍏嶈垂閮ㄧ讲璇存槑銆?- 褰卞搷锛氭柊澧炵嫭绔嬬珯鐐圭洰褰曪紝涓嶄慨鏀圭幇鏈?Flutter 搴旂敤浠ｇ爜銆?- 椋庨櫓/TODO锛氬皻鏈疄闄呯嚎涓婂彂甯冿紱闇€瑕佺敤鎴锋挙閿€宸叉毚闇茬殑 Supabase Personal Access Token锛屽苟鎻愪緵 Supabase `Project URL`銆乣anon public key`銆佸厑璁哥櫥褰曢偖绠卞強 Cloudflare/Git 鎵樼鍙戝竷鏉冮檺鍚庢墠鑳藉畬鎴愪笂绾裤€?
+### 琛ュ厖
+- `personal_admin_site/_headers`锛氭柊澧?Cloudflare Pages 瀹夊叏鍝嶅簲澶淬€?- `personal_admin_site/DEPLOYMENT_PLAN.md`锛氭柊澧?0 缇庡厓鍥哄畾鎴愭湰閮ㄧ讲鏂规銆佸畼鏂逛緷鎹摼鎺ャ€佷笂绾挎楠ゅ拰鍙戝竷鍓嶆鏌ラ」銆?- `personal_admin_site/deploy-check.ps1`锛氭柊澧炲彂甯冨墠妫€鏌ヨ剼鏈紝闃绘鍗犱綅 Supabase 閰嶇疆鍜屾晱鎰熷瘑閽ヨ繘鍏ュ墠绔€?- `personal_admin_site/build-cloudflare.sh`銆乣build-local.ps1`锛氭柊澧?Cloudflare 鐜鍙橀噺鏋勫缓鍜屾湰鍦?Direct Upload 閰嶇疆鐢熸垚鑴氭湰銆?- `personal_admin_site/app.js`锛歋upabase 鏈厤缃椂鏄剧ず鏄庣‘鎻愮ず锛岄伩鍏嶉〉闈㈤潤榛樺垵濮嬪寲澶辫触銆?- `personal_admin_site_template.zip`锛氭柊澧為潤鎬佺珯鐐逛笂浼犳ā鏉垮寘銆?- 楠岃瘉锛歚node --check personal_admin_site\app.js` 閫氳繃锛涙湰鍦?Node 闈欐€佹湇鍔¤姹?`/` 杩斿洖 `200` 涓斿寘鍚?`Personal Control Desk`锛涚敤涓存椂鐜鍙橀噺鎵ц `build-local.ps1` + `deploy-check.ps1` 閫氳繃锛岄殢鍚庡凡鎭㈠ `config.js` 涓哄崰浣嶉厤缃€?
+## 2026-05-31 (鎴戠殑妯″潡琛ュ叏)
+
+### 淇敼
+- 鍘熷洜锛氱敤鎴疯姹傚幓鎺夋垜鐨勬ā鍧楃殑"鎻愰啋璁剧疆"锛屽苟琛ュ叏"璁剧疆/甯姪涓庡弽棣?鍏充簬"鍐呭銆?- `lib/presentation/pages/profile/profile_page.dart`锛氱Щ闄?鎻愰啋璁剧疆"鑿滃崟椤癸紱"璁剧疆/甯姪涓庡弽棣?鍏充簬"鎺ュ叆椤甸潰璺宠浆锛汚I 鎺掔▼璺宠繃鍛ㄦ湯寮€鍏充粠鎴戠殑椤电Щ鍒拌缃〉銆?- 鏂板 `app_settings_page.dart`銆乣help_feedback_page.dart`銆乣about_page.dart`锛氳缃〉鍖呭惈 AI 鎺掔▼璺宠繃鍛ㄦ湯銆佷富棰樺叆鍙ｃ€侀€氱煡璇存槑銆佹暟鎹鏄庯紱甯姪椤靛寘鍚姛鑳藉府鍔┿€佸父瑙侀棶棰樺拰鍙嶉璇存槑锛涘叧浜庨〉灞曠ず浜у搧鍚嶃€佺増鏈?`1.0.0+3`銆佹牳蹇冭兘鍔涖€佹暟鎹悓姝ュ拰闅愮鏉冮檺璇存槑銆?- 褰卞搷锛氫笉鏀逛换鍔?鏃ョ▼璇︽儏涓殑鎻愰啋璁剧疆涓庨€氱煡璋冨害閫昏緫銆?- 椋庨櫓锛氱増鏈彿鍦ㄥ叧浜庨〉鎸夊綋鍓?`pubspec.yaml` 闈欐€佸睍绀猴紝鍚庣画鍙戠増闇€鍚屾鏇存柊銆?
+## 2026-05-31 (棣栭〉浠诲姟璇︽儏锛氳祫婧愬尯鍚岃)
+
+### 淇敼
+- 鍘熷洜锛氱敤鎴疯姹傞椤电殑闄勪欢鍜屾鏌ラ」鏀惧埌鍚屼竴琛屻€?- `lib/presentation/pages/home/home_page.dart`锛氬皢棣栭〉 DB 浠诲姟璇︽儏搴曢儴鐨勮祫婧愬尯鏀逛负 `_buildResourceRow`锛屽瓙浠诲姟鏍戙€侀檮浠躲€佹鏌ラ」鍦ㄥ悓涓€妯悜琛屽睍绀猴紱绉婚櫎瀛愪换鍔℃爲鍐呴儴棰濆椤堕儴闂磋窛銆?- 褰卞搷锛氫粎璋冩暣棣栭〉浠诲姟璇︽儏鍗″竷灞€锛屼笉鏀归檮浠?妫€鏌ラ」/瀛愪换鍔＄殑鏁版嵁璇诲啓閫昏緫銆?- 椋庨櫓锛氱獎灞忎笅妯悜涓夊垪鍙敤瀹藉害鍙樺皬銆?
+## 2026-05-30 (鏃ュ巻鍛ㄨ鍥撅細婊戝姩鏃跺ご閮ㄦ棩鏈熶笌涓嬫柟缃戞牸鍚屾)
+
+### 浼樺寲
+- 鍘熷洜锛氬懆瑙嗗浘宸﹀彸鎷栧姩鍒囨崲鏃ユ湡鏃讹紝浠呬笅鏂?body锛堟椂闂村垪+缃戞牸+浠诲姟鍧楋級璺熸墜骞崇Щ锛岄《閮?鏄熸湡+鏃ユ湡"澶撮儴涓嶅姩锛屽鑷翠袱鑰呮í鍚戦敊浣嶃€佽瑙夎劚绂?- `lib/presentation/pages/calendar/calendar_page.dart`锛?  - `_buildDayStripHeader` 鐨?鏄熸湡+鏃ユ湡"琛屽灞傚寘瑁?`ClipRect` + `Transform.translate(offset: Offset(_dragOffset, 0))`锛屽鐢?body 鍚屾 `_dragOffset`锛屼娇澶撮儴涓庝笅鏂圭綉鏍煎垪鎷栧姩杩囩▼涓í鍚戝悓姝ュ钩绉?  - 鏈堜唤瀵艰埅琛岋紙`< 骞存湀 >`锛変繚鎸佸浐瀹氾紝涓嶅弬涓庡钩绉?- 褰卞搷锛氫粎澶撮儴娓叉煋鍖呰锛屾湭鏀?`_dragOffset` 璧嬪€?鎷栧姩鍥炶皟/鍚搁檮鍒囨崲閫昏緫锛涙湀瑙嗗浘銆佺旱鍚戞粴鍔ㄣ€佺缉鏀俱€佷换鍔″潡鎷栨嫿鍧囦笉鍙楀奖鍝?- 椋庨櫓锛氫綆
+
+## 2026-05-30 (棣栭〉浠诲姟璇︽儏锛氭柊澧炶祫婧愬尯)
+
+### 鏂板
+- 鍘熷洜锛氶椤典换鍔¤鎯呭崱鐨勬鏌ラ」鍖哄煙浠呬负鍙棰勮锛堟渶澶?鏉★級锛屼笖鏃犻檮浠跺叆鍙ｏ紝鏃犳硶鍦ㄩ椤电洿鎺ユ搷浣?- `lib/presentation/pages/home/home_page.dart`锛?  - 鏂板 `_dbTaskCache`锛坄Map<String, Task?>`锛夌紦瀛?DB Task 瀵硅薄锛屼緵 `AttachmentSection` 浣跨敤
+  - 鏂板 `_loadDbTask` / `_homeToggleChecklist` / `_homeDeleteChecklist` / `_homeEditChecklist` / `_homeAddChecklist` / `_homeSetObsidianUri` 鍏釜鏂规硶锛屽鎺?`ChecklistRepository` CRUD
+  - 鏂板 `_buildResourceSection` / `_buildAttachmentWidget` / `_buildChecklistWidget`锛氬乏鍙充袱鍒楀竷灞€锛屽乏鍒楀鐢?`AttachmentSection`锛屽彸鍒楀鐢?`ChecklistSection`锛堟敮鎸佸嬀閫?娣诲姞/鍙屽嚮缂栬緫/闀挎寜 Obsidian 鍏宠仈锛?  - 鍒犻櫎鍙鐨?`_buildChecklistPreview` 鏂规硶
+  - `_buildTaskDetail` 搴曢儴鏇挎崲涓鸿祫婧愬尯锛屼粎瀵?`source == 'db'` 浠诲姟鏄剧ず
+- 椋庨櫓锛氫綆锛涢檮浠?妫€鏌ラ」渚濊禆宸叉湁 service/repo锛岃涓轰笌浠诲姟璇︽儏椤靛畬鍏ㄤ竴鑷达紱鏃堕棿杞磋楂樹笉鍙楀奖鍝?
+## 2026-07-17 (鎬濈淮瀵煎浘锛氫慨澶嶇偣鍑荤┖鐧藉鍙栨秷妗嗛€変笉鐢熸晥)
+
+### 淇敼
+- 鍘熷洜锛氬師鏈?`Listener` 鏀惧湪 `InteractiveViewer` 鍐呴儴 Stack 搴曞眰锛屾闈㈢ `InteractiveViewer` 鐨?`ScaleGestureRecognizer` 鎷︽埅鎸囬拡浜嬩欢锛屽鑷村瓙绾?`Listener.onPointerUp` 鏀朵笉鍒?鈫?鐐瑰嚮绌虹櫧澶勬棤娉曟竻绌?`_selectedIds`
+- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`锛?  - 鍒犻櫎 Stack 鍐呭眰鐨?`Positioned.fill` + `Listener`锛堝惈 debugPrint锛?  - 鍦?`_buildMindMapCanvas` 鐨勫灞?Stack 涓紝鐢?`Listener`锛坄HitTestBehavior.translucent`锛夊寘瑁?`InteractiveViewer`锛屽悓鏍烽€昏緫锛歱ointerDown 璁板綍浣嶇疆锛宲ointerUp 璺濈 <8px 涓?`_selectedIds` 闈炵┖鍒欐竻绌?  - 澶栧眰 Listener 涓嶉樆濉炲瓙绾ф墜鍔匡紙鎷栨嫿鑺傜偣銆丆trl+妗嗛€夈€佸钩绉荤敾甯冨潎姝ｅ父锛?- 椋庨櫓锛氫綆锛屼粎鏀瑰彉 Listener 灞傜骇浣嶇疆锛岃涓洪€昏緫涓嶅彉
+
+## 2026-05-30 (鎬濈淮瀵煎浘锛氱偣鍑荤┖鐧藉鍙栨秷妗嗛€?
+
+### 淇敼
+- 鍘熷洜锛欳trl+宸﹂敭妗嗛€夎妭鐐瑰悗锛屾澗寮€ Ctrl 閫変腑楂樹寒鎸佺画淇濈暀锛屾棤鎵嬪娍鍙竻绌猴紝浣撻獙涓?鏃犳硶鍙栨秷"
+- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`锛?  - `canvasContent()` 鐨?`Stack` 鏈€搴曞眰鏂板鍏ㄥ睆鑳屾櫙 `Listener`锛坄HitTestBehavior.translucent`锛夛紝`onPointerUp` 鏃惰嫢鎸変笅鍒版姮璧蜂綅绉?<8px 涓?`_selectedIds` 闈炵┖鍒欐竻绌哄苟 `setState`
+  - 鏂板瀛楁 `_bgPointerDownPos` 璁板綍鎸変笅浣嶇疆锛岀敤浜庡尯鍒?鐐瑰嚮"涓?骞崇Щ"
+  - 鏀圭敤 `Listener`锛堢粫杩囨墜鍔跨珵鎶€鍦猴級鑰岄潪 `GestureDetector.onTap`锛氬悗鑰呬綔涓?`InteractiveViewer` 瀛愯妭鐐规椂绌虹櫧澶?tap 浼氳鍏剁缉鏀捐瘑鍒櫒鎶㈣蛋锛屽鑷撮鐗堟棤鏁?- 椋庨櫓锛氫綆锛屾湭鏀瑰姩鐜版湁妗嗛€?鎷栨嫿/閿洏閫昏緫锛涘钩绉讳粛姝ｅ父锛堜綅绉?8px 涓嶈Е鍙戞竻绌猴級
+
+## 2026-07-15 (鏃ュ巻鍛ㄨ鍥炬嫋鎷芥敼涓?Transform 璺熸墜骞崇Щ)
+
+### 淇敼
+- 鍘熷洜锛氭嫋鎷戒笉璺熸墜鈥斺€旈槇鍊兼柟寮忎笉鎻愪緵瑙嗚鍙嶉锛屾闈㈤紶鏍?delta 澶ф椂涓€娆¤烦澶氬ぉ
+- `lib/presentation/pages/calendar/calendar_page.dart`锛?  - 鏂板 `_dragOffset` / `_cachedDayWidth` 瀛楁
+  - `_buildWeekTimeline`锛歚GestureDetector` + `Transform.translate` 鍖呰９澶氭棩鏍?鏃堕棿绾匡紝`_dragOffset` 椹卞姩骞崇Щ
+  - `_onCalendarHorizontalDragUpdate`锛氱疮鍔?`details.delta.dx` 鍒?`_dragOffset` + `setState`
+  - `_onCalendarHorizontalDragEnd`锛歚-(_dragOffset / _cachedDayWidth).round()` 绠楀ぉ鏁板亸绉?鈫?鏇存柊 `_focusedDay` 鈫?褰掗浂 `_dragOffset`
+
+## 2026-05-30 (澶氫富棰樺垏鎹細鏋佸厜钃?+ 鏇滅煶榛?
+
+### 鏂板
+- 鍘熷洜锛氬師浠呬竴濂楀啓姝荤殑 Claude 鏆栫強鐟氳壊涓婚锛宲rofile"涓婚"鑿滃崟涓虹┖澹筹紙`onTap: () {}`锛夛紱闇€鍦ㄩ粯璁や富棰樺澧炲姞涓ゅ澶у巶鏍囧噯鍙垏鎹富棰?- 閲嶆瀯 `lib/core/theme/app_theme.dart`锛氭娊鍑?`AppPalette` 璋冭壊鏉挎ā鍨嬶紙鎸佹湁鍏ㄩ儴棰滆壊 token + `ThemeData build()`锛夛紝瀹氫箟涓夊瀹炰緥 `claude`/`auroraBlue`锛圙oogle Material 3 钃濓級/`obsidian`锛堟繁鑹叉ā寮忥級锛沗AppTheme` 棰滆壊 token 鐢?`static const` 鏀逛负濮旀墭 `_current` 璋冭壊鏉跨殑 `static get`锛屽澶?API 鍚嶄笉鍙橈紝653 澶勫紩鐢ㄩ浂鏀瑰姩
+- 鏂板 `lib/core/theme/theme_controller.dart`锛歚ThemeController`锛圕hangeNotifier锛夋寔涔呭寲 + 閫氱煡閲嶅缓锛屽叏灞€鍗曚緥 `themeController`
+- 鏂板 `lib/presentation/pages/profile/theme_settings_page.dart`锛氫笁寮犻瑙堝崱閫夋嫨椤碉紝瀹炴椂鍒囨崲
+- `lib/services/local_storage_service.dart`锛氭柊澧?`_themeKey`/`themeId`/`setThemeId`锛圫haredPreferences 鎸佷箙鍖栵級
+- `lib/main.dart`锛歚main()` 鍔?`await themeController.load()`锛沗MaterialApp` 澶栧寘 `ListenableBuilder`锛宍theme/darkTheme: AppTheme.themeData`锛宍themeMode` 闅忓綋鍓嶈皟鑹叉澘浜?鏆楀垏鎹?- `profile_page.dart`锛氫富棰樿彍鍗曟帴鍏?`Navigator.push` 鍒拌缃〉
+- 褰卞搷锛氬洜棰滆壊 token 鐢?const 鍙?getter锛?15 澶?const 涓婁笅鏂囧紩鐢紙25 鏂囦欢锛夊幓闄?`const`锛堣剼鏈壒閲?+ 5 澶?const 鍒楄〃瀛楅潰閲忔墜宸ユ敼 final锛?- 椋庨櫓锛氬幓 const 鍚庝骇鐢?~89 涓?`prefer_const` info 绾ф彁绀猴紙闈炶嚧鍛斤級锛涙洔鐭抽粦娣辫壊涓嬩釜鍒啓姝?`Colors.white/black` 澶勯渶鐩瀵规瘮搴︼紱鍒囨崲椤典竴娆℃€ц绠楋紝鎬ц兘褰卞搷鍙拷鐣?
+## 2026-05-30 (涓汉涓績缁熻鍗＄湡瀹炴暟鎹?
+
+### 淇敼
+- 鍘熷洜锛氫釜浜轰腑蹇?鎬讳换鍔?瀹屾垚鐜?杩炵画"涓哄啓姝荤殑 128/78%/15澶╋紝闇€鎸夌湡瀹炰换鍔℃暟鎹覆鏌?- `ProfilePage` 澧炲姞 `taskRepository` 鍙┖鍙傛暟锛沗_init()` 涓媺鍙?`getAll()` 璁＄畻鎬讳换鍔℃暟銆佸畬鎴愮巼锛坰tatus==2 鍗犳瘮鍥涜垗浜斿叆锛夈€佽繛缁ぉ鏁帮紙鎸?`completedTime` 鏈湴鏃ユ湡杩炵画鍥炴函锛屼粖鏃ユ湭瀹屾垚鍒欎粠鏄ㄦ棩璧风畻锛?- `_buildStatsSection` 鐢?`_total/_completionRate/_streak` 鏇挎崲鍐欐鍊?- `home_page.dart` 灏?`const ProfilePage()` 鏀逛负浼犲叆 `widget.taskRepository`
+- 鏂囦欢锛歭ib/presentation/pages/profile/profile_page.dart, lib/presentation/pages/home/home_page.dart
+- 椋庨櫓锛歚taskRepository` 涓虹┖鏃剁粺璁℃樉绀?0锛涘垏鎹㈠埌"鎴戠殑"椤垫椂涓€娆℃€ц绠楋紝鏂板/瀹屾垚浠诲姟鍚庨渶閲嶈繘璇ラ〉鍒锋柊
+
+## 2026-06-06 (鍥涜薄闄愬垪婧㈠嚭 + 鍘婚€炬湡鎻愮ず)
+
+### 淇敼
+- 绉婚櫎 `_buildQuadrantChart` 涓?`q.removeRange(5, q.length)` 纭笂闄愭埅鏂?- 绉婚櫎椤堕儴 `"N 涓换鍔″凡閫炬湡"` 绾㈣壊妯箙鍙?`overdueCount` 鍙橀噺
+- 绉婚櫎 `_buildQuadrant` 搴曢儴 `"N 閫炬湡"` 绾㈣壊鏂囧瓧
+- 閲嶅啓 `_buildQuadrant`锛氫换鍔℃寜姣忓垪 5 鏉″垎鐗囷紝澶氬垪 `SingleChildScrollView` 妯悜婊氬姩锛屽垪闂?1px 鍒嗛殧绾匡紝绉婚櫎 `tasks.take(4)` + `"+N 鏇村"`
+- 鏂囦欢锛歭ib/presentation/pages/home/home_page.dart
+
+## 2026-06-06 (鎬濈淮瀵煎浘 Ctrl+妗嗛€夊鑺傜偣鍔熻兘)
+
+### 淇
+- 璐熷潗鏍囪妭鐐瑰啀鎷栧姩鈫掑叏鑱斿姩锛氱敾甯冨昂瀵?`abs()` 鈫?鎭㈠鍘熷姝ｅ悜鎵╁睍锛岄伩鍏?InteractiveViewer 閲嶈皟 viewport
+- 鑺傜偣鎵€鏈夋柟鍚戣嚜鐢辨嫋鎷斤細绉婚櫎 `clamp(0,鈭?` / `clamp(6,鈭?` 闄愬埗
+- Ctrl+妗嗛€夐噸鍐欙細`ValueNotifier<_ctrlPressed>` + `ValueListenableBuilder` + `IgnorePointer` 鍗虫椂鍒囨崲鏋舵瀯锛沗GestureDetector` overlay 鎷︽埅妗嗛€夋墜鍔?- 閫変腑鑺傜偣钃濊壊杈规楂樹寒 + Esc 娓呴櫎閫変腑
+- 鏂囦欢锛歭ib/presentation/pages/tasks/widgets/mind_map_view.dart
+
+## 2026-06-06 (鎬濈淮瀵煎浘鎵嬪娍淇 + 棣栭〉缁熻浼樺寲)
+
+### 淇
+- 鎬濈淮瀵煎浘鑺傜偣涓婃嫋鍚?+"鎸夐挳鐐逛笉鍔細`_MindMapNodeCard` 鑷敱鎷栨嫿妯″紡 GestureDetector 鏀圭敤 `onPanDown`锛堟瘮 `onPanStart` 鏇存棭瑙﹀彂锛岃 `_nodeDragging=true`锛? 鏂板 `onPanCancel` 娓呯悊銆? 鎸夐挳鍔?`HitTestBehavior.opaque` + 鐑尯 28脳28銆?- 鎷栭噸鍙犺妭鐐瑰鑷存暣妫垫爲涓€璧锋嫋鍔細鍚屼笂锛宍onPanDown` 鏇夸唬 `onPanStart` 纭繚 InteractiveViewer 鐨?pan 鍦?hit test 闃舵琚鐢紝`onPanCancel` 闃叉 `_nodeDragging` 娈嬬暀銆?
+### 浼樺寲
+- 棣栭〉"涓嬪崍濂?涓庣粺璁″崱鐗囷紙浠婃棩浠诲姟/瀹屾垚鐜?閫炬湡锛夊悎骞朵负鍚屼竴琛?Row 甯冨眬锛岀粺璁″崱鐗囨敼涓虹揣鍑?inline 鏍峰紡锛岀偣鍑诲彲灞曞紑瀹屾暣璇︽儏锛堝惈鍛ㄦ湡鍒囨崲锛夈€?- 鍛ㄦ湡鍒囨崲绉昏嚦璇︽儏寮圭獥鍐咃紝涓婚〉闈粎鏄剧ず褰撳墠鍛ㄦ湡鏁版嵁銆?
+## 2026-05-30 (浠诲姟妯″潡 6 椤?Bug 淇)
+
+### 淇
+- 鏃ユ湡绛涢€夋竻闄ゅけ鏁堬細`LoadTasks` 鏂板 `clearDateRange`锛宍task_bloc._onLoadTasks` 娓呴櫎鏃跺己鍒舵妸 `dateFrom/dateTo` 缃?null锛堝師 `?? preservedDateFrom` 浼氫繚鐣欐棫绛涢€夊鑷存竻涓嶆帀銆佹棤娉曢噸璁撅級銆俙tasks_page` 娓呴櫎鍒嗘敮浼?`clearDateRange: true`銆?- 鑺傚亣鏃ヤ笉鏄剧ず锛歚holiday_service._fetchChina` 鏁版嵁婧?`timor.tools` 宸蹭笉鍙揪锛屽け璐?绌虹粨鏋滄椂鍥為€€ `date.nager.at`锛圕N锛屼粎娉曞畾鑺傚亣鏃ワ紝鏃犺皟浼戣ˉ鐝級銆?- 瀛愪换鍔℃椂闂村啿绐佹娴嬩粎鎬濈淮瀵煎浘鍏ュ彛鐢熸晥锛氳鎯呴〉 `subtask_tree_section._showAddSubTaskDialog` 鍘熶负绾爣棰樺璇濇銆佹棤鏃堕棿鏃犳娴嬶紝鏀逛负澶嶇敤 `TaskCreateSheet`锛堝惈寮€濮?鎴鏃堕棿 + `_checkConflict` 鍐茬獊妫€娴嬶級锛岃繑鍥炲悗娲惧彂 `CreateTask(parentId)` 骞跺埛鏂板瓙鏍戙€?- 鎬濈淮瀵煎浘鑺傜偣涓婃嫋鍚?+"鐐逛笉鍔細`mind_map_view` `onDragUpdate` 閽冲埗鑺傜偣鍧愭爣 `dx>=0/dy>=6`锛岄槻姝㈣秺鍑虹敾甯?`SizedBox` 瀵艰嚧 `Clip.none` 婧㈠嚭鍖烘棤娉曞懡涓€?- 鎷栧崟涓妭鐐规暣鐗囩敾甯冭仈鍔細鏂板 `_nodeDragging` 鏍囪锛岃妭鐐规嫋鎷芥湡闂?`InteractiveViewer.panEnabled = !_nodeDragging`锛岄伩鍏嶇敾甯冨钩绉讳笌鑺傜偣鎷栨嫿鍚屾椂瑙﹀彂锛堟挙閿€涓婁竴鐗?鎭掍负 true"鐨勫垽鏂級銆?
+### 淇敼
+- `tasks_page.dart`锛氱Щ闄?AppBar 鍙充笂瑙?鏂板缓椤圭洰"鎸夐挳锛堟娊灞夊唴鍏ュ彛淇濈暀锛夈€?
 ---
 
-## 2026-05-30 (画布拖动修复 + 子任务时间冲突检测)
+## 2026-05-30 (鐢诲竷鎷栧姩淇 + 瀛愪换鍔℃椂闂村啿绐佹娴?
 
-### 修复
-- `mind_map_view.dart`：`InteractiveViewer` 的 `panEnabled` 由 `!_freeDragMode`（= false）改为 `true`，恢复画布自由平移。Flutter 手势竞技场自动处理节点拖拽与画布拖拽的优先级，不需要手动关闭。
+### 淇
+- `mind_map_view.dart`锛歚InteractiveViewer` 鐨?`panEnabled` 鐢?`!_freeDragMode`锛? false锛夋敼涓?`true`锛屾仮澶嶇敾甯冭嚜鐢卞钩绉汇€侳lutter 鎵嬪娍绔炴妧鍦鸿嚜鍔ㄥ鐞嗚妭鐐规嫋鎷戒笌鐢诲竷鎷栨嫿鐨勪紭鍏堢骇锛屼笉闇€瑕佹墜鍔ㄥ叧闂€?
+### 鏂板
+- `task_create_sheet.dart`锛氭柊澧?`TaskRepository? taskRepository` 鍙€夊弬鏁般€傚綋鍒涘缓瀛愪换鍔★紙`initialParentId != null`锛夋椂锛宍_submit` 鍦ㄦ彁浜ゅ墠鏌ヨ宸叉湁浠诲姟鏃堕棿娈碉紝妫€娴嬪尯闂撮噸鍙狅紝寮瑰啿绐佹彁绀哄脊绐楋紝鏀寔涓夌澶勭悊鏂瑰紡锛氬苟琛岋紙淇濇寔鍘熸椂闂达級銆佸彇娑堛€佽嚜鍔ㄥ欢鍚庯紙鍒╃敤 `SubtaskScheduler` 璁＄畻涓嬩竴绌洪棽鏃舵锛夈€?
+### 淇敼
+- `tasks_page.dart`锛歚_showCreateTaskSheet` 浼犲叆 `taskRepository` 缁?`TaskCreateSheet`
+- `calendar_page.dart`锛歚_showCreateTaskSheet` 浼犲叆 `taskRepository` 缁?`TaskCreateSheet`
 
-### 新增
-- `task_create_sheet.dart`：新增 `TaskRepository? taskRepository` 可选参数。当创建子任务（`initialParentId != null`）时，`_submit` 在提交前查询已有任务时间段，检测区间重叠，弹冲突提示弹窗，支持三种处理方式：并行（保持原时间）、取消、自动延后（利用 `SubtaskScheduler` 计算下一空闲时段）。
+### 椋庨櫓
+- 鑷姩寤跺悗浣跨敤 `SubtaskScheduler`锛屽伐浣滄椂娈甸檺瀹?09:00鈥?1:00锛涜嫢鎵€鏈夋椂娈靛凡婊★紙鐞嗚鏋佺鎯呭喌锛夛紝杩斿洖 null锛屾鏃朵繚鎸佸師鏃堕棿鍒涘缓
 
-### 修改
-- `tasks_page.dart`：`_showCreateTaskSheet` 传入 `taskRepository` 给 `TaskCreateSheet`
-- `calendar_page.dart`：`_showCreateTaskSheet` 传入 `taskRepository` 给 `TaskCreateSheet`
+## 2026-05-30 (鎵嬫満绔换鍔℃彁閱掑彲闈犳€т慨澶?+ 鏉冮檺寮曞)
 
-### 风险
-- 自动延后使用 `SubtaskScheduler`，工作时段限定 09:00–21:00；若所有时段已满（理论极端情况），返回 null，此时保持原时间创建
+### 淇
+- Android/iOS 绔彁閱掓敼鐢?`zonedSchedule`锛堢郴缁?AlarmManager锛夛紝涓嶅啀渚濊禆 Flutter 杩涚▼瀛樻椿锛汚pp 琚潃/鍚庡彴鍚庨€氱煡浠嶅彲瑙﹀彂
+- 绉婚櫎 Android/iOS 鍒嗘敮鐨?Timer 璺緞锛涙闈㈢淇濈暀 Timer
 
-## 2026-05-30 (手机端任务提醒可靠性修复 + 权限引导)
+### 鏂板
+- `AndroidManifest.xml`锛氭坊鍔?`RECEIVE_BOOT_COMPLETED` 鏉冮檺 + `ScheduledNotificationBootReceiver`锛岄噸鍚悗鑷姩鎭㈠宸茶皟搴﹂€氱煡
+- `lib/services/permission_service.dart`锛氬皝瑁呰繍琛屾椂閫氱煡鏉冮檺鐢宠锛坄requestNotificationPermission`锛? 棣栨鍚姩寮曞 dialog锛坄showNotificationGuideIfNeeded`锛夛紝鐢?`SharedPreferences` 闃叉閲嶅寮瑰嚭
 
-### 修复
-- Android/iOS 端提醒改用 `zonedSchedule`（系统 AlarmManager），不再依赖 Flutter 进程存活；App 被杀/后台后通知仍可触发
-- 移除 Android/iOS 分支的 Timer 路径；桌面端保留 Timer
+### 淇敼
+- `pubspec.yaml`锛氭坊鍔?`timezone: ^0.10.1`锛宍notification_service.dart` 鍦?`init()` 涓皟鐢?`tz.initializeTimeZones()`
+- `lib/presentation/pages/home/home_page.dart`锛氶娆¤繘鍏?`HomePage` 鏃堕€氳繃 `addPostFrameCallback` 瑙﹀彂閫氱煡鏉冮檺寮曞
+- `lib/presentation/pages/tasks/task_detail/task_detail_page.dart`锛歚_reminderEnabled` 绫诲瀷鐢?`int` 鏀逛负 `bool`锛屾秷闄や笌 model 灞?bool 鐨勭被鍨嬩笉涓€鑷?
+### 椋庨櫓
+- `zonedSchedule` 闇€瑕佽澶囨敮鎸佺簿纭椆閽燂紙`SCHEDULE_EXACT_ALARM`锛夛紝Android 12+ 鐢ㄦ埛鑻ュ湪绯荤粺璁剧疆鍏抽棴绮剧‘闂归挓鏉冮檺锛岄€氱煡浠嶅彲鑳藉欢杩?- 閲嶅惎鍚庢仮澶嶄緷璧?`flutter_local_notifications` 鍐呯疆 Receiver 宸ヤ綔姝ｅ父锛岄渶鐪熸満楠岃瘉
 
-### 新增
-- `AndroidManifest.xml`：添加 `RECEIVE_BOOT_COMPLETED` 权限 + `ScheduledNotificationBootReceiver`，重启后自动恢复已调度通知
-- `lib/services/permission_service.dart`：封装运行时通知权限申请（`requestNotificationPermission`）+ 首次启动引导 dialog（`showNotificationGuideIfNeeded`），用 `SharedPreferences` 防止重复弹出
+## 2026-05-30 (鏃ュ巻鑺傚亣鏃ユ樉绀?+ 澶氬浗鍒囨崲)
 
-### 修改
-- `pubspec.yaml`：添加 `timezone: ^0.10.1`，`notification_service.dart` 在 `init()` 中调用 `tz.initializeTimeZones()`
-- `lib/presentation/pages/home/home_page.dart`：首次进入 `HomePage` 时通过 `addPostFrameCallback` 触发通知权限引导
-- `lib/presentation/pages/tasks/task_detail/task_detail_page.dart`：`_reminderEnabled` 类型由 `int` 改为 `bool`，消除与 model 层 bool 的类型不一致
+### 鍔熻兘
+鏃ュ巻椤甸潰鏀寔鏄剧ず娉曞畾鑺傚亣鏃ワ紙绾㈣壊锛夈€佽皟浼戣ˉ鐝紙钃濊壊锛夛紝鍙垏鎹㈠浗瀹讹紙榛樿涓浗锛夛紝鏁版嵁浠?API 瀹炴椂鎷夊彇骞剁紦瀛?7 澶┿€?
+### 鏂板
+- `lib/services/holiday_service.dart`锛氳妭鍋囨棩鏈嶅姟锛屼腑鍥界敤 timor.tools API锛屽叾浠栧浗瀹剁敤 date.nager.at锛沗SharedPreferences` 7 澶╃紦瀛?+ 鏂綉闄嶇骇
 
-### 风险
-- `zonedSchedule` 需要设备支持精确闹钟（`SCHEDULE_EXACT_ALARM`），Android 12+ 用户若在系统设置关闭精确闹钟权限，通知仍可能延迟
-- 重启后恢复依赖 `flutter_local_notifications` 内置 Receiver 工作正常，需真机验证
+### 淇敼
+- `lib/presentation/pages/calendar/calendar_page.dart`锛?  - AppBar 鏂板鍥芥棗鎸夐挳锛屽垏鎹?馃嚚馃嚦馃嚭馃嚫馃嚡馃嚨馃嚞馃嚙馃嚢馃嚪 浜斿浗鑺傚亣鏃?  - 鍛ㄨ鍥炬棩鏈熷ご锛坄_buildCustomWeekHeader`锛夛細鑺傚亣鏃ュ悕绉版樉绀哄湪鏃ユ湡鍦嗗湀涓嬫柟
+  - 鏈堣鍥撅紙`_buildTableCalendar`锛夛細浣跨敤 `calendarBuilders` 鍦ㄦ牸瀛愬唴鏄剧ず鑺傚亣鏃ュ皬瀛?  - 骞翠唤鍒囨崲鏃惰嚜鍔ㄦ媺鍙栨柊骞翠唤鏁版嵁
 
-## 2026-05-30 (日历节假日显示 + 多国切换)
+### 椋庨櫓
+- 澶栭儴 API锛坱imor.tools / date.nager.at锛変笉鍙敤鏃朵粎鏄剧ず缂撳瓨鏁版嵁锛涘垵娆′娇鐢ㄦ棤缂撳瓨鍒欒妭鍋囨棩涓虹┖
+- timor.tools 鐩墠鍙彁渚涜繎 2 骞存暟鎹紝瓒呭嚭鑼冨洿鐨勫勾浠借繑鍥炵┖
 
-### 功能
-日历页面支持显示法定节假日（红色）、调休补班（蓝色），可切换国家（默认中国），数据从 API 实时拉取并缓存 7 天。
+## 2026-05-30 (淇鎬濈淮瀵煎浘瀛愪换鍔℃秷澶?
 
-### 新增
-- `lib/services/holiday_service.dart`：节假日服务，中国用 timor.tools API，其他国家用 date.nager.at；`SharedPreferences` 7 天缓存 + 断网降级
-
-### 修改
-- `lib/presentation/pages/calendar/calendar_page.dart`：
-  - AppBar 新增国旗按钮，切换 🇨🇳🇺🇸🇯🇵🇬🇧🇰🇷 五国节假日
-  - 周视图日期头（`_buildCustomWeekHeader`）：节假日名称显示在日期圆圈下方
-  - 月视图（`_buildTableCalendar`）：使用 `calendarBuilders` 在格子内显示节假日小字
-  - 年份切换时自动拉取新年份数据
-
-### 风险
-- 外部 API（timor.tools / date.nager.at）不可用时仅显示缓存数据；初次使用无缓存则节假日为空
-- timor.tools 目前只提供近 2 年数据，超出范围的年份返回空
-
-## 2026-05-30 (修复思维导图子任务消失)
-
-### 根因
-`ProjectSyncService._upsertProjectFromRow` 收到云端项目墓碑 (`deleted=1`) 后，**无条件级联软删该项目下全部任务**，且自身无墓碑保护。
-启动时 `ProjectSyncService.syncAll()` 先于 `TaskSyncService.syncAll()` 执行，任务在任务同步开始前就被清掉。
-
-同时修复了 `_onRemoteDelete` (task) 和项目 Realtime DELETE 回调的同类问题。
-
-### 修复
-- `lib/services/project_sync_service.dart`: `_upsertProjectFromRow` 加墓碑保护——本地存活项目拒绝远端墓碑，不级联删任务；项目 Realtime DELETE 回调加墓碑保护
-- `lib/services/task_sync_service.dart`: `_onRemoteDelete` 加墓碑保护
-- `lib/data/repositories/task_repository.dart`: `delete()` 加日志
-
-### 影响文件
+### 鏍瑰洜
+`ProjectSyncService._upsertProjectFromRow` 鏀跺埌浜戠椤圭洰澧撶 (`deleted=1`) 鍚庯紝**鏃犳潯浠剁骇鑱旇蒋鍒犺椤圭洰涓嬪叏閮ㄤ换鍔?*锛屼笖鑷韩鏃犲纰戜繚鎶ゃ€?鍚姩鏃?`ProjectSyncService.syncAll()` 鍏堜簬 `TaskSyncService.syncAll()` 鎵ц锛屼换鍔″湪浠诲姟鍚屾寮€濮嬪墠灏辫娓呮帀銆?
+鍚屾椂淇浜?`_onRemoteDelete` (task) 鍜岄」鐩?Realtime DELETE 鍥炶皟鐨勫悓绫婚棶棰樸€?
+### 淇
+- `lib/services/project_sync_service.dart`: `_upsertProjectFromRow` 鍔犲纰戜繚鎶も€斺€旀湰鍦板瓨娲婚」鐩嫆缁濊繙绔纰戯紝涓嶇骇鑱斿垹浠诲姟锛涢」鐩?Realtime DELETE 鍥炶皟鍔犲纰戜繚鎶?- `lib/services/task_sync_service.dart`: `_onRemoteDelete` 鍔犲纰戜繚鎶?- `lib/data/repositories/task_repository.dart`: `delete()` 鍔犳棩蹇?
+### 褰卞搷鏂囦欢
 - `lib/services/project_sync_service.dart`
 - `lib/services/task_sync_service.dart`
 - `lib/data/repositories/task_repository.dart`
 
-## 2026-06-04 (思维导图拖动性能优化)
+## 2026-06-04 (鎬濈淮瀵煎浘鎷栧姩鎬ц兘浼樺寲)
 
-### 根因
-1. `_lineAnimController` 每次 `onPanUpdate` 重置动画到0，animation listener 额外触发 ~18 次 `setState`，每帧实际触发 2+ 次全量 rebuild
-2. 每次 `setState` 触发完整 `build()` → 重新执行 `_buildTree / _layoutTree / _collectNodes` 等 O(n) 计算
-3. 每帧全量重建所有节点 Widget，无 RepaintBoundary 隔离
-4. `build()` 内有大量 `print` 调试日志
+### 鏍瑰洜
+1. `_lineAnimController` 姣忔 `onPanUpdate` 閲嶇疆鍔ㄧ敾鍒?锛宎nimation listener 棰濆瑙﹀彂 ~18 娆?`setState`锛屾瘡甯у疄闄呰Е鍙?2+ 娆″叏閲?rebuild
+2. 姣忔 `setState` 瑙﹀彂瀹屾暣 `build()` 鈫?閲嶆柊鎵ц `_buildTree / _layoutTree / _collectNodes` 绛?O(n) 璁＄畻
+3. 姣忓抚鍏ㄩ噺閲嶅缓鎵€鏈夎妭鐐?Widget锛屾棤 RepaintBoundary 闅旂
+4. `build()` 鍐呮湁澶ч噺 `print` 璋冭瘯鏃ュ織
 
-### 修改内容
-1. 删除 `_lineAnimController` 动画控制器 + `_animatedPositions` + `_manualOffsets`
-2. 新增布局缓存（`_cachedPendingNodes/Lines/CanvasSize` 等），`initState` / `didUpdateWidget` 中计算，`build()` 直接读缓存
-3. 拖拽改为 `ValueNotifier<Offset>` 每节点独立 + `ValueListenableBuilder`，只重建被拖拽节点
-4. 连线层用 `AnimatedBuilder` + `Listenable.merge` 监听所有 notifier，只重建 `CustomPaint`
-5. 删除 `build()` 内所有 `print` 调试日志
-6. 每个节点外包 `RepaintBoundary`
+### 淇敼鍐呭
+1. 鍒犻櫎 `_lineAnimController` 鍔ㄧ敾鎺у埗鍣?+ `_animatedPositions` + `_manualOffsets`
+2. 鏂板甯冨眬缂撳瓨锛坄_cachedPendingNodes/Lines/CanvasSize` 绛夛級锛宍initState` / `didUpdateWidget` 涓绠楋紝`build()` 鐩存帴璇荤紦瀛?3. 鎷栨嫿鏀逛负 `ValueNotifier<Offset>` 姣忚妭鐐圭嫭绔?+ `ValueListenableBuilder`锛屽彧閲嶅缓琚嫋鎷借妭鐐?4. 杩炵嚎灞傜敤 `AnimatedBuilder` + `Listenable.merge` 鐩戝惉鎵€鏈?notifier锛屽彧閲嶅缓 `CustomPaint`
+5. 鍒犻櫎 `build()` 鍐呮墍鏈?`print` 璋冭瘯鏃ュ織
+6. 姣忎釜鑺傜偣澶栧寘 `RepaintBoundary`
 
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/pages/tasks/widgets/mind_map_view.dart`
 
-## 2026-06-04 (拖拽位置持久化 + 用户隔离)
+## 2026-06-04 (鎷栨嫿浣嶇疆鎸佷箙鍖?+ 鐢ㄦ埛闅旂)
 
-### 修改内容
-1. `MindMapView` 新增 `userId` 参数
-2. `_loadOffsets()` — 从 SharedPreferences 加载已保存偏移，key 为 `mindmap_offsets_<userId>`
-3. `_saveOffsets()` — 拖拽结束时将 `_draggedIds` 对应位置序列化为 JSON 保存
-4. `onDragEnd` 回调调用 `_saveOffsets()` — 松开鼠标即刻持久化
-5. 重置按钮同时清除持久化数据
-6. `TasksPage` 从 `AuthBloc` 提取 userId（Supabase `user.id` 或本地 `local_<email>`）并传入
+### 淇敼鍐呭
+1. `MindMapView` 鏂板 `userId` 鍙傛暟
+2. `_loadOffsets()` 鈥?浠?SharedPreferences 鍔犺浇宸蹭繚瀛樺亸绉伙紝key 涓?`mindmap_offsets_<userId>`
+3. `_saveOffsets()` 鈥?鎷栨嫿缁撴潫鏃跺皢 `_draggedIds` 瀵瑰簲浣嶇疆搴忓垪鍖栦负 JSON 淇濆瓨
+4. `onDragEnd` 鍥炶皟璋冪敤 `_saveOffsets()` 鈥?鏉惧紑榧犳爣鍗冲埢鎸佷箙鍖?5. 閲嶇疆鎸夐挳鍚屾椂娓呴櫎鎸佷箙鍖栨暟鎹?6. `TasksPage` 浠?`AuthBloc` 鎻愬彇 userId锛圫upabase `user.id` 鎴栨湰鍦?`local_<email>`锛夊苟浼犲叆
 
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/pages/tasks/widgets/mind_map_view.dart`
 - `lib/presentation/pages/tasks/tasks_page.dart`
 
-## 2026-05-30 (修复思维导图子任务重启后被云端墓石覆盖删除)
+## 2026-05-30 (淇鎬濈淮瀵煎浘瀛愪换鍔￠噸鍚悗琚簯绔鐭宠鐩栧垹闄?
 
-### 根因
-`syncAll` 从云端拉取时，云端残留旧的 `deleted=1` 墓石记录，`syncFromJson` 的 LWW 逻辑将本地活任务(deleted=0)覆盖为 deleted=1。同时 `taskRepository.create` 中 `push` 未 await，存在竞态。
+### 鏍瑰洜
+`syncAll` 浠庝簯绔媺鍙栨椂锛屼簯绔畫鐣欐棫鐨?`deleted=1` 澧撶煶璁板綍锛宍syncFromJson` 鐨?LWW 閫昏緫灏嗘湰鍦版椿浠诲姟(deleted=0)瑕嗙洊涓?deleted=1銆傚悓鏃?`taskRepository.create` 涓?`push` 鏈?await锛屽瓨鍦ㄧ珵鎬併€?
+### 淇敼鍐呭
+1. `task_repository.dart:syncFromJson` 鈥?鏂板鍙嶅悜澧撶煶淇濇姢锛氭湰鍦版椿浠诲姟(deleted=0)涓嶈杩滅澧撶煶(deleted=1)瑕嗙洊
+2. `task_repository.dart:create` 鈥?`push` 鏀逛负 await锛屾秷闄ょ珵鎬?3. `task_sync_service.dart:syncAll` 鈥?鏈湴娲讳絾浜戠鏄鐭虫椂涓诲姩鎺ㄩ€佽鐩栵紝淇娈嬬暀澧撶煶
+4. 鏂板 `file_logger.dart` 鏂囦欢鏃ュ織宸ュ叿 + 鍏抽敭璺緞璇婃柇鏃ュ織
 
-### 修改内容
-1. `task_repository.dart:syncFromJson` — 新增反向墓石保护：本地活任务(deleted=0)不被远端墓石(deleted=1)覆盖
-2. `task_repository.dart:create` — `push` 改为 await，消除竞态
-3. `task_sync_service.dart:syncAll` — 本地活但云端是墓石时主动推送覆盖，修复残留墓石
-4. 新增 `file_logger.dart` 文件日志工具 + 关键路径诊断日志
-
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/data/repositories/task_repository.dart`
 - `lib/services/task_sync_service.dart`
 - `lib/presentation/blocs/task_new/task_bloc.dart`
 - `lib/main.dart`
-- `lib/core/utils/file_logger.dart`（新增）
+- `lib/core/utils/file_logger.dart`锛堟柊澧烇級
 
-### 风险
-- 低：反向墓石保护可能导致用户在其他设备删除的任务在本设备"复活"，但优先保证数据不丢失
+### 椋庨櫓
+- 浣庯細鍙嶅悜澧撶煶淇濇姢鍙兘瀵艰嚧鐢ㄦ埛鍦ㄥ叾浠栬澶囧垹闄ょ殑浠诲姟鍦ㄦ湰璁惧"澶嶆椿"锛屼絾浼樺厛淇濊瘉鏁版嵁涓嶄涪澶?
+## 2026-05-31 (淇鎬濈淮瀵煎浘妯″紡瀛愪换鍔℃秷澶?
 
-## 2026-05-31 (修复思维导图模式子任务消失)
+### 淇敼鍐呭
+1. `_onLoadTasks` 琛ュ叏鐘舵€佷繚鐣欙細`viewMode`銆乣dateFrom`銆乣dateTo` 浠庝笂涓€涓?`TaskNewLoaded` 鐘舵€佺户鎵?2. 涔嬪墠 `CreateTask` 鈫?`LoadTasks` 鈫?`emit TaskNewLoaded` 鏃舵湭浼犲叆 `viewMode`锛岄粯璁ゅ洖閫€涓?`'mindmap'`
+3. 鏃ユ湡绛涢€?`dateFrom`/`dateTo` 鍚屾牱涓㈠け锛屽鑷存坊鍔犲瓙浠诲姟鍚庢棩鏈熺瓫閫夎娓呴櫎
 
-### 修改内容
-1. `_onLoadTasks` 补全状态保留：`viewMode`、`dateFrom`、`dateTo` 从上一个 `TaskNewLoaded` 状态继承
-2. 之前 `CreateTask` → `LoadTasks` → `emit TaskNewLoaded` 时未传入 `viewMode`，默认回退为 `'mindmap'`
-3. 日期筛选 `dateFrom`/`dateTo` 同样丢失，导致添加子任务后日期筛选被清除
-
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/blocs/task_new/task_bloc.dart`
 
-### 风险
-- 低：纯增量保留，不影响现有逻辑
+### 椋庨櫓
+- 浣庯細绾閲忎繚鐣欙紝涓嶅奖鍝嶇幇鏈夐€昏緫
 
-## 2026-05-30 (思维导图自由拖拽 + 连线延迟动画)
+## 2026-05-30 (鎬濈淮瀵煎浘鑷敱鎷栨嫿 + 杩炵嚎寤惰繜鍔ㄧ敾)
 
-### 修改内容
-1. **自由拖拽模式**：右下角新增加锁/解锁切换按钮，解锁后节点可自由拖动到画布任意位置
-2. **连线延迟变短动画**：拖动节点时连线带 300ms easeOut 惯性过渡，松手后平滑缩短至最终位置
-3. **`_ConnectorLine` 重构**：从存死坐标改为存 `parentId`/`childId`，`_MindMapLinesPainter` 动态查表绘制
-4. **`_MindMapNodeCard` 增强**：新增 `freeDragMode`/`onDragUpdate` 参数，自由模式下用 `GestureDetector` 处理拖动
-5. **`InteractiveViewer.panEnabled` 按模式切换**：自由拖拽时禁用画布平移避免手势冲突，缩放仍可用
+### 淇敼鍐呭
+1. **鑷敱鎷栨嫿妯″紡**锛氬彸涓嬭鏂板鍔犻攣/瑙ｉ攣鍒囨崲鎸夐挳锛岃В閿佸悗鑺傜偣鍙嚜鐢辨嫋鍔ㄥ埌鐢诲竷浠绘剰浣嶇疆
+2. **杩炵嚎寤惰繜鍙樼煭鍔ㄧ敾**锛氭嫋鍔ㄨ妭鐐规椂杩炵嚎甯?300ms easeOut 鎯€ц繃娓★紝鏉炬墜鍚庡钩婊戠缉鐭嚦鏈€缁堜綅缃?3. **`_ConnectorLine` 閲嶆瀯**锛氫粠瀛樻鍧愭爣鏀逛负瀛?`parentId`/`childId`锛宍_MindMapLinesPainter` 鍔ㄦ€佹煡琛ㄧ粯鍒?4. **`_MindMapNodeCard` 澧炲己**锛氭柊澧?`freeDragMode`/`onDragUpdate` 鍙傛暟锛岃嚜鐢辨ā寮忎笅鐢?`GestureDetector` 澶勭悊鎷栧姩
+5. **`InteractiveViewer.panEnabled` 鎸夋ā寮忓垏鎹?*锛氳嚜鐢辨嫋鎷芥椂绂佺敤鐢诲竷骞崇Щ閬垮厤鎵嬪娍鍐茬獊锛岀缉鏀句粛鍙敤
 
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/pages/tasks/widgets/mind_map_view.dart`
 
-### 风险
-- 自由拖拽模式下画布无法平移（仅可缩放），需切换回自动布局模式后恢复平移
+### 椋庨櫓
+- 鑷敱鎷栨嫿妯″紡涓嬬敾甯冩棤娉曞钩绉伙紙浠呭彲缂╂斁锛夛紝闇€鍒囨崲鍥炶嚜鍔ㄥ竷灞€妯″紡鍚庢仮澶嶅钩绉?
+## 2026-05-29 (鎬濈淮瀵煎浘鎷栧姩/甯冨眬/鏃堕棿缂栬緫/瀛愪换鍔℃秷澶变慨澶?
 
-## 2026-05-29 (思维导图拖动/布局/时间编辑/子任务消失修复)
+### 淇敼鍐呭
+1. **鏃犻檺鎷栧姩**锛歚boundaryMargin` 鏀逛负 `double.infinity`锛岀缉灏忓悗涔熷彲鑷敱宸﹀彸鎷栧姩
+2. **甯冨眬闂磋窛浼樺寲**锛歏Gap 16鈫?8, HGap 80鈫?00, Padding 40鈫?00锛岃妭鐐逛笉鍐嶇揣璐存尋鍦ㄤ竴璧?3. **灞曞紑鎸夐挳绉诲埌鏍囬琛?*锛氫粠浼樺厛绾ц绉诲埌鏍囬鏂囨湰鍙充晶锛岃瑙夋洿鍚堢悊
+4. **鏃堕棿鍒嗗紑缂栬緫**锛氬紑濮?缁撴潫鏃堕棿鍚勮嚜鐙珛鐐瑰嚮寮?picker 缂栬緫锛屼笉鍐嶈繛缁脊涓ゆ
+5. **瀛愪换鍔℃秷澶变慨澶?*锛歚_onCreateTask` 淇濈暀褰撳墠 filter/projectId锛屽苟璋冪敤 `_syncTasksToCloud()`
+6. **娣诲姞瀛愪换鍔″悗鑷姩灞曞紑鐖惰妭鐐?*
 
-### 修改内容
-1. **无限拖动**：`boundaryMargin` 改为 `double.infinity`，缩小后也可自由左右拖动
-2. **布局间距优化**：VGap 16→28, HGap 80→100, Padding 40→100，节点不再紧贴挤在一起
-3. **展开按钮移到标题行**：从优先级行移到标题文本右侧，视觉更合理
-4. **时间分开编辑**：开始/结束时间各自独立点击弹 picker 编辑，不再连续弹两次
-5. **子任务消失修复**：`_onCreateTask` 保留当前 filter/projectId，并调用 `_syncTasksToCloud()`
-6. **添加子任务后自动展开父节点**
-
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/pages/tasks/widgets/mind_map_view.dart`
 - `lib/presentation/pages/tasks/tasks_page.dart`
 - `lib/presentation/blocs/task_new/task_bloc.dart`
 
-### 风险
-- 子任务消失问题的根因可能还有其他因素（如 Realtime 回调），已修复最明显的 filter 丢失问题
+### 椋庨櫓
+- 瀛愪换鍔℃秷澶遍棶棰樼殑鏍瑰洜鍙兘杩樻湁鍏朵粬鍥犵礌锛堝 Realtime 鍥炶皟锛夛紝宸蹭慨澶嶆渶鏄庢樉鐨?filter 涓㈠け闂
 
-## 2026-05-29 (思维导图视图优化 + 检查项溢出修复)
+## 2026-05-29 (鎬濈淮瀵煎浘瑙嗗浘浼樺寲 + 妫€鏌ラ」婧㈠嚭淇)
 
-### 修改内容
-1. **思维导图卡片右侧 "+" 按钮**：每个任务卡片右侧中间新增圆形 "+" 按钮，点击直接创建子任务（预设 parentId）
-2. **思维导图项目切换**：卡片上项目名可点击弹出项目选择菜单，直接切换所属项目
-3. **时间展示优化**：卡片显示完整时间范围（开始→结束），点击可分别修改开始和结束时间
-4. **画布拖拽优化**：增大 boundaryMargin 至 800px，缩放范围调整为 0.15~3.0，支持灵活的左右上下拖拽和缩放
-5. **去掉 Slidable**：移除思维导图卡片的左滑手势（完成/删除），避免与画布拖拽冲突
-6. **右上角 "-" 删除按钮**：每个卡片右上角固定红色 "-" 按钮，支持快捷删除
-7. **检查项溢出修复**：将 `Flexible` 替换为 `ConstrainedBox(maxHeight: 240)`，解决 "BOTTOM OVERFLOWED BY 8.0 PIXELS" 黄色溢出报错
+### 淇敼鍐呭
+1. **鎬濈淮瀵煎浘鍗＄墖鍙充晶 "+" 鎸夐挳**锛氭瘡涓换鍔″崱鐗囧彸渚т腑闂存柊澧炲渾褰?"+" 鎸夐挳锛岀偣鍑荤洿鎺ュ垱寤哄瓙浠诲姟锛堥璁?parentId锛?2. **鎬濈淮瀵煎浘椤圭洰鍒囨崲**锛氬崱鐗囦笂椤圭洰鍚嶅彲鐐瑰嚮寮瑰嚭椤圭洰閫夋嫨鑿滃崟锛岀洿鎺ュ垏鎹㈡墍灞為」鐩?3. **鏃堕棿灞曠ず浼樺寲**锛氬崱鐗囨樉绀哄畬鏁存椂闂磋寖鍥达紙寮€濮嬧啋缁撴潫锛夛紝鐐瑰嚮鍙垎鍒慨鏀瑰紑濮嬪拰缁撴潫鏃堕棿
+4. **鐢诲竷鎷栨嫿浼樺寲**锛氬澶?boundaryMargin 鑷?800px锛岀缉鏀捐寖鍥磋皟鏁翠负 0.15~3.0锛屾敮鎸佺伒娲荤殑宸﹀彸涓婁笅鎷栨嫿鍜岀缉鏀?5. **鍘绘帀 Slidable**锛氱Щ闄ゆ€濈淮瀵煎浘鍗＄墖鐨勫乏婊戞墜鍔匡紙瀹屾垚/鍒犻櫎锛夛紝閬垮厤涓庣敾甯冩嫋鎷藉啿绐?6. **鍙充笂瑙?"-" 鍒犻櫎鎸夐挳**锛氭瘡涓崱鐗囧彸涓婅鍥哄畾绾㈣壊 "-" 鎸夐挳锛屾敮鎸佸揩鎹峰垹闄?7. **妫€鏌ラ」婧㈠嚭淇**锛氬皢 `Flexible` 鏇挎崲涓?`ConstrainedBox(maxHeight: 240)`锛岃В鍐?"BOTTOM OVERFLOWED BY 8.0 PIXELS" 榛勮壊婧㈠嚭鎶ラ敊
 
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/pages/tasks/widgets/mind_map_view.dart`
 - `lib/presentation/pages/tasks/tasks_page.dart`
 - `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`
 - `lib/presentation/pages/tasks/task_detail/widgets/checklist_section.dart`
 
-### 风险
-- 项目选择菜单在项目很多时可能需要滚动优化
+### 椋庨櫓
+- 椤圭洰閫夋嫨鑿滃崟鍦ㄩ」鐩緢澶氭椂鍙兘闇€瑕佹粴鍔ㄤ紭鍖?
+## 2026-05-29 (鎬濈淮瀵煎浘浠诲姟瑙嗗浘 + 绯荤粺鎵樼洏淇)
 
-## 2026-05-29 (思维导图任务视图 + 系统托盘修复)
-
-### 修改内容
-1. **思维导图任务视图**：新增 `mind_map_view.dart`，任务列表支持水平思维导图展示（根节点在左，子节点向右分支，贝塞尔曲线连接线）。保留拖拽、展开/折叠、优先级、Slidable等全部交互。桌面端默认思维导图，可通过 AppBar 按钮切换列表/导图视图。
-2. **系统托盘图标一致性**：用 `windows/runner/resources/app_icon.ico` 替换 `assets/icons/tray_icon.ico`，确保托盘图标与应用图标一致。
-3. **单实例保护**：`windows/runner/main.cpp` 添加 Named Mutex，防止多开。第二个实例会激活已有窗口后退出。
-4. **退出延迟修复**：托盘"退出"菜单改为 `windowManager.destroy()` + `exit(0)`，解决关闭延迟。
-
-### 影响文件
-- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`（新建）
+### 淇敼鍐呭
+1. **鎬濈淮瀵煎浘浠诲姟瑙嗗浘**锛氭柊澧?`mind_map_view.dart`锛屼换鍔″垪琛ㄦ敮鎸佹按骞虫€濈淮瀵煎浘灞曠ず锛堟牴鑺傜偣鍦ㄥ乏锛屽瓙鑺傜偣鍚戝彸鍒嗘敮锛岃礉濉炲皵鏇茬嚎杩炴帴绾匡級銆備繚鐣欐嫋鎷姐€佸睍寮€/鎶樺彔銆佷紭鍏堢骇銆丼lidable绛夊叏閮ㄤ氦浜掋€傛闈㈢榛樿鎬濈淮瀵煎浘锛屽彲閫氳繃 AppBar 鎸夐挳鍒囨崲鍒楄〃/瀵煎浘瑙嗗浘銆?2. **绯荤粺鎵樼洏鍥炬爣涓€鑷存€?*锛氱敤 `windows/runner/resources/app_icon.ico` 鏇挎崲 `assets/icons/tray_icon.ico`锛岀‘淇濇墭鐩樺浘鏍囦笌搴旂敤鍥炬爣涓€鑷淬€?3. **鍗曞疄渚嬩繚鎶?*锛歚windows/runner/main.cpp` 娣诲姞 Named Mutex锛岄槻姝㈠寮€銆傜浜屼釜瀹炰緥浼氭縺娲诲凡鏈夌獥鍙ｅ悗閫€鍑恒€?4. **閫€鍑哄欢杩熶慨澶?*锛氭墭鐩?閫€鍑?鑿滃崟鏀逛负 `windowManager.destroy()` + `exit(0)`锛岃В鍐冲叧闂欢杩熴€?
+### 褰卞搷鏂囦欢
+- `lib/presentation/pages/tasks/widgets/mind_map_view.dart`锛堟柊寤猴級
 - `lib/presentation/pages/tasks/tasks_page.dart`
 - `lib/presentation/blocs/task_new/task_state.dart`
 - `lib/presentation/blocs/task_new/task_event.dart`
@@ -392,67 +328,45 @@
 - `windows/runner/main.cpp`
 - `assets/icons/tray_icon.ico`
 
-### 风险
-- 大量任务时思维导图可能需要性能优化
-- InteractiveViewer 与 Draggable 手势冲突需关注
+### 椋庨櫓
+- 澶ч噺浠诲姟鏃舵€濈淮瀵煎浘鍙兘闇€瑕佹€ц兘浼樺寲
+- InteractiveViewer 涓?Draggable 鎵嬪娍鍐茬獊闇€鍏虫敞
 
-## 2026-05-29 (修复模拟器联网)
+## 2026-05-29 (淇妯℃嫙鍣ㄨ仈缃?
 
-### 修改内容
-- **open_emulator.bat**：改为直接调用 `emulator.exe -avd <name> -dns-server 8.8.8.8,114.114.114.114` 启动模拟器，修复模拟器 DNS 解析失败导致 Supabase 无法连接的问题。
-- **android/app/src/debug/AndroidManifest.xml**：添加 `usesCleartextTraffic="true"` + `networkSecurityConfig`。
-- **android/app/src/main/res/xml/network_security_config.xml**：新建，debug 构建允许 cleartext 流量 + 信任用户 CA 证书。
+### 淇敼鍐呭
+- **open_emulator.bat**锛氭敼涓虹洿鎺ヨ皟鐢?`emulator.exe -avd <name> -dns-server 8.8.8.8,114.114.114.114` 鍚姩妯℃嫙鍣紝淇妯℃嫙鍣?DNS 瑙ｆ瀽澶辫触瀵艰嚧 Supabase 鏃犳硶杩炴帴鐨勯棶棰樸€?- **android/app/src/debug/AndroidManifest.xml**锛氭坊鍔?`usesCleartextTraffic="true"` + `networkSecurityConfig`銆?- **android/app/src/main/res/xml/network_security_config.xml**锛氭柊寤猴紝debug 鏋勫缓鍏佽 cleartext 娴侀噺 + 淇′换鐢ㄦ埛 CA 璇佷功銆?
+### 鍘熷洜
+妯℃嫙鍣?`flutter run` 鏃舵棤娉曡仈缃戯紙鏃ュ巻鍒蜂笉鍑烘潵锛夛紝鎵撳寘 APK 瀹夎鐪熸満姝ｅ父銆傛牴鍥犳槸妯℃嫙鍣?DNS 瑙ｆ瀽澶辫触瀵艰嚧鏃犳硶杩炴帴 Supabase銆?
+## 2026-05-29 (鏂板鑴氭湰)
 
-### 原因
-模拟器 `flutter run` 时无法联网（日历刷不出来），打包 APK 安装真机正常。根因是模拟器 DNS 解析失败导致无法连接 Supabase。
+### 淇敼鍐呭
+- **open_emulator.bat**锛氭柊澧炰竴閿墦寮€ Android 妯℃嫙鍣ㄨ剼鏈紝鑷姩妫€娴嬪彲鐢ㄦā鎷熷櫒骞跺惎鍔紝鏀寔澶氭ā鎷熷櫒閫夋嫨銆?
+## 2026-05-29 (6椤筓I/UX鏀硅繘)
 
-## 2026-05-29 (新增脚本)
+## 2026-05-29 (6椤筓I/UX鏀硅繘)
 
-### 修改内容
-- **open_emulator.bat**：新增一键打开 Android 模拟器脚本，自动检测可用模拟器并启动，支持多模拟器选择。
-
-## 2026-05-29 (6项UI/UX改进)
-
-## 2026-05-29 (6项UI/UX改进)
-
-### 修改内容
-1. **SnackBar点击消失**：新增 `showAppSnackBar` 全局工具函数，所有提示消息点击即消失。统一替换了全部47处 `ScaffoldMessenger.showSnackBar` 调用。
-2. **首页任务详情日期编辑**：`_TimelineTask` 新增 `endDate` 字段，详情区域显示"开始 → 结束"两个可点击日期，分别编辑开始和结束时间。
-3. **任务详情页日期编辑修复**：`_timeChip()` 移除外层 `onTap`，开始和结束日期各自独立 `InkWell`，两个日期均可单独点击编辑。
-4. **首页任务详情项目修改**：项目标签支持点击弹出项目选择器，直接切换任务所属项目。
-5. **项目删除不收回Drawer**：删除 `_confirmDeleteProject` 中的 `Navigator.pop(context)`，删除后侧边栏保持打开。
-6. **应用图标**：设计清单+阳光风格图标（暖橙渐变背景 + 白色清单 + 小太阳），通过 `flutter_launcher_icons` 生成 Android 和 Windows 图标。
-7. **日历水平拖动导航**：周视图时间轴区域支持鼠标/手指水平拖动，实时跟手切换日期（累积超过 0.6 倍 dayWidth 即偏移1天）。
-
-### 影响文件
-- `lib/core/utils/snackbar_helper.dart`（新增）
+### 淇敼鍐呭
+1. **SnackBar鐐瑰嚮娑堝け**锛氭柊澧?`showAppSnackBar` 鍏ㄥ眬宸ュ叿鍑芥暟锛屾墍鏈夋彁绀烘秷鎭偣鍑诲嵆娑堝け銆傜粺涓€鏇挎崲浜嗗叏閮?7澶?`ScaffoldMessenger.showSnackBar` 璋冪敤銆?2. **棣栭〉浠诲姟璇︽儏鏃ユ湡缂栬緫**锛歚_TimelineTask` 鏂板 `endDate` 瀛楁锛岃鎯呭尯鍩熸樉绀?寮€濮?鈫?缁撴潫"涓や釜鍙偣鍑绘棩鏈燂紝鍒嗗埆缂栬緫寮€濮嬪拰缁撴潫鏃堕棿銆?3. **浠诲姟璇︽儏椤垫棩鏈熺紪杈戜慨澶?*锛歚_timeChip()` 绉婚櫎澶栧眰 `onTap`锛屽紑濮嬪拰缁撴潫鏃ユ湡鍚勮嚜鐙珛 `InkWell`锛屼袱涓棩鏈熷潎鍙崟鐙偣鍑荤紪杈戙€?4. **棣栭〉浠诲姟璇︽儏椤圭洰淇敼**锛氶」鐩爣绛炬敮鎸佺偣鍑诲脊鍑洪」鐩€夋嫨鍣紝鐩存帴鍒囨崲浠诲姟鎵€灞為」鐩€?5. **椤圭洰鍒犻櫎涓嶆敹鍥濪rawer**锛氬垹闄?`_confirmDeleteProject` 涓殑 `Navigator.pop(context)`锛屽垹闄ゅ悗渚ц竟鏍忎繚鎸佹墦寮€銆?6. **搴旂敤鍥炬爣**锛氳璁℃竻鍗?闃冲厜椋庢牸鍥炬爣锛堟殩姗欐笎鍙樿儗鏅?+ 鐧借壊娓呭崟 + 灏忓お闃筹級锛岄€氳繃 `flutter_launcher_icons` 鐢熸垚 Android 鍜?Windows 鍥炬爣銆?7. **鏃ュ巻姘村钩鎷栧姩瀵艰埅**锛氬懆瑙嗗浘鏃堕棿杞村尯鍩熸敮鎸侀紶鏍?鎵嬫寚姘村钩鎷栧姩锛屽疄鏃惰窡鎵嬪垏鎹㈡棩鏈燂紙绱Н瓒呰繃 0.6 鍊?dayWidth 鍗冲亸绉?澶╋級銆?
+### 褰卞搷鏂囦欢
+- `lib/core/utils/snackbar_helper.dart`锛堟柊澧烇級
 - `lib/presentation/pages/home/home_page.dart`
 - `lib/presentation/pages/tasks/task_detail/task_detail_page.dart`
 - `lib/presentation/pages/tasks/tasks_page.dart`
 - `lib/presentation/pages/calendar/calendar_page.dart`
-- `assets/icons/app_icon.svg`, `assets/icons/app_icon_1024.png`（新增）
-- `android/app/src/main/res/mipmap-*/ic_launcher.png`（更新）
-- `pubspec.yaml`（添加 flutter_launcher_icons）
-- 14个文件的 SnackBar 调用替换
+- `assets/icons/app_icon.svg`, `assets/icons/app_icon_1024.png`锛堟柊澧烇級
+- `android/app/src/main/res/mipmap-*/ic_launcher.png`锛堟洿鏂帮級
+- `pubspec.yaml`锛堟坊鍔?flutter_launcher_icons锛?- 14涓枃浠剁殑 SnackBar 璋冪敤鏇挎崲
 
-### 风险/TODO
-- 日历水平拖动与任务块拖动共存：任务块使用 pan 手势在 gesture arena 中优先级更高，空白区域才响应水平拖动
-- 图标在深色背景上对比度足够，浅色背景上圆角可能略显柔和
+### 椋庨櫓/TODO
+- 鏃ュ巻姘村钩鎷栧姩涓庝换鍔″潡鎷栧姩鍏卞瓨锛氫换鍔″潡浣跨敤 pan 鎵嬪娍鍦?gesture arena 涓紭鍏堢骇鏇撮珮锛岀┖鐧藉尯鍩熸墠鍝嶅簲姘村钩鎷栧姩
+- 鍥炬爣鍦ㄦ繁鑹茶儗鏅笂瀵规瘮搴﹁冻澶燂紝娴呰壊鑳屾櫙涓婂渾瑙掑彲鑳界暐鏄炬煍鍜?
+## 2026-05-29 (鏃ュ巻/浠诲姟鍒楄〃澧炲己 + 鍚屾BUG淇)
 
-## 2026-05-29 (日历/任务列表增强 + 同步BUG修复)
+### 淇敼鍐呭
+- **鏃ュ巻鍛ㄨ鍥惧ご閮ㄥ悓姝?*锛氬垏鎹㈡樉绀哄ぉ鏁?1-15澶?鏃讹紝澶撮儴鏄熸湡鏍囩鍜屾棩鏈熸暟瀛楅殢涔嬪彉鍖栵紝涓嶅啀鍥哄畾鏄剧ず7澶┿€傛柊澧?`_buildCustomWeekHeader()` 鏇夸唬 `TableCalendar` 鐨勫浐瀹氬懆澶淬€?- **绉诲姩绔棩鍘嗘枃瀛楄嚜閫傚簲**锛氫换鍔″潡鏂囧瓧鏍规嵁鍙敤瀹藉害鍔ㄦ€佺缉鏀撅紙鏈€灏?px锛夛紝鏋佺獎鏃堕殣钘忔椂闂村拰鐖舵爣绛撅紝浣跨敤 `FittedBox` 纭繚鏍囬鍙銆?- **妗岄潰绔彸閿彍鍗?*锛氫换鍔″崱鐗囨敮鎸佸彸閿脊鍑?缂栬緫/鍒犻櫎"涓婁笅鏂囪彍鍗曪紙`GestureDetector.onSecondaryTapUp` + `showMenu`锛夈€?- **浠诲姟鍗＄墖椤圭洰鏍囩**锛氶」鐩悕浠庢爣棰樹笅鏂圭Щ鍒板崱鐗囧乏涓婅锛屼互褰╄壊灏忔爣绛惧舰寮忔樉绀恒€?- **鏃ユ湡鍖洪棿绛涢€?*锛氫换鍔″垪琛?AppBar 鏂板鏃ユ湡绛涢€夋寜閽紝BLoC 灞傛敮鎸?`dateFrom/dateTo` 鍙傛暟锛岃繃婊や换鍔℃椂闂磋寖鍥翠笌閫夊畾鍖洪棿鏈変氦闆嗙殑浠诲姟銆?- **鍚屾BUG淇**锛?  - `syncFromJson` 淇濈暀杩滅 `updatedAt` 鏃堕棿鎴筹紝閬垮厤鏈湴瑕嗙洊浜戠鏂版暟鎹?  - 澧撶煶淇濇姢锛氭湰鍦板凡鍒犻櫎涓旀椂闂存埑>=杩滅鏃讹紝涓嶈杩滅鏈垹闄ょ姸鎬佸娲?  - Realtime 鍥炶皟涓茶鍖栵紙`_enqueue` 闃熷垪锛夛紝闃叉骞跺彂鍐欏叆瀵艰嚧 SQLite database locked
 
-### 修改内容
-- **日历周视图头部同步**：切换显示天数(1-15天)时，头部星期标签和日期数字随之变化，不再固定显示7天。新增 `_buildCustomWeekHeader()` 替代 `TableCalendar` 的固定周头。
-- **移动端日历文字自适应**：任务块文字根据可用宽度动态缩放（最小8px），极窄时隐藏时间和父标签，使用 `FittedBox` 确保标题可见。
-- **桌面端右键菜单**：任务卡片支持右键弹出"编辑/删除"上下文菜单（`GestureDetector.onSecondaryTapUp` + `showMenu`）。
-- **任务卡片项目标签**：项目名从标题下方移到卡片左上角，以彩色小标签形式显示。
-- **日期区间筛选**：任务列表 AppBar 新增日期筛选按钮，BLoC 层支持 `dateFrom/dateTo` 参数，过滤任务时间范围与选定区间有交集的任务。
-- **同步BUG修复**：
-  - `syncFromJson` 保留远端 `updatedAt` 时间戳，避免本地覆盖云端新数据
-  - 墓石保护：本地已删除且时间戳>=远端时，不被远端未删除状态复活
-  - Realtime 回调串行化（`_enqueue` 队列），防止并发写入导致 SQLite database locked
-
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/pages/calendar/calendar_page.dart`
 - `lib/presentation/pages/tasks/widgets/task_card.dart`
 - `lib/presentation/pages/tasks/tasks_page.dart`
@@ -460,116 +374,69 @@
 - `lib/data/repositories/task_repository.dart`
 - `lib/services/task_sync_service.dart`
 
-### 风险/TODO
-- 日历自定义头部在天数>7时日期可能跨月，已正确处理
-- `FittedBox` 在极窄块上可能导致文字过小但仍可见，是预期行为
-- 同步修复需要跨设备验证，建议清空云端僵尸数据后测试
+### 椋庨櫓/TODO
+- 鏃ュ巻鑷畾涔夊ご閮ㄥ湪澶╂暟>7鏃舵棩鏈熷彲鑳借法鏈堬紝宸叉纭鐞?- `FittedBox` 鍦ㄦ瀬绐勫潡涓婂彲鑳藉鑷存枃瀛楄繃灏忎絾浠嶅彲瑙侊紝鏄鏈熻涓?- 鍚屾淇闇€瑕佽法璁惧楠岃瘉锛屽缓璁竻绌轰簯绔兊灏告暟鎹悗娴嬭瘯
 
-## 2026-05-29 (全业务数据双端同步：软删除墓石 + 双向 LWW 对账 + checklist 上云)
+## 2026-05-29 (鍏ㄤ笟鍔℃暟鎹弻绔悓姝ワ細杞垹闄ゅ鐭?+ 鍙屽悜 LWW 瀵硅处 + checklist 涓婁簯)
 
-### 修改内容
-- **统一软删除（墓石）**：`Tasks/Projects/ProjectGroups/ChecklistItems` 各加 `deleted` 列（NOT NULL DEFAULT 0），schemaVersion 6→7，`onUpgrade if(from<7)` 兜底加列。删除一律置 `deleted=1, updatedAt=now` 并推送墓石，不再物理删除 → 删除靠墓石跨端传播、重启不复活。
-- **双向 LWW 全量对账**：`TaskSyncService/ProjectSyncService/ChecklistSyncService/AttachmentSyncService` 新增/升级 `syncAll()`：拉云端（含墓石）合并到本地 + 本地（含墓石）凡云端缺失或本地 `updatedAt` 更新则推送上云。修复"子任务树不同步""离线删除不传播"。
-- **checklist 首次上云**：新建 `lib/services/checklist_sync_service.dart` + 云表 `public.checklist_items`（RLS + REPLICA IDENTITY FULL + 加入 supabase_realtime publication）；`ChecklistRepository` 注入 syncService，增删改 push、软删、读查询过滤 `deleted=0`、新增 `syncFromJson`。
-- **删除空 catch / NPE 守卫**：`TaskSyncService` 去掉 `catch(_){}` 保留日志，`currentUser!` → `currentUser?` 守卫。
-- **启动按登录态门控**：`home_page` 移除未登录即触发的 task pull，所有 `syncAll()+subscribe()` 统一在登录后启动，`signedIn/initialSession` 每次重跑全量对账。
-- **项目删除级联软删**：project 删除时级联软删其下 tasks/checklist；远端项目墓石到达时本地同样级联软删。
-- **阶段0 清空全部数据**：云端 `user_tasks/task_attachments/projects/project_groups` 已 DELETE 清空；`AppDatabase.wipeAllData()` 事务清空本地各表并重建 inbox。
+### 淇敼鍐呭
+- **缁熶竴杞垹闄わ紙澧撶煶锛?*锛歚Tasks/Projects/ProjectGroups/ChecklistItems` 鍚勫姞 `deleted` 鍒楋紙NOT NULL DEFAULT 0锛夛紝schemaVersion 6鈫?锛宍onUpgrade if(from<7)` 鍏滃簳鍔犲垪銆傚垹闄や竴寰嬬疆 `deleted=1, updatedAt=now` 骞舵帹閫佸鐭筹紝涓嶅啀鐗╃悊鍒犻櫎 鈫?鍒犻櫎闈犲鐭宠法绔紶鎾€侀噸鍚笉澶嶆椿銆?- **鍙屽悜 LWW 鍏ㄩ噺瀵硅处**锛歚TaskSyncService/ProjectSyncService/ChecklistSyncService/AttachmentSyncService` 鏂板/鍗囩骇 `syncAll()`锛氭媺浜戠锛堝惈澧撶煶锛夊悎骞跺埌鏈湴 + 鏈湴锛堝惈澧撶煶锛夊嚒浜戠缂哄け鎴栨湰鍦?`updatedAt` 鏇存柊鍒欐帹閫佷笂浜戙€備慨澶?瀛愪换鍔℃爲涓嶅悓姝?"绂荤嚎鍒犻櫎涓嶄紶鎾?銆?- **checklist 棣栨涓婁簯**锛氭柊寤?`lib/services/checklist_sync_service.dart` + 浜戣〃 `public.checklist_items`锛圧LS + REPLICA IDENTITY FULL + 鍔犲叆 supabase_realtime publication锛夛紱`ChecklistRepository` 娉ㄥ叆 syncService锛屽鍒犳敼 push銆佽蒋鍒犮€佽鏌ヨ杩囨护 `deleted=0`銆佹柊澧?`syncFromJson`銆?- **鍒犻櫎绌?catch / NPE 瀹堝崼**锛歚TaskSyncService` 鍘绘帀 `catch(_){}` 淇濈暀鏃ュ織锛宍currentUser!` 鈫?`currentUser?` 瀹堝崼銆?- **鍚姩鎸夌櫥褰曟€侀棬鎺?*锛歚home_page` 绉婚櫎鏈櫥褰曞嵆瑙﹀彂鐨?task pull锛屾墍鏈?`syncAll()+subscribe()` 缁熶竴鍦ㄧ櫥褰曞悗鍚姩锛宍signedIn/initialSession` 姣忔閲嶈窇鍏ㄩ噺瀵硅处銆?- **椤圭洰鍒犻櫎绾ц仈杞垹**锛歱roject 鍒犻櫎鏃剁骇鑱旇蒋鍒犲叾涓?tasks/checklist锛涜繙绔」鐩鐭冲埌杈炬椂鏈湴鍚屾牱绾ц仈杞垹銆?- **闃舵0 娓呯┖鍏ㄩ儴鏁版嵁**锛氫簯绔?`user_tasks/task_attachments/projects/project_groups` 宸?DELETE 娓呯┖锛沗AppDatabase.wipeAllData()` 浜嬪姟娓呯┖鏈湴鍚勮〃骞堕噸寤?inbox銆?
+### 褰卞搷鏂囦欢
+- `lib/data/database/app_database.dart`锛? 鐢熸垚鐗?`.g.dart`锛?- `lib/data/repositories/{task,project,project_group,checklist}_repository.dart`
+- `lib/services/{task_sync,project_sync,attachment_sync,checklist_sync}_service.dart`锛坈hecklist 涓烘柊寤猴級
+- `lib/presentation/pages/home/home_page.dart`銆乣lib/main.dart`
+- `test/task_progress_calculator_test.dart`锛堟瀯閫犺ˉ `deleted`锛?- `database/migration_004_soft_delete_checklist_realtime.sql`锛堜簯绔暀鐥曪級
 
-### 影响文件
-- `lib/data/database/app_database.dart`（+ 生成物 `.g.dart`）
-- `lib/data/repositories/{task,project,project_group,checklist}_repository.dart`
-- `lib/services/{task_sync,project_sync,attachment_sync,checklist_sync}_service.dart`（checklist 为新建）
-- `lib/presentation/pages/home/home_page.dart`、`lib/main.dart`
-- `test/task_progress_calculator_test.dart`（构造补 `deleted`）
-- `database/migration_004_soft_delete_checklist_realtime.sql`（云端留痕）
+### 椋庨櫓/TODO
+- **鏈湴蹇呴』娓呯┖**锛氭闈?DB 娓呯┖鏃舵枃浠惰鍗犵敤锛圓pp 杩愯涓級鏈垹鎴愬姛銆傞』鍏堝叧闂?App 鍐嶈繍琛?`clear_data.bat`锛堟垨鍒?`%USERPROFILE%\Documents\smart_assistant.db`锛夛紱鍚﹀垯涓嬫鍚姩 `syncAll` 浼氭妸鏈湴鏃ф暟鎹弽鎺ㄥ洖宸叉竻绌虹殑浜戠銆傜Щ鍔ㄧ闇€鍗歌浇閲嶈鎴栧悗缁帴鍏ュ簲鐢ㄥ唴 `wipeAllData()` 鍏ュ彛銆?- `clear_data.bat` 浠呭垹 `.db/-journal`锛屾湭鍒?`-wal/-shm`锛圖rift 榛樿闈?WAL锛屽奖鍝嶅皬锛夈€?- `syncAll` 涓?O(n) 鍏ㄩ噺 upsert锛屽綋鍓嶆暟鎹噺灏忥紱鍚庣画鍙壒閲忓寲銆?- `migration_004` 浠呬綔鐣欑棔锛屽疄闄呭凡閫氳繃 Management API 鎵ц锛坱oken 涓嶅叆搴擄級銆?
+## 2026-05-29 (浠诲姟鍒楄〃鏍戝舰缁撴瀯 UI 浼樺寲)
 
-### 风险/TODO
-- **本地必须清空**：桌面 DB 清空时文件被占用（App 运行中）未删成功。须先关闭 App 再运行 `clear_data.bat`（或删 `%USERPROFILE%\Documents\smart_assistant.db`）；否则下次启动 `syncAll` 会把本地旧数据反推回已清空的云端。移动端需卸载重装或后续接入应用内 `wipeAllData()` 入口。
-- `clear_data.bat` 仅删 `.db/-journal`，未删 `-wal/-shm`（Drift 默认非 WAL，影响小）。
-- `syncAll` 为 O(n) 全量 upsert，当前数据量小；后续可批量化。
-- `migration_004` 仅作留痕，实际已通过 Management API 执行（token 不入库）。
+### 淇敼鍐呭
+- 鏍戝舰杩炴帴绾匡細鏂板 `_TreeLinesPainter`锛圕ustomPaint锛夛紝瀛愯妭鐐规樉绀?鈹溾攢鈹€ / 鈹斺攢鈹€ 杩炴帴绾匡紝闈炴渶鍚庣鍏堝眰鎸佺画绔栫嚎
+- 灞傜骇鏍囩锛氭瘡涓妭鐐瑰乏渚ф樉绀?R0/R1/R2 灏忔爣绛?- 缂╃獎宸︿晶鍖哄煙锛氭嫋鎷芥墜鏌?icon 浠?20鈫?6锛宲adding horizontal 浠?2鈫?
+- 绉婚櫎 TaskCard 鍐呴儴 `depth * 24` 缂╄繘锛堜紶 depth:0锛夛紝缂╄繘缁熶竴鐢卞灞傛爲褰㈢嚎璐熻矗
 
-## 2026-05-29 (任务列表树形结构 UI 优化)
-
-### 修改内容
-- 树形连接线：新增 `_TreeLinesPainter`（CustomPaint），子节点显示 ├── / └── 连接线，非最后祖先层持续竖线
-- 层级标签：每个节点左侧显示 R0/R1/R2 小标签
-- 缩窄左侧区域：拖拽手柄 icon 从 20→16，padding horizontal 从 2→1
-- 移除 TaskCard 内部 `depth * 24` 缩进（传 depth:0），缩进统一由外层树形线负责
-
-### 影响文件
+### 褰卞搷鏂囦欢
 - `lib/presentation/pages/tasks/widgets/task_list_view.dart`
 - `lib/presentation/pages/tasks/widgets/task_card.dart`
 
-### 风险/TODO
-- 已完成区块（completedTreeNodes）未加树形线，保持原样
+### 椋庨櫓/TODO
+- 宸插畬鎴愬尯鍧楋紙completedTreeNodes锛夋湭鍔犳爲褰㈢嚎锛屼繚鎸佸師鏍?
+## 2026-05-27 (鎵归噺浼樺寲 + AI 鎺掔▼ + 椤圭洰鍒嗙粍 + 鏃ュ巻鎷栧姩閲嶅啓)
 
-## 2026-05-27 (批量优化 + AI 排程 + 项目分组 + 日历拖动重写)
+### 鏂板鍔熻兘
 
-### 新增功能
+- **椤圭洰鍒嗙粍**锛團6锛夛細鏂板缓 `ProjectGroups` 琛?+ `groupId` 澶栭敭锛屼晶杈规爮鎸夊垎缁?ExpansionTile 灞曞紑锛岀粍杩涘害 = 缁勫唴椤圭洰鍔犳潈绱姞锛堝悓椤圭洰鍙ｅ緞锛夈€?- **AI 浼版椂 + 鑷姩鎺掔▼**锛團2锛夛細
+  - `task_decomposition_service` system prompt 寮哄埗鍙跺瓙鑺傜偣杩斿洖 `minutes`锛堚墹480锛夛紱闈炲彾瀛愮敱瀛愯妭鐐圭疮鍔犮€?  - 鏂板缓 `subtask_scheduler.dart`锛?:00鈥?1:00 宸ヤ綔鏃舵銆? 鍒嗛挓鍚搁檮銆?5 鍒嗛挓缂撳啿銆侀伩璁╁凡鍗犵敤鏃舵銆乣skipWeekends` 鍙€夛紱杈撳嚭鍙跺瓙鎺掔▼缁撴灉锛屽苟鎶婄埗浠诲姟鍥炲啓涓?`startOfDay(min) 鈫?endOfDay(max)` 寮哄埗璺ㄥぉ锛岃嚜鍔ㄦ覆鏌撲负鏃ュ巻椤堕儴闀挎潯銆?  - `ai_decompose_section` 鎺ュ叆 scheduler锛屾媶瀹屽嵆鎺掔▼锛涢粯璁ゅ紑鍚彁閱掞紙鎻愬墠 5 鍒嗛挓锛夈€?- **浠诲姟鎸傞」鐩骇鑱斿埌瀛愪换鍔?*锛團1锛夛細`TaskRepository.update` 妫€娴?`projectId` 鍙樻洿鏃讹紝鎵归噺鏇存柊鎵€鏈夊悗浠?+ sync push銆?- **棣栭〉鏃堕棿杞磋嚜閫傚簲楂樺害**锛團5锛夛細鏍规嵁褰撳墠鍙鍒楃殑鏈€澶т换鍔℃暟鍔ㄦ€佺畻楂樺害锛?0鈥?10px锛夛紝鑺傜偣鍐呭厑璁镐笂涓嬫粴鍔ㄧ湅瀹屾墍鏈変换鍔°€?- **棣栭〉鎻忚堪鍥哄畾楂樺害鍙粴鍔?*锛團4锛夛細240px 楂樺害鍐呮粴鍔紝瓒呰繃 1000 瀛楁埅鏂?+ "灞曞紑鍏ㄦ枃"璺宠浆缂栬緫椤点€?- **浠诲姟鍒楄〃浼樺厛绾?PopupMenuButton**锛團3锛夛細鏇挎崲鏄撹瑙︾殑缁嗚壊鏉★紝鏂板甯﹂鑹插渾鐐?+ "楂?涓?浣?鏃? 鏍囩鐨勮兌鍥婁笅鎷夈€?- **鏂板缓浠诲姟榛樿鏃堕棿**锛團7锛夛細寮€濮嬫椂闂?= 褰撳墠锛屾埅姝?= 褰撳墠+1h銆?- **璁剧疆锛欰I 鎺掔▼璺宠繃鍛ㄦ湯**锛歚profile_page` 鍔犲紑鍏筹紝`LocalStorage.skipWeekends`銆?- **浜戝悓姝?*锛歚projects` / `project_groups` 涓婁簯锛坄migration_002_groups_and_estimate.sql`锛夛紝`user_tasks` 鍔?`estimated_minutes` 鍒楋紱鏂板缓 `ProjectSyncService` 鎻愪緵 pull / push / subscribe銆?
+### Bug 淇
 
-- **项目分组**（F6）：新建 `ProjectGroups` 表 + `groupId` 外键，侧边栏按分组 ExpansionTile 展开，组进度 = 组内项目加权累加（同项目口径）。
-- **AI 估时 + 自动排程**（F2）：
-  - `task_decomposition_service` system prompt 强制叶子节点返回 `minutes`（≤480）；非叶子由子节点累加。
-  - 新建 `subtask_scheduler.dart`：9:00–21:00 工作时段、5 分钟吸附、15 分钟缓冲、避让已占用时段、`skipWeekends` 可选；输出叶子排程结果，并把父任务回写为 `startOfDay(min) → endOfDay(max)` 强制跨天，自动渲染为日历顶部长条。
-  - `ai_decompose_section` 接入 scheduler，拆完即排程；默认开启提醒（提前 5 分钟）。
-- **任务挂项目级联到子任务**（F1）：`TaskRepository.update` 检测 `projectId` 变更时，批量更新所有后代 + sync push。
-- **首页时间轴自适应高度**（F5）：根据当前可见列的最大任务数动态算高度（80–210px），节点内允许上下滚动看完所有任务。
-- **首页描述固定高度可滚动**（F4）：240px 高度内滚动，超过 1000 字截断 + "展开全文"跳转编辑页。
-- **任务列表优先级 PopupMenuButton**（F3）：替换易误触的细色条，新增带颜色圆点 + "高/中/低/无" 标签的胶囊下拉。
-- **新建任务默认时间**（F7）：开始时间 = 当前，截止 = 当前+1h。
-- **设置：AI 排程跳过周末**：`profile_page` 加开关，`LocalStorage.skipWeekends`。
-- **云同步**：`projects` / `project_groups` 上云（`migration_002_groups_and_estimate.sql`），`user_tasks` 加 `estimated_minutes` 列；新建 `ProjectSyncService` 提供 pull / push / subscribe。
+- **B1 绉诲姩绔棩鍘嗛暱鎸夊悗鏃犳硶鎷栨嫿杈圭紭鏀规椂闂?*锛歳esize hot zone 鏀圭敤 5 鍒嗛挓鍚搁檮绮掑害锛岃窡鎵嬪搷搴斻€?- **B2 鏃ュ巻浠诲姟鍧楁嫋鍔ㄦ墜鎰熷樊**锛氬幓鎺?`Draggable`/`DragTarget`锛屾敼 `Listener` + `Transform.translate` 鍘熷昂瀵歌窡鎵嬶紝5 鍒嗛挓鍚搁檮锛岃法鏃ユ寜 `dayWidth` 璁＄畻鍒楀亸绉伙紱澶氭棩 bar 鍚屾牱鏀瑰啓銆?- **B3 鍒嗛挓閫夋嫨鍣ㄦ敼涓嬫媺妗?*锛氬垹闄?ListWheelScrollView锛屾敼涓?鏃?涓€鑷寸殑 `_timeDropdown`锛? 鍒嗛挓涓€妗ｃ€?- **B4 鏈堣鍥惧彸鍒囦笅鏂逛换鍔″垪琛ㄤ笉鍒锋柊**锛歚onPageChanged` 鍔?`setState`锛屾妸 `_selectedDay` 鍚屾鍒版柊鏈堝悓鍙锋棩銆?- **澶氭棩闀挎潯 lane 鑷姩鎾戦珮**锛歚_buildMultiDayLane` 鎸夊眰绾ф繁搴︽帓搴忥紙鏍逛换鍔″湪涓婏級锛宭ane 鏁板姩鎬佽绠楋紝>6 鏃跺唴閮ㄧ旱鍚戞粴鍔ㄣ€?
+### 鏁版嵁妯″瀷鍙樻洿
 
-### Bug 修复
+- Drift `schemaVersion` 4 鈫?5锛氭柊琛?`project_groups`锛宍projects.group_id`銆乣tasks.estimated_minutes` 鍒椼€?- `TaskNewLoaded` 鍔?`groups` / `groupProgress` 瀛楁銆?- `TaskProgressCalculator` 鏂板 `groupProgress` 璁＄畻銆?
+### 褰卞搷鏂囦欢
+- 鏁版嵁灞傦細`app_database.dart` (+ .g.dart)銆乣task_repository.dart`銆乣project_repository.dart`銆佹柊寤?`project_group_repository.dart`
+- 鏈嶅姟灞傦細鏂板缓 `subtask_scheduler.dart`銆乣project_sync_service.dart`锛涙敼 `task_sync_service.dart`銆乣task_decomposition_service.dart`銆乣local_storage_service.dart`銆乣notification_service.dart` 鎺ュ叆
+- 琛ㄧ幇灞傦細`home_page.dart`銆乣calendar_page.dart`銆乣profile_page.dart`銆乣task_card.dart`銆乣task_create_sheet.dart`銆乣project_sidebar.dart`銆乣calendar_date_picker.dart`銆乣ai_decompose_section.dart`
+- Bloc锛歚task_bloc.dart` / `task_state.dart`
+- 浜戠 SQL锛氭柊寤?`database/migration_002_groups_and_estimate.sql`锛?*闇€鐢ㄦ埛鍦?Supabase Dashboard SQL Editor 鎵ц**锛?
+### 鍚庣画 TODO / 椋庨櫓
 
-- **B1 移动端日历长按后无法拖拽边缘改时间**：resize hot zone 改用 5 分钟吸附粒度，跟手响应。
-- **B2 日历任务块拖动手感差**：去掉 `Draggable`/`DragTarget`，改 `Listener` + `Transform.translate` 原尺寸跟手，5 分钟吸附，跨日按 `dayWidth` 计算列偏移；多日 bar 同样改写。
-- **B3 分钟选择器改下拉框**：删除 ListWheelScrollView，改与"时"一致的 `_timeDropdown`，5 分钟一档。
-- **B4 月视图右切下方任务列表不刷新**：`onPageChanged` 加 `setState`，把 `_selectedDay` 同步到新月同号日。
-- **多日长条 lane 自动撑高**：`_buildMultiDayLane` 按层级深度排序（根任务在上），lane 数动态计算，>6 时内部纵向滚动。
-
-### 数据模型变更
-
-- Drift `schemaVersion` 4 → 5：新表 `project_groups`，`projects.group_id`、`tasks.estimated_minutes` 列。
-- `TaskNewLoaded` 加 `groups` / `groupProgress` 字段。
-- `TaskProgressCalculator` 新增 `groupProgress` 计算。
-
-### 影响文件
-- 数据层：`app_database.dart` (+ .g.dart)、`task_repository.dart`、`project_repository.dart`、新建 `project_group_repository.dart`
-- 服务层：新建 `subtask_scheduler.dart`、`project_sync_service.dart`；改 `task_sync_service.dart`、`task_decomposition_service.dart`、`local_storage_service.dart`、`notification_service.dart` 接入
-- 表现层：`home_page.dart`、`calendar_page.dart`、`profile_page.dart`、`task_card.dart`、`task_create_sheet.dart`、`project_sidebar.dart`、`calendar_date_picker.dart`、`ai_decompose_section.dart`
-- Bloc：`task_bloc.dart` / `task_state.dart`
-- 云端 SQL：新建 `database/migration_002_groups_and_estimate.sql`（**需用户在 Supabase Dashboard SQL Editor 执行**）
-
-### 后续 TODO / 风险
-
-- 仅 `flutter analyze` 通过（59 个 info/warning，无 error），实机功能未跑通；建议在桌面端 + 移动端各跑一遍 AI 拆分、日历拖动、月视图切换、项目分组、跨设备同步流程。
-- AI 排程为"贪心顺序填充"，不做全局最优；同一时段多次 AI 拆分可能扎堆排在远未来。
-- 父任务跨天强制为 00:00–23:59，会让多日 bar 在月视图覆盖完整时段，是预期行为。
-
+- 浠?`flutter analyze` 閫氳繃锛?9 涓?info/warning锛屾棤 error锛夛紝瀹炴満鍔熻兘鏈窇閫氾紱寤鸿鍦ㄦ闈㈢ + 绉诲姩绔悇璺戜竴閬?AI 鎷嗗垎銆佹棩鍘嗘嫋鍔ㄣ€佹湀瑙嗗浘鍒囨崲銆侀」鐩垎缁勩€佽法璁惧鍚屾娴佺▼銆?- AI 鎺掔▼涓?璐績椤哄簭濉厖"锛屼笉鍋氬叏灞€鏈€浼橈紱鍚屼竴鏃舵澶氭 AI 鎷嗗垎鍙兘鎵庡爢鎺掑湪杩滄湭鏉ャ€?- 鐖朵换鍔¤法澶╁己鍒朵负 00:00鈥?3:59锛屼細璁╁鏃?bar 鍦ㄦ湀瑙嗗浘瑕嗙洊瀹屾暣鏃舵锛屾槸棰勬湡琛屼负銆?
 ---
 
-## 2026-05-27 (login fix + 长按编辑 + pinch 缩放)
+## 2026-05-27 (login fix + 闀挎寜缂栬緫 + pinch 缂╂斁)
 
 ### Fixed
 
-- **登录首次无响应**：Supabase 路径下 `_login()` 把事件丢给 BLoC 后立即关闭 `_isLoading`，BLoC 异步还在飞。改为 Supabase 模式完全由 BLoC 状态（`AuthLoading`）驱动按钮 disable。
-- **移动端长按编辑模式（滴答清单方案）**：长按任务块进入编辑模式，显示蓝色高亮边框 + 顶部/底部大拖拽手柄（36px 高，蓝色 primaryColor）。拖拽调整时间后自动退出编辑模式。点击空白区域也退出。桌面端保持原有 hover 小白线行为。
-- **移动端双指 pinch 缩放日历时间轴**：用 `Listener` 的 `onPointerDown/Move/Up/Cancel` 追踪多点触控，双指时按距离比例调整 `_hourHeight`，不干扰 `SingleChildScrollView` 的单指滚动。
-
+- **鐧诲綍棣栨鏃犲搷搴?*锛歋upabase 璺緞涓?`_login()` 鎶婁簨浠朵涪缁?BLoC 鍚庣珛鍗冲叧闂?`_isLoading`锛孊LoC 寮傛杩樺湪椋炪€傛敼涓?Supabase 妯″紡瀹屽叏鐢?BLoC 鐘舵€侊紙`AuthLoading`锛夐┍鍔ㄦ寜閽?disable銆?- **绉诲姩绔暱鎸夌紪杈戞ā寮忥紙婊寸瓟娓呭崟鏂规锛?*锛氶暱鎸変换鍔″潡杩涘叆缂栬緫妯″紡锛屾樉绀鸿摑鑹查珮浜竟妗?+ 椤堕儴/搴曢儴澶ф嫋鎷芥墜鏌勶紙36px 楂橈紝钃濊壊 primaryColor锛夈€傛嫋鎷借皟鏁存椂闂村悗鑷姩閫€鍑虹紪杈戞ā寮忋€傜偣鍑荤┖鐧藉尯鍩熶篃閫€鍑恒€傛闈㈢淇濇寔鍘熸湁 hover 灏忕櫧绾胯涓恒€?- **绉诲姩绔弻鎸?pinch 缂╂斁鏃ュ巻鏃堕棿杞?*锛氱敤 `Listener` 鐨?`onPointerDown/Move/Up/Cancel` 杩借釜澶氱偣瑙︽帶锛屽弻鎸囨椂鎸夎窛绂绘瘮渚嬭皟鏁?`_hourHeight`锛屼笉骞叉壈 `SingleChildScrollView` 鐨勫崟鎸囨粴鍔ㄣ€?
 ---
 
 ## 2026-05-27 (release login + calendar fixes)
 
 ### Fixed
 
-- **Release 模式无法登录**：`INTERNET` 权限只在 debug manifest，主 manifest 缺失。已添加到 `android/app/src/main/AndroidManifest.xml`。
-- **日历任务卡片 BOTTOM OVERFLOW**：`_buildBlockContent` 内容超出 28px 最小高度且 `Stack(clipBehavior: Clip.none)` 不裁剪。改用 `Material(clipBehavior: Clip.hardEdge)` + Column 去掉 `mainAxisSize: MainAxisSize.min` 让内容填充并裁剪。
-- **切换 1天/2天视图不居中到今天**：`onChanged` 只改天数不改 `_focusedDay`，且 `_startOfWeek` 总回退到周一。天数 < 7 时直接从 `_focusedDay` 开始，≤ 3 天时重置到今天。
-- **移动端 resize 热区太小**：底部拖拽热区从 8px 扩大到 24px，向下偏移 8px。
-
+- **Release 妯″紡鏃犳硶鐧诲綍**锛歚INTERNET` 鏉冮檺鍙湪 debug manifest锛屼富 manifest 缂哄け銆傚凡娣诲姞鍒?`android/app/src/main/AndroidManifest.xml`銆?- **鏃ュ巻浠诲姟鍗＄墖 BOTTOM OVERFLOW**锛歚_buildBlockContent` 鍐呭瓒呭嚭 28px 鏈€灏忛珮搴︿笖 `Stack(clipBehavior: Clip.none)` 涓嶈鍓€傛敼鐢?`Material(clipBehavior: Clip.hardEdge)` + Column 鍘绘帀 `mainAxisSize: MainAxisSize.min` 璁╁唴瀹瑰～鍏呭苟瑁佸壀銆?- **鍒囨崲 1澶?2澶╄鍥句笉灞呬腑鍒颁粖澶?*锛歚onChanged` 鍙敼澶╂暟涓嶆敼 `_focusedDay`锛屼笖 `_startOfWeek` 鎬诲洖閫€鍒板懆涓€銆傚ぉ鏁?< 7 鏃剁洿鎺ヤ粠 `_focusedDay` 寮€濮嬶紝鈮?3 澶╂椂閲嶇疆鍒颁粖澶┿€?- **绉诲姩绔?resize 鐑尯澶皬**锛氬簳閮ㄦ嫋鎷界儹鍖轰粠 8px 鎵╁ぇ鍒?24px锛屽悜涓嬪亸绉?8px銆?
 ---
 
 ## 2026-05-27 (perf: overflow + jank fixes)
@@ -627,7 +494,7 @@
 
 - Updated desktop reminder delivery in [lib/services/notification_service.dart](/E:/claude/project2/smart_assistant/lib/services/notification_service.dart) so Windows prefers the native Windows notification plugin and only falls back to the existing PowerShell toast path if native delivery is unavailable.
 - Added desktop runtime decision helpers in [lib/core/desktop/desktop_runtime.dart](/E:/claude/project2/smart_assistant/lib/core/desktop/desktop_runtime.dart) for tray-event handling and desktop notification channel selection.
-- Updated [lib/main.dart](/E:/claude/project2/smart_assistant/lib/main.dart) so tray right-click opens the context menu, which restores access to the desktop "退出" action.
+- Updated [lib/main.dart](/E:/claude/project2/smart_assistant/lib/main.dart) so tray right-click opens the context menu, which restores access to the desktop "閫€鍑? action.
 - Reduced reminder-section overflow risk by adjusting `SwitchListTile` layout in:
   [lib/presentation/widgets/create_schedule_dialog.dart](/E:/claude/project2/smart_assistant/lib/presentation/widgets/create_schedule_dialog.dart)
   [lib/presentation/pages/task/task_detail_page.dart](/E:/claude/project2/smart_assistant/lib/presentation/pages/task/task_detail_page.dart)
@@ -648,128 +515,98 @@
 ### Risks / Notes
 
 - `npx gitnexus detect-changes --repo smart-assistant` reported `critical`, but the report included many unrelated pre-existing dirty-worktree files outside this task. That result should not be interpreted as the blast radius of only the reminder/tray fix.
-# 2026-05-31 上线变现准备文档
+# 2026-05-31 涓婄嚎鍙樼幇鍑嗗鏂囨。
 
-## 新增
-- 新增 `docs/launch/PLATFORM_RESEARCH_CN.md`：中国大陆个人开发者上线平台调研，建议首发 Windows 官网/私域 + 国内安卓渠道引流。
-- 新增 `docs/launch/LAUNCH_CHECKLIST.md`：上线材料、合规、技术验收和首发执行清单。
-- 新增 `docs/launch/PRIVACY_POLICY_DRAFT.md`、`docs/launch/TERMS_OF_SERVICE_DRAFT.md`：隐私政策和用户协议草案。
-- 新增 `docs/launch/STORE_LISTING_COPY.md`、`docs/launch/PRICING_AND_GO_TO_MARKET.md`：应用商店文案、定价和获客方案。
-- 新增 `docs/launch/RISK_REGISTER.md`、`docs/launch/RELEASE_EVIDENCE.md`：上线风险登记和当前发布证据记录。
+## 鏂板
+- 鏂板 `docs/launch/PLATFORM_RESEARCH_CN.md`锛氫腑鍥藉ぇ闄嗕釜浜哄紑鍙戣€呬笂绾垮钩鍙拌皟鐮旓紝寤鸿棣栧彂 Windows 瀹樼綉/绉佸煙 + 鍥藉唴瀹夊崜娓犻亾寮曟祦銆?- 鏂板 `docs/launch/LAUNCH_CHECKLIST.md`锛氫笂绾挎潗鏂欍€佸悎瑙勩€佹妧鏈獙鏀跺拰棣栧彂鎵ц娓呭崟銆?- 鏂板 `docs/launch/PRIVACY_POLICY_DRAFT.md`銆乣docs/launch/TERMS_OF_SERVICE_DRAFT.md`锛氶殣绉佹斂绛栧拰鐢ㄦ埛鍗忚鑽夋銆?- 鏂板 `docs/launch/STORE_LISTING_COPY.md`銆乣docs/launch/PRICING_AND_GO_TO_MARKET.md`锛氬簲鐢ㄥ晢搴楁枃妗堛€佸畾浠峰拰鑾峰鏂规銆?- 鏂板 `docs/launch/RISK_REGISTER.md`銆乣docs/launch/RELEASE_EVIDENCE.md`锛氫笂绾块闄╃櫥璁板拰褰撳墠鍙戝竷璇佹嵁璁板綍銆?
+## 璇存槑
+- 鏈鍙柊澧炴枃妗ｏ紝涓嶄慨鏀逛笟鍔′唬鐮併€佷笉鏇存崲 DeepSeek Key銆佷笉鏀瑰彉鏋勫缓鑴氭湰鎴栧簲鐢ㄥ姛鑳姐€?- 宸茬煡椋庨櫓缁х画淇濈暀锛欴eepSeek Key 瀹㈡埛绔唴缃€丄ndroid release 浣跨敤 debug 绛惧悕銆丄ndroid 鍖呭悕浠嶄负 `com.example.smart_assistant`銆?
+# 2026-05-31 鏃ュ巻鑺傚亣鏃ヤ笌浼戞伅鏃ュ睍绀?
+## 淇敼
+- `lib/services/holiday_service.dart`锛歚HolidayCountry` 鎵╁睍寰峰浗銆佹硶鍥姐€佸姞鎷垮ぇ銆佹境澶у埄浜氥€佸嵃搴︺€?- `lib/presentation/pages/calendar/calendar_page.dart`锛氭帴鍏?`HolidayService`锛孉ppBar 鏂板鑺傚亣鏃ュ浗瀹跺垏鎹紱鍛ㄨ鍥炬棩鏈熷ご鍜屾湀瑙嗗浘鏃ユ湡鏍煎睍绀烘硶瀹氳妭鍋囨棩銆佽皟浼戣ˉ鐝€佹櫘閫氬懆鏈紤鎭棩銆?- `lib/services/holiday_service.dart`锛氫腑鍥借妭鏃ュ鍔犳湰鍦拌ˉ鍏咃紝鍎跨鑺傜瓑闈炴斁鍋囪妭鏃ヤ娇鐢?`HolidayType.observance` 灞曠ず锛屼笉鍙備笌浼戞伅鏃ュ垽鏂€?- `lib/presentation/pages/calendar/calendar_page.dart`锛歚HolidayType.observance` 浣跨敤宸ヤ綔鏃ヨ妭鏃ユ牱寮忓睍绀恒€?- `ARCHITECTURE.md`锛氬悓姝ヨ褰曟棩鍘嗚妭鍋囨棩/浼戞伅鏃ュ睍绀虹粨鏋勩€?
+## 楠岃瘉
+- `flutter analyze lib/services/holiday_service.dart lib/presentation/pages/calendar/calendar_page.dart` 宸茶繍琛岋紝鏃犵紪璇戦敊璇紱浠嶆湁 2 涓棦鏈?warning銆?
+## 椋庨櫓
+- 澶栭儴鑺傚亣鏃?API 鍒濇涓嶅彲鐢ㄤ笖鏃犵紦瀛樻椂锛屽彧鑳藉睍绀烘湰鍦板懆鏈紤鎭棩銆?
+# 2026-05-31 绉婚櫎棣栭〉璁よ瘑寮曞
 
-## 说明
-- 本次只新增文档，不修改业务代码、不更换 DeepSeek Key、不改变构建脚本或应用功能。
-- 已知风险继续保留：DeepSeek Key 客户端内置、Android release 使用 debug 签名、Android 包名仍为 `com.example.smart_assistant`。
+## 淇敼
+- `lib/presentation/pages/home/home_page.dart`锛氱Щ闄ら椤靛垵濮嬪寲鏃惰嚜鍔ㄨ烦杞?`OnboardingPage` 鐨勯€昏緫锛屼繚鐣欓€氱煡鏉冮檺寮曞銆?- `ARCHITECTURE.md`锛氳褰曢椤靛惎鍔ㄥ紩瀵肩粨鏋勫彉鍖栥€?
+## 楠岃瘉
+- `flutter analyze lib/presentation/pages/home/home_page.dart` 宸茶繍琛岋紝鏃犵紪璇戦敊璇紱浠嶆湁 5 涓棦鏈?lint/info銆?
+## 椋庨櫓
+- `OnboardingPage` 鏂囦欢浠嶄繚鐣欙紝鑻ュ叾浠栧叆鍙ｅ紩鐢ㄤ笉浼氬彈鏈淇敼褰卞搷銆?
+# 2026-05-31 瀛愪换鍔￠粯璁ょ户鎵跨埗浠诲姟椤圭洰
 
-# 2026-05-31 日历节假日与休息日展示
+## 淇敼
+- `lib/presentation/pages/tasks/tasks_page.dart`锛氫粠浠诲姟鏍?鎬濈淮瀵煎浘鐖惰妭鐐规柊澧炲瓙浠诲姟鏃讹紝榛樿椤圭洰浼樺厛鍙栫埗浠诲姟椤圭洰銆?- `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`锛氬垵濮嬪寲鍜屽垏鎹㈢埗浠诲姟鏃跺悓姝ラ€変腑鐖朵换鍔＄殑椤圭洰銆?- `ARCHITECTURE.md`锛氳褰曞瓙浠诲姟鍒涘缓榛樿椤圭洰閫昏緫銆?
+## 楠岃瘉
+- `flutter analyze lib/presentation/pages/tasks/tasks_page.dart lib/presentation/pages/tasks/widgets/task_create_sheet.dart` 宸茶繍琛岋紝鏃犵紪璇戦敊璇紱浠嶆湁 7 涓棦鏈?lint/info銆?
+## 椋庨櫓
+- 浠呰鐩栨柊浠诲姟寮圭獥璺緞锛涗换鍔¤鎯呴〉瀛愪换鍔″叆鍙ｆ鍓嶅凡浼犲叆鐖朵换鍔￠」鐩€?
+# 2026-05-31 绉诲姩绔椤典换鍔¤鎯呰祫婧愬尯閫傞厤
 
+## 淇敼
+- `lib/presentation/pages/home/home_page.dart`锛氶椤?DB 浠诲姟璇︽儏璧勬簮鍖烘寜瀹藉害鍒囨崲甯冨眬锛涚Щ鍔ㄧ瀛愪换鍔＄嫭鍗犱竴琛岋紝闄勪欢鍜屾鏌ラ」鍗曠嫭缁勬垚涓€琛屻€?- `ARCHITECTURE.md`锛氳褰曢椤典换鍔¤鎯呯Щ鍔ㄧ璧勬簮鍖哄竷灞€瑙勫垯銆?
+## 楠岃瘉
+- `flutter analyze lib/presentation/pages/home/home_page.dart` 宸茶繍琛岋紝鏃犵紪璇戦敊璇紱浠嶆湁 5 涓棦鏈?lint/info銆?
+## 椋庨櫓
+- 浠?`640px` 浣滀负绐勫睆闃堝€硷紝瀹為檯璁惧缁嗚妭浠嶉渶鐪熸満纭銆?
+# 2026-05-31 鎬濈淮瀵煎浘鍒犻櫎璺ㄧ鍚屾
+
+## 淇敼
+- `lib/data/repositories/task_repository.dart`锛氳繙绔换鍔″鐭充笉鍐嶈鏈湴娲讳换鍔℃棤鏉′欢鎷掔粷锛屾敼涓烘寜 `updatedAt` LWW 鍒ゆ柇銆?- `lib/services/task_sync_service.dart`锛氬叏閲忓悓姝ヤ笉鍐嶇敤鏈湴娲讳换鍔℃棤鏉′欢瑕嗙洊浜戠澧撶煶锛涙柊澧炰换鍔″悓姝?`changes` 骞挎挱銆?- `lib/presentation/pages/home/home_page.dart`锛氱洃鍚?`TaskSyncService.changes`锛岃繙绔换鍔℃柊澧?鏇存柊/鍒犻櫎鍚庤Е鍙?`LoadTasks` 鍒锋柊浠诲姟椤靛拰鎬濈淮瀵煎浘銆?- `ARCHITECTURE.md`锛氳褰曚换鍔″垹闄よ法绔悓姝ラ€昏緫銆?
+## 楠岃瘉
+- `flutter analyze lib/data/repositories/task_repository.dart lib/services/task_sync_service.dart lib/presentation/pages/home/home_page.dart` 宸茶繍琛岋紝鏃犵紪璇戦敊璇紱浠嶆湁 7 涓棦鏈?lint/info/warning銆?
+## 椋庨櫓
+- 闇€鍙岀鐧诲綍鍚屼竴璐﹀彿鐪熸満楠岃瘉 Realtime 鍒犻櫎浼犳挱锛涙湰鏈轰粎鍋氶潤鎬佸垎鏋愩€?
+# 2026-05-31 鎵嬫満楠岃瘉鐮佺櫥褰?
+## 淇敼
+- `lib/services/supabase_service.dart`锛氭柊澧炴墜鏈哄彿鍙戦€侀獙璇佺爜鍜岀煭淇?OTP 鏍￠獙灏佽锛屼娇鐢?Supabase Flutter `signInWithOtp` / `verifyOTP`銆?- `lib/presentation/blocs/auth/auth_event.dart`銆乣auth_state.dart`銆乣auth_bloc.dart`锛氭柊澧炴墜鏈哄彿楠岃瘉鐮佽姹傘€佹牎楠屽拰宸插彂閫佺姸鎬併€?- `lib/presentation/pages/auth/login_page.dart`锛氱櫥褰曢〉鏂板閭/鎵嬫満楠岃瘉鐮佹ā寮忓垏鎹紝鎵嬫満妯″紡鏀寔鑾峰彇楠岃瘉鐮併€佽緭鍏ラ獙璇佺爜鐧诲綍锛涘ぇ闄?11 浣嶆墜鏈哄彿鑷姩琛?`+86`銆?- `ARCHITECTURE.md`锛氳褰曟墜鏈洪獙璇佺爜鐧诲綍娴佺▼銆?
+## 楠岃瘉
+- `flutter analyze lib/presentation/blocs/auth/auth_bloc.dart lib/services/supabase_service.dart lib/presentation/pages/auth/login_page.dart` 宸茶繍琛岋紝鏃犵紪璇戦敊璇紱浠嶆湁 12 涓棦鏈?`print` info銆?
+## 椋庨櫓
+- 闇€瑕佸湪 Supabase 鍚庡彴寮€鍚?Phone provider 骞堕厤缃煭淇℃湇鍔★紱鏈満鏈疄闄呭彂閫佺煭淇°€?
+# 2026-05-31 鍏ㄥ眬鎺掗櫎椤圭洰
+
+## 淇敼
+- `lib/services/local_storage_service.dart`锛氭柊澧?`excludedProjectIds` 鎸佷箙鍖栬缃€?- `lib/presentation/blocs/task_new/task_bloc.dart`锛氫换鍔℃ā鍧楀姞杞藉拰杩涘害璁＄畻鍓嶆帓闄よ缃腑鐨勯」鐩€?- `lib/presentation/pages/home/home_page.dart`锛氶椤垫椂闂磋酱婧愭暟鎹帓闄よ缃腑鐨勯」鐩紝褰卞搷鏃堕棿杞淬€佺粺璁°€佸洓璞￠檺銆?- `lib/presentation/pages/home/home_page.dart`锛氶椤甸」鐩瓫閫夊簳灞傜姸鎬佷粠鍗曢」鐩?ID 璋冩暣涓洪」鐩?ID 闆嗗悎锛岀浉鍏宠绠楁寜闆嗗悎杩囨护銆?- `lib/presentation/pages/home/home_page.dart`锛氶椤甸」鐩瓫閫夊鍔犲閫夊脊绐楀叆鍙ｏ紝鍘熶笅鎷変繚鐣欎负蹇€熷崟閫夈€?- `lib/presentation/pages/calendar/calendar_page.dart`锛氭棩鍘嗕换鍔″姞杞芥椂鎺掗櫎璁剧疆涓殑椤圭洰锛涙棩鍘嗛」鐩瓫閫夋敼涓洪」鐩?ID 闆嗗悎锛屽彲鍦ㄨ彍鍗曚腑澶氶€?鍙栨秷椤圭洰銆?- `lib/presentation/pages/tasks/tasks_page.dart`锛欰ppBar 鏂板鈥滄帓闄ら」鐩€濆閫夎缃叆鍙ｃ€?- `lib/presentation/blocs/task_new/task_event.dart`銆乣task_state.dart`銆乣task_bloc.dart`銆乣lib/presentation/pages/tasks/tasks_page.dart`锛氫换鍔℃ā鍧楃瓫閫夌姸鎬佹敮鎸佸椤圭洰闆嗗悎锛屼换鍔￠〉 AppBar 鏂板椤圭洰澶氶€夌瓫閫夊叆鍙ｃ€?- `ARCHITECTURE.md`锛氳褰曞叏灞€鎺掗櫎椤圭洰鏁版嵁娴併€?
+## 楠岃瘉
+- `dart format` 宸叉牸寮忓寲鏈鐩稿叧 Dart 鏂囦欢銆?- `flutter analyze lib/presentation/pages/home/home_page.dart lib/presentation/pages/calendar/calendar_page.dart lib/presentation/blocs/task_new/task_event.dart lib/presentation/blocs/task_new/task_state.dart lib/presentation/blocs/task_new/task_bloc.dart lib/presentation/pages/tasks/tasks_page.dart lib/services/notification_service.dart lib/services/permission_service.dart lib/services/local_storage_service.dart` 宸茶繍琛岋紝鏃犵紪璇戦敊璇紱浠嶆湁 27 涓棦鏈?lint/info/warning銆?
+## 椋庨櫓
+- 棣栭〉鍘熼」鐩笅鎷変粛淇濈暀蹇€熷崟閫夛紝鏃佽竟澶氶€夋寜閽敤浜庡閫夌瓫閫夈€?
+# 2026-05-31 绉诲姩绔拰妗岄潰绔彁閱掗€氱煡
+
+## 淇敼
+- `lib/services/notification_service.dart`锛氱Щ鍔ㄧ璋冨害閫氱煡鍓嶅厹搴曡姹傞€氱煡鏉冮檺鍜?Android 绮剧‘闂归挓鏉冮檺锛沬OS 鍓嶅彴閫氱煡鏄惧紡鍚敤 alert/badge/sound銆?- `lib/services/notification_service.dart`锛歐indows 妗岄潰鎻愰啋鏀逛负 PowerShell MessageBox锛岀敤鎴风偣鍑?OK 鍓嶄笉浼氳嚜鍔ㄦ秷澶便€?- `lib/services/permission_service.dart`锛欰ndroid 棣栨閫氱煡鎺堟潈寮曞鍚屾璇锋眰绮剧‘闂归挓鏉冮檺銆?
+## 楠岃瘉
+- `flutter analyze lib/services/notification_service.dart lib/services/permission_service.dart` 宸茶繍琛岋紝鏃犻棶棰樸€?
+## 椋庨櫓
+- Android 绮剧‘闂归挓鏉冮檺浼氳烦杞郴缁熸巿鏉冮〉锛屼粛闇€鐪熸満纭涓嶅悓鍘傚晢鍚庡彴淇濇椿绛栫暐銆?
+# 2026-06-01 鏂板缓鍒嗙粍鍚庝晶杈规爮涓嶆樉绀?
+## 淇敼
+- `lib/presentation/pages/tasks/widgets/project_sidebar.dart`锛氱┖鐘舵€佸垽鏂敼涓洪」鐩拰鍒嗙粍閮戒负绌烘椂鎵嶆樉绀烘暣浣撶┖鐘舵€侊紝鍏佽鏃犻」鐩殑鍒嗙粍姝ｅ父娓叉煋銆?- `test/project_sidebar_test.dart`锛氭柊澧炲洖褰掓祴璇曪紝瑕嗙洊娌℃湁椤圭洰浣嗗瓨鍦ㄥ垎缁勬椂浠嶅睍绀哄垎缁勫悕绉般€?
+## 楠岃瘉
+- `flutter test test\project_sidebar_test.dart` 閫氳繃銆?- `flutter analyze lib\presentation\pages\tasks\widgets\project_sidebar.dart test\project_sidebar_test.dart` 閫氳繃銆?
+## 椋庨櫓
+- 鏈仛鐪熸満/杩愯鏃舵墜鍔ㄧ偣鍑婚獙璇侊紱鏈浠呰鐩栫粍浠舵覆鏌撲笌闈欐€佸垎鏋愩€?
+# 2026-06-01 椤圭洰渚ф爮鍒嗙粍灞曞紑涓庢帓搴?
+## 淇敼
+- `lib/presentation/pages/tasks/widgets/project_sidebar.dart`锛氬垎缁勫睍寮€鏀逛负鍙楁帶鐘舵€侊紝鏂板鍏ㄩ儴灞曞紑銆佸叏閮ㄦ敹缂┿€佹椂闂存帓搴忔寜閽紱鍒嗙粍鍜岀粍鍐呴」鐩寜 `createdAt` 鎺掑簭銆?- `lib/presentation/pages/tasks/tasks_page.dart`锛氱淮鎶や晶鏍忓垎缁勫睍寮€闆嗗悎锛涙柊寤洪」鐩€夋嫨鍒嗙粍鍚庣珛鍗冲睍寮€璇ュ垎缁勶紱璇诲彇骞朵繚瀛樻帓搴忔柟鍚戙€?- `lib/services/local_storage_service.dart`锛氭柊澧?`projectSidebarTimeSortDesc` 鎸佷箙鍖栭厤缃紝榛樿鍊掑簭銆?- `test/project_sidebar_test.dart`銆乣test/local_storage_service_test.dart`锛氳ˉ鍏呬晶鏍忓睍寮€/鏀剁缉銆佹帓搴忓拰鎸佷箙鍖栨祴璇曘€?- `ARCHITECTURE.md`锛氳褰曢」鐩晶鏍忓垎缁勫睍寮€鍜屾帓搴忕粨鏋勩€?
+## 楠岃瘉
+- `dart format lib\presentation\pages\tasks\widgets\project_sidebar.dart lib\presentation\pages\tasks\tasks_page.dart lib\services\local_storage_service.dart test\project_sidebar_test.dart test\local_storage_service_test.dart` 宸叉墽琛屻€?- `flutter test test\project_sidebar_test.dart test\local_storage_service_test.dart` 閫氳繃銆?
+## 椋庨櫓
+- 鏈仛鐪熸満鎵嬪姩鐐瑰嚮楠岃瘉锛涘綋鍓嶈鐩?widget 琛屼负鍜屾湰鍦板瓨鍌ㄦ寔涔呭寲銆?
+
+# 2026-06-01 日历右键跳转思维导图节点
 ## 修改
-- `lib/services/holiday_service.dart`：`HolidayCountry` 扩展德国、法国、加拿大、澳大利亚、印度。
-- `lib/presentation/pages/calendar/calendar_page.dart`：接入 `HolidayService`，AppBar 新增节假日国家切换；周视图日期头和月视图日期格展示法定节假日、调休补班、普通周末休息日。
-- `lib/services/holiday_service.dart`：中国节日增加本地补充，儿童节等非放假节日使用 `HolidayType.observance` 展示，不参与休息日判断。
-- `lib/presentation/pages/calendar/calendar_page.dart`：`HolidayType.observance` 使用工作日节日样式展示。
-- `ARCHITECTURE.md`：同步记录日历节假日/休息日展示结构。
-
+- `lib/presentation/pages/calendar/calendar_page.dart`：日历任务列表项、单日任务块、多日任务条右键改为触发思维导图跳转回调；单日任务块右键不再直接删除。
+- `lib/presentation/pages/home/home_page.dart`：接收日历跳转任务后切到任务页，并派发带目标任务 ID 的 `LoadTasks`。
+- `lib/presentation/blocs/task_new/task_event.dart`、`task_state.dart`、`task_bloc.dart`：新增聚焦任务请求字段，加载时强制思维导图视图并展开目标任务祖先节点。
+- `lib/presentation/pages/tasks/tasks_page.dart`、`lib/presentation/pages/tasks/widgets/mind_map_view.dart`：透传并消费聚焦请求，居中选中目标节点。
+- `test/task_mindmap_focus_test.dart`：新增聚焦请求字段测试。
 ## 验证
-- `flutter analyze lib/services/holiday_service.dart lib/presentation/pages/calendar/calendar_page.dart` 已运行，无编译错误；仍有 2 个既有 warning。
-
+- `flutter test test/task_mindmap_focus_test.dart` 通过。
+- `flutter analyze lib/presentation/pages/home/home_page.dart lib/presentation/pages/calendar/calendar_page.dart lib/presentation/pages/tasks/tasks_page.dart lib/presentation/pages/tasks/widgets/mind_map_view.dart lib/presentation/blocs/task_new/task_bloc.dart lib/presentation/blocs/task_new/task_event.dart lib/presentation/blocs/task_new/task_state.dart` 无新增编译错误；命令仍因既有 lint/warning 非零。
 ## 风险
-- 外部节假日 API 初次不可用且无缓存时，只能展示本地周末休息日。
-
-# 2026-05-31 移除首页认识引导
-
-## 修改
-- `lib/presentation/pages/home/home_page.dart`：移除首页初始化时自动跳转 `OnboardingPage` 的逻辑，保留通知权限引导。
-- `ARCHITECTURE.md`：记录首页启动引导结构变化。
-
-## 验证
-- `flutter analyze lib/presentation/pages/home/home_page.dart` 已运行，无编译错误；仍有 5 个既有 lint/info。
-
-## 风险
-- `OnboardingPage` 文件仍保留，若其他入口引用不会受本次修改影响。
-
-# 2026-05-31 子任务默认继承父任务项目
-
-## 修改
-- `lib/presentation/pages/tasks/tasks_page.dart`：从任务树/思维导图父节点新增子任务时，默认项目优先取父任务项目。
-- `lib/presentation/pages/tasks/widgets/task_create_sheet.dart`：初始化和切换父任务时同步选中父任务的项目。
-- `ARCHITECTURE.md`：记录子任务创建默认项目逻辑。
-
-## 验证
-- `flutter analyze lib/presentation/pages/tasks/tasks_page.dart lib/presentation/pages/tasks/widgets/task_create_sheet.dart` 已运行，无编译错误；仍有 7 个既有 lint/info。
-
-## 风险
-- 仅覆盖新任务弹窗路径；任务详情页子任务入口此前已传入父任务项目。
-
-# 2026-05-31 移动端首页任务详情资源区适配
-
-## 修改
-- `lib/presentation/pages/home/home_page.dart`：首页 DB 任务详情资源区按宽度切换布局；移动端子任务独占一行，附件和检查项单独组成一行。
-- `ARCHITECTURE.md`：记录首页任务详情移动端资源区布局规则。
-
-## 验证
-- `flutter analyze lib/presentation/pages/home/home_page.dart` 已运行，无编译错误；仍有 5 个既有 lint/info。
-
-## 风险
-- 以 `640px` 作为窄屏阈值，实际设备细节仍需真机确认。
-
-# 2026-05-31 思维导图删除跨端同步
-
-## 修改
-- `lib/data/repositories/task_repository.dart`：远端任务墓石不再被本地活任务无条件拒绝，改为按 `updatedAt` LWW 判断。
-- `lib/services/task_sync_service.dart`：全量同步不再用本地活任务无条件覆盖云端墓石；新增任务同步 `changes` 广播。
-- `lib/presentation/pages/home/home_page.dart`：监听 `TaskSyncService.changes`，远端任务新增/更新/删除后触发 `LoadTasks` 刷新任务页和思维导图。
-- `ARCHITECTURE.md`：记录任务删除跨端同步逻辑。
-
-## 验证
-- `flutter analyze lib/data/repositories/task_repository.dart lib/services/task_sync_service.dart lib/presentation/pages/home/home_page.dart` 已运行，无编译错误；仍有 7 个既有 lint/info/warning。
-
-## 风险
-- 需双端登录同一账号真机验证 Realtime 删除传播；本机仅做静态分析。
-
-# 2026-05-31 手机验证码登录
-
-## 修改
-- `lib/services/supabase_service.dart`：新增手机号发送验证码和短信 OTP 校验封装，使用 Supabase Flutter `signInWithOtp` / `verifyOTP`。
-- `lib/presentation/blocs/auth/auth_event.dart`、`auth_state.dart`、`auth_bloc.dart`：新增手机号验证码请求、校验和已发送状态。
-- `lib/presentation/pages/auth/login_page.dart`：登录页新增邮箱/手机验证码模式切换，手机模式支持获取验证码、输入验证码登录；大陆 11 位手机号自动补 `+86`。
-- `ARCHITECTURE.md`：记录手机验证码登录流程。
-
-## 验证
-- `flutter analyze lib/presentation/blocs/auth/auth_bloc.dart lib/services/supabase_service.dart lib/presentation/pages/auth/login_page.dart` 已运行，无编译错误；仍有 12 个既有 `print` info。
-
-## 风险
-- 需要在 Supabase 后台开启 Phone provider 并配置短信服务；本机未实际发送短信。
-
-# 2026-05-31 全局排除项目
-
-## 修改
-- `lib/services/local_storage_service.dart`：新增 `excludedProjectIds` 持久化设置。
-- `lib/presentation/blocs/task_new/task_bloc.dart`：任务模块加载和进度计算前排除设置中的项目。
-- `lib/presentation/pages/home/home_page.dart`：首页时间轴源数据排除设置中的项目，影响时间轴、统计、四象限。
-- `lib/presentation/pages/home/home_page.dart`：首页项目筛选底层状态从单项目 ID 调整为项目 ID 集合，相关计算按集合过滤。
-- `lib/presentation/pages/home/home_page.dart`：首页项目筛选增加多选弹窗入口，原下拉保留为快速单选。
-- `lib/presentation/pages/calendar/calendar_page.dart`：日历任务加载时排除设置中的项目；日历项目筛选改为项目 ID 集合，可在菜单中多选/取消项目。
-- `lib/presentation/pages/tasks/tasks_page.dart`：AppBar 新增“排除项目”多选设置入口。
-- `lib/presentation/blocs/task_new/task_event.dart`、`task_state.dart`、`task_bloc.dart`、`lib/presentation/pages/tasks/tasks_page.dart`：任务模块筛选状态支持多项目集合，任务页 AppBar 新增项目多选筛选入口。
-- `ARCHITECTURE.md`：记录全局排除项目数据流。
-
-## 验证
-- `dart format` 已格式化本次相关 Dart 文件。
-- `flutter analyze lib/presentation/pages/home/home_page.dart lib/presentation/pages/calendar/calendar_page.dart lib/presentation/blocs/task_new/task_event.dart lib/presentation/blocs/task_new/task_state.dart lib/presentation/blocs/task_new/task_bloc.dart lib/presentation/pages/tasks/tasks_page.dart lib/services/notification_service.dart lib/services/permission_service.dart lib/services/local_storage_service.dart` 已运行，无编译错误；仍有 27 个既有 lint/info/warning。
-
-## 风险
-- 首页原项目下拉仍保留快速单选，旁边多选按钮用于多选筛选。
-
-# 2026-05-31 移动端和桌面端提醒通知
-
-## 修改
-- `lib/services/notification_service.dart`：移动端调度通知前兜底请求通知权限和 Android 精确闹钟权限；iOS 前台通知显式启用 alert/badge/sound。
-- `lib/services/notification_service.dart`：Windows 桌面提醒改为 PowerShell MessageBox，用户点击 OK 前不会自动消失。
-- `lib/services/permission_service.dart`：Android 首次通知授权引导同步请求精确闹钟权限。
-
-## 验证
-- `flutter analyze lib/services/notification_service.dart lib/services/permission_service.dart` 已运行，无问题。
-
-## 风险
-- Android 精确闹钟权限会跳转系统授权页，仍需真机确认不同厂商后台保活策略。
+- 未做真机/桌面手动右键验收；当前仅完成静态分析和字段级测试。

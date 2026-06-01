@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/utils/snackbar_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
 import '../../../services/subtask_scheduler.dart';
@@ -13,6 +14,7 @@ import 'widgets/task_list_view.dart';
 import 'widgets/mind_map_view.dart';
 import 'widgets/task_create_sheet.dart';
 import 'task_detail/task_detail_page.dart';
+import '../../widgets/calendar_date_picker.dart';
 
 class TasksPage extends StatefulWidget {
   const TasksPage({super.key});
@@ -25,25 +27,83 @@ class _TasksPageState extends State<TasksPage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _storage = LocalStorageService();
   Set<String> _excludedProjectIds = {};
+  Set<String> _expandedProjectGroupIds = {};
+  Set<String> _knownProjectGroupIds = {};
+  bool _projectSidebarSortDescending = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadExcludedProjectIds();
+      _loadProjectSidebarPrefs();
       context.read<TaskNewBloc>().add(LoadTasks());
     });
   }
 
-  Future<void> _loadExcludedProjectIds() async {
+  Future<void> _loadProjectSidebarPrefs() async {
     await _storage.init();
     if (!mounted) return;
-    setState(() => _excludedProjectIds = _storage.excludedProjectIds);
+    setState(() {
+      _excludedProjectIds = _storage.excludedProjectIds;
+      _projectSidebarSortDescending = _storage.projectSidebarTimeSortDesc;
+    });
+  }
+
+  void _syncProjectGroupExpansion(List<ProjectGroup> groups) {
+    final groupIds = groups.map((g) => g.id).toSet();
+    final addedGroupIds = groupIds.difference(_knownProjectGroupIds);
+    final removedGroupIds = _knownProjectGroupIds.difference(groupIds);
+    if (addedGroupIds.isEmpty && removedGroupIds.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _knownProjectGroupIds = groupIds;
+        _expandedProjectGroupIds = {
+          ..._expandedProjectGroupIds.difference(removedGroupIds),
+          ...addedGroupIds,
+        };
+      });
+    });
+  }
+
+  void _toggleProjectGroupExpanded(String groupId, bool expanded) {
+    setState(() {
+      if (expanded) {
+        _expandedProjectGroupIds = {..._expandedProjectGroupIds, groupId};
+      } else {
+        _expandedProjectGroupIds = {..._expandedProjectGroupIds}
+          ..remove(groupId);
+      }
+    });
+  }
+
+  void _expandAllProjectGroups(List<ProjectGroup> groups) {
+    setState(() {
+      _expandedProjectGroupIds = groups.map((g) => g.id).toSet();
+      _knownProjectGroupIds = _expandedProjectGroupIds;
+    });
+  }
+
+  void _collapseAllProjectGroups() {
+    setState(() => _expandedProjectGroupIds = {});
+  }
+
+  Future<void> _toggleProjectSidebarSortDirection() async {
+    final next = !_projectSidebarSortDescending;
+    setState(() => _projectSidebarSortDescending = next);
+    await _storage.init();
+    await _storage.setProjectSidebarTimeSortDesc(next);
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<TaskNewBloc, TaskNewState>(
+    return BlocConsumer<TaskNewBloc, TaskNewState>(
+      listener: (context, state) {
+        if (state is TaskNewLoaded && state.syncRollbackMessage != null) {
+          showAppSnackBar(context, state.syncRollbackMessage!);
+        }
+      },
       builder: (context, state) {
         if (state is TaskNewLoading) {
           return const Scaffold(
@@ -76,6 +136,7 @@ class _TasksPageState extends State<TasksPage> {
         }
 
         if (state is TaskNewLoaded) {
+          _syncProjectGroupExpansion(state.groups);
           final projectNames = <String, String>{
             for (final p in state.projects) p.id: p.name,
           };
@@ -122,6 +183,12 @@ class _TasksPageState extends State<TasksPage> {
               selectedFilter: selectedFilter,
               projectProgress: state.projectProgress,
               groupProgress: state.groupProgress,
+              expandedGroupIds: _expandedProjectGroupIds,
+              sortDescending: _projectSidebarSortDescending,
+              onToggleGroupExpanded: _toggleProjectGroupExpanded,
+              onExpandAllGroups: () => _expandAllProjectGroups(state.groups),
+              onCollapseAllGroups: _collapseAllProjectGroups,
+              onToggleSortDirection: _toggleProjectSidebarSortDirection,
               onCreateGroup: () => _showCreateGroupDialog(context),
               onEditGroup: (g) => _showEditGroupDialog(context, g),
               onDeleteGroup: (g) => _confirmDeleteGroup(context, g),
@@ -148,6 +215,8 @@ class _TasksPageState extends State<TasksPage> {
                     taskProgress: state.taskProgress,
                     selectedFilter: selectedFilter,
                     selectedProjectId: state.selectedProjectId,
+                    focusTaskId: state.focusTaskId,
+                    focusRequestToken: state.focusRequestToken,
                     expandedIds: state.expandedNodes['main_tree'] ?? {},
                     onTaskTap: (id) => _openTaskDetail(id, state),
                     onTaskToggle: (id) => context.read<TaskNewBloc>().add(
@@ -158,12 +227,10 @@ class _TasksPageState extends State<TasksPage> {
                       ToggleTaskExpand(taskId: id),
                     ),
                     onMoveToParent: (taskId, newParentId) =>
-                        context.read<TaskNewBloc>().add(
-                          MoveTaskToParent(
-                            taskId: taskId,
-                            newParentId: newParentId,
-                            projectId: state.selectedProjectId,
-                          ),
+                        _handleMoveToParent(
+                          taskId,
+                          newParentId,
+                          state.selectedProjectId,
                         ),
                     onAddSubtask: (parentId) =>
                         _showCreateTaskSheet(context, parentId: parentId),
@@ -184,12 +251,10 @@ class _TasksPageState extends State<TasksPage> {
                       ToggleTaskExpand(taskId: id),
                     ),
                     onMoveToParent: (taskId, newParentId) =>
-                        context.read<TaskNewBloc>().add(
-                          MoveTaskToParent(
-                            taskId: taskId,
-                            newParentId: newParentId,
-                            projectId: state.selectedProjectId,
-                          ),
+                        _handleMoveToParent(
+                          taskId,
+                          newParentId,
+                          state.selectedProjectId,
                         ),
                   ),
             floatingActionButton: FloatingActionButton(
@@ -498,8 +563,8 @@ class _TasksPageState extends State<TasksPage> {
           ),
           TextButton(
             onPressed: () {
-              context.read<TaskNewBloc>().add(DeleteTask(id: id));
               Navigator.pop(context);
+              _doDeleteAndCheckParent(id);
             },
             style: TextButton.styleFrom(foregroundColor: AppTheme.error),
             child: const Text('删除'),
@@ -509,9 +574,200 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
+  /// 删除任务并检查其父节点是否因此变为叶节点，若是则提示修改时间。
+  Future<void> _doDeleteAndCheckParent(String id) async {
+    final s = context.read<TaskNewBloc>().state;
+    if (s is! TaskNewLoaded) {
+      context.read<TaskNewBloc>().add(DeleteTask(id: id));
+      return;
+    }
+    final child = s.tasks.where((t) => t.id == id).firstOrNull;
+    final parentId = child?.parentId;
+    Task? parentTask;
+    if (parentId != null) {
+      final remainingSiblings = s.tasks
+          .where((t) => t.parentId == parentId && t.id != id)
+          .toList();
+      if (remainingSiblings.isEmpty) {
+        parentTask = s.tasks.where((t) => t.id == parentId).firstOrNull;
+      }
+    }
+    context.read<TaskNewBloc>().add(DeleteTask(id: id));
+    if (parentTask != null && mounted) {
+      await _promptParentTimeEdit(parentTask);
+    }
+  }
+
+  /// 移动/断开子任务并检查旧父节点是否因此变为叶节点，若是则提示修改时间。
+  Future<void> _handleMoveToParent(
+    String taskId,
+    String? newParentId,
+    String? projectId,
+  ) async {
+    final s = context.read<TaskNewBloc>().state;
+    Task? oldParentTask;
+    if (newParentId == null && s is TaskNewLoaded) {
+      // 断开连接：检查旧父节点是否变为叶节点
+      final child = s.tasks.where((t) => t.id == taskId).firstOrNull;
+      final oldParentId = child?.parentId;
+      if (oldParentId != null) {
+        final remaining = s.tasks
+            .where((t) => t.parentId == oldParentId && t.id != taskId)
+            .toList();
+        if (remaining.isEmpty) {
+          oldParentTask = s.tasks.where((t) => t.id == oldParentId).firstOrNull;
+        }
+      }
+    }
+    context.read<TaskNewBloc>().add(
+      MoveTaskToParent(
+        taskId: taskId,
+        newParentId: newParentId,
+        projectId: projectId,
+      ),
+    );
+    if (oldParentTask != null && mounted) {
+      await _promptParentTimeEdit(oldParentTask);
+    }
+  }
+
+  /// 弹出提示：父节点已无子任务，询问是否修改其时间范围。
+  Future<void> _promptParentTimeEdit(Task parent) async {
+    if (!mounted) return;
+    final shouldEdit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('父节点已无子任务'),
+        content: Text('「${parent.title}」的子任务已全部移除，是否修改其时间范围？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('跳过'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('修改时间'),
+          ),
+        ],
+      ),
+    );
+    if (shouldEdit == true && mounted) {
+      await _editParentTime(parent);
+    }
+  }
+
+  /// 弹出开始/结束时间选择框，直接更新父任务时间。
+  Future<void> _editParentTime(Task parent) async {
+    if (!mounted) return;
+    final now = DateTime.now();
+    DateTime startDate = parent.startDate != null
+        ? DateTime.fromMillisecondsSinceEpoch(parent.startDate!)
+        : now;
+    DateTime dueDate = parent.dueDate != null
+        ? DateTime.fromMillisecondsSinceEpoch(parent.dueDate!)
+        : now.add(const Duration(hours: 1));
+
+    // 用 StatefulBuilder 在 AlertDialog 内显示当前选中值并可二次修改
+    final result = await showDialog<({DateTime start, DateTime due})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          String fmt(DateTime d) {
+            final today = DateTime(now.year, now.month, now.day);
+            final target = DateTime(d.year, d.month, d.day);
+            final time =
+                '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+            if (target == today) return '今天 $time';
+            if (target == today.add(const Duration(days: 1))) return '明天 $time';
+            return '${d.month}/${d.day} $time';
+          }
+
+          return AlertDialog(
+            title: Text('修改「${parent.title}」时间'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.play_arrow_rounded, size: 18),
+                  title: const Text('开始时间', style: TextStyle(fontSize: 13)),
+                  trailing: TextButton(
+                    onPressed: () async {
+                      final picked = await showCalendarDatePicker(
+                        context: ctx,
+                        initialDate: startDate,
+                        firstDate: now.subtract(const Duration(days: 365)),
+                        lastDate: now.add(const Duration(days: 365 * 2)),
+                        title: '选择开始时间',
+                      );
+                      if (picked != null) setLocal(() => startDate = picked);
+                    },
+                    child: Text(
+                      fmt(startDate),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.stop_rounded, size: 18),
+                  title: const Text('结束时间', style: TextStyle(fontSize: 13)),
+                  trailing: TextButton(
+                    onPressed: () async {
+                      final picked = await showCalendarDatePicker(
+                        context: ctx,
+                        initialDate: dueDate,
+                        firstDate: now.subtract(const Duration(days: 365)),
+                        lastDate: now.add(const Duration(days: 365 * 2)),
+                        title: '选择结束时间',
+                      );
+                      if (picked != null) setLocal(() => dueDate = picked);
+                    },
+                    child: Text(
+                      fmt(dueDate),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(ctx, (start: startDate, due: dueDate)),
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result != null && mounted) {
+      context.read<TaskNewBloc>().add(
+        UpdateTask(
+          id: parent.id,
+          startDate: result.start.millisecondsSinceEpoch,
+          dueDate: result.due.millisecondsSinceEpoch,
+        ),
+      );
+    }
+  }
+
   Future<void> _showCreateProjectDialog(BuildContext context) async {
     final controller = TextEditingController();
-    final blocState = context.read<TaskNewBloc>().state;
+    final taskBloc = context.read<TaskNewBloc>();
+    final blocState = taskBloc.state;
     final groups = blocState is TaskNewLoaded
         ? blocState.groups
         : const <ProjectGroup>[];
@@ -575,9 +831,14 @@ class _TasksPageState extends State<TasksPage> {
       ),
     );
     if (result != null) {
-      context.read<TaskNewBloc>().add(
-        CreateProject(name: result.name, groupId: result.groupId),
-      );
+      final groupId = result.groupId;
+      if (groupId != null) {
+        setState(() {
+          _expandedProjectGroupIds = {..._expandedProjectGroupIds, groupId};
+          _knownProjectGroupIds = {..._knownProjectGroupIds, groupId};
+        });
+      }
+      taskBloc.add(CreateProject(name: result.name, groupId: result.groupId));
     }
   }
 

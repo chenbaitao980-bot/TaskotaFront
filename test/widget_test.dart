@@ -41,16 +41,18 @@ void main() {
   testWidgets('shows login page when unauthenticated', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(MyApp(
-      database: database,
-      projectRepository: projectRepository,
-      projectGroupRepository: projectGroupRepository,
-      taskRepository: taskRepository,
-      checklistRepository: checklistRepository,
-    ));
+    await tester.pumpWidget(
+      MyApp(
+        database: database,
+        projectRepository: projectRepository,
+        projectGroupRepository: projectGroupRepository,
+        taskRepository: taskRepository,
+        checklistRepository: checklistRepository,
+      ),
+    );
     await tester.pump();
 
-    expect(find.text('智能小管家'), findsOneWidget);
+    expect(find.text('智能小助手'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
     expect(find.text('立即注册'), findsOneWidget);
   });

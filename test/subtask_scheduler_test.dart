@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_assistant/data/database/app_database.dart';
+import 'package:smart_assistant/presentation/pages/tasks/widgets/task_create_sheet.dart';
 import 'package:smart_assistant/services/subtask_scheduler.dart';
 
 void main() {
@@ -72,12 +73,87 @@ void main() {
     expect(shifts.first.start, DateTime(2026, 6, 1, 9));
     expect(shifts.first.end, DateTime(2026, 6, 1, 10));
   });
+
+  test('task create timing filter excludes parent and root tasks', () {
+    final tasks = [
+      _task(
+        'parent',
+        start: DateTime(2026, 6, 1, 9),
+        end: DateTime(2026, 6, 5, 18),
+      ),
+      _task(
+        'root',
+        start: DateTime(2026, 6, 1, 9),
+        end: DateTime(2026, 6, 1, 10),
+      ),
+      _task(
+        'subtask',
+        parentId: 'other-parent',
+        start: DateTime(2026, 6, 1, 10),
+        end: DateTime(2026, 6, 1, 11),
+      ),
+    ];
+
+    final occupants = tasks
+        .where(
+          (task) => isSubtaskTimingOccupantForTaskCreateSheet(
+            task,
+            parentTaskId: 'parent',
+          ),
+        )
+        .map((task) => task.id);
+
+    expect(occupants, ['subtask']);
+  });
+
+  test('autoInsert only shifts filtered subtasks, not parent day ranges', () {
+    final tasks = [
+      _task(
+        'parent',
+        start: DateTime(2026, 6, 1, 9),
+        end: DateTime(2026, 6, 5, 18),
+      ),
+      _task(
+        'other-subtask',
+        parentId: 'other-parent',
+        start: DateTime(2026, 6, 1, 9),
+        end: DateTime(2026, 6, 1, 10),
+      ),
+    ];
+    final occupants = tasks
+        .where(
+          (task) => isSubtaskTimingOccupantForTaskCreateSheet(
+            task,
+            parentTaskId: 'parent',
+          ),
+        )
+        .toList();
+    final scheduler = SubtaskScheduler(
+      existingTasks: occupants,
+      skipWeekends: false,
+    );
+
+    final shifts = scheduler.autoInsert(
+      insertStart: DateTime(2026, 6, 1, 9),
+      insertEnd: DateTime(2026, 6, 1, 10),
+    );
+
+    expect(shifts.map((shift) => shift.taskId), ['other-subtask']);
+    expect(shifts.first.start, DateTime(2026, 6, 1, 10, 15));
+    expect(shifts.first.end, DateTime(2026, 6, 1, 11, 15));
+  });
 }
 
-Task _task(String id, {required DateTime start, required DateTime end}) {
+Task _task(
+  String id, {
+  String? parentId,
+  required DateTime start,
+  required DateTime end,
+}) {
   return Task(
     id: id,
     projectId: 'project',
+    parentId: parentId,
     title: id,
     description: '',
     priority: 0,

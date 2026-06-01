@@ -46,7 +46,8 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
   void initState() {
     super.initState();
     _parentTaskId = widget.initialParentId;
-    _selectedProjectId = widget.initialProjectId ?? _projectIdOfParent(_parentTaskId);
+    _selectedProjectId =
+        widget.initialProjectId ?? _projectIdOfParent(_parentTaskId);
     if (widget.initialStartDateMillis != null) {
       _startDate = DateTime.fromMillisecondsSinceEpoch(
         widget.initialStartDateMillis!,
@@ -378,15 +379,28 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     });
   }
 
+  /// 跨天任务（start/end 不在同一日历日）不参与冲突校验和占用计算。
+  static bool _isMultiDay(Task t) {
+    if (t.startDate == null || t.dueDate == null) return false;
+    final s = DateTime.fromMillisecondsSinceEpoch(t.startDate!);
+    final e = DateTime.fromMillisecondsSinceEpoch(t.dueDate!);
+    return !(s.year == e.year && s.month == e.month && s.day == e.day);
+  }
+
+  bool _isSubtaskTimingOccupant(Task t) {
+    return isSubtaskTimingOccupantForTaskCreateSheet(
+      t,
+      parentTaskId: _parentTaskId,
+    );
+  }
+
   /// 检测 [newStart, newEnd) 与已有任务的时间重叠，返回首个冲突信息。
   Future<_ConflictInfo?> _checkConflict(
     DateTime newStart,
     DateTime newEnd,
   ) async {
     final all = await widget.taskRepository!.getAll();
-    for (final t in all) {
-      if (t.startDate == null || t.dueDate == null) continue;
-      if (t.status == 2) continue; // 已完成跳过
+    for (final t in all.where(_isSubtaskTimingOccupant)) {
       final s = DateTime.fromMillisecondsSinceEpoch(t.startDate!);
       final e = DateTime.fromMillisecondsSinceEpoch(t.dueDate!);
       if (s.isBefore(newEnd) && e.isAfter(newStart)) {
@@ -442,7 +456,11 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
   ) async {
     final duration = end.difference(start).inMinutes.clamp(1, 480);
     final all = await widget.taskRepository!.getAll();
-    final scheduler = SubtaskScheduler(existingTasks: all, skipWeekends: false);
+    final occupants = all.where(_isSubtaskTimingOccupant).toList();
+    final scheduler = SubtaskScheduler(
+      existingTasks: occupants,
+      skipWeekends: false,
+    );
     final slots = scheduler.scheduleLeaves([
       LeafToSchedule(taskId: 'tmp', minutes: duration),
     ], from: from);
@@ -454,12 +472,25 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     DateTime end,
   ) async {
     final all = await widget.taskRepository!.getAll();
-    final scheduler = SubtaskScheduler(existingTasks: all, skipWeekends: false);
+    final scheduler = SubtaskScheduler(
+      existingTasks: all.where(_isSubtaskTimingOccupant).toList(),
+      skipWeekends: false,
+    );
     return scheduler.autoInsert(insertStart: start, insertEnd: end);
   }
 }
 
 enum _ConflictChoice { cancel, parallel, autoDelay, autoInsert }
+
+@visibleForTesting
+bool isSubtaskTimingOccupantForTaskCreateSheet(Task t, {String? parentTaskId}) {
+  if (t.startDate == null || t.dueDate == null) return false;
+  if (t.status == 2 || t.deleted != 0) return false;
+  if (t.id == parentTaskId) return false;
+  if (t.parentId == null) return false;
+  if (_TaskCreateSheetState._isMultiDay(t)) return false;
+  return true;
+}
 
 class _ConflictInfo {
   final String title;

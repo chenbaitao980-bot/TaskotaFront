@@ -19,7 +19,9 @@ import '../tasks/task_detail/task_detail_page.dart';
 import '../tasks/widgets/task_create_sheet.dart';
 
 class CalendarPage extends StatefulWidget {
-  const CalendarPage({super.key});
+  final ValueChanged<Task>? onJumpToMindMap;
+
+  const CalendarPage({super.key, this.onJumpToMindMap});
 
   @override
   State<CalendarPage> createState() => _CalendarPageState();
@@ -44,6 +46,7 @@ class _CalendarPageState extends State<CalendarPage> {
   final GlobalKey _timelineListenerKey = GlobalKey();
   double _dragOffset = 0;
   double _cachedDayWidth = 100;
+  bool _isMultiDayLaneCollapsed = false;
 
   List<Task> _allTasks = [];
   List<Project> _allProjects = [];
@@ -433,6 +436,10 @@ class _CalendarPageState extends State<CalendarPage> {
       ),
     );
     _reloadData();
+  }
+
+  void _jumpToMindMap(Task task) {
+    widget.onJumpToMindMap?.call(task);
   }
 
   Future<void> _toggleTaskStatus(Task task) async {
@@ -1012,12 +1019,14 @@ class _CalendarPageState extends State<CalendarPage> {
                     final task = dayTasks[index];
                     final isCompleted = task.status == 2;
                     final parentLabel = _parentLabel(task);
-                    return Card(
-                      color: isCompleted
-                          ? Colors.grey.shade100
-                          : Theme.of(context).cardColor,
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      child: ListTile(
+                    return GestureDetector(
+                      onSecondaryTap: () => _jumpToMindMap(task),
+                      child: Card(
+                        color: isCompleted
+                            ? Colors.grey.shade100
+                            : Theme.of(context).cardColor,
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        child: ListTile(
                         leading: Checkbox(
                           value: isCompleted,
                           onChanged: (checked) => _toggleTaskStatus(task),
@@ -1097,6 +1106,7 @@ class _CalendarPageState extends State<CalendarPage> {
                           ],
                         ),
                       ),
+                    ),
                     );
                   },
                 ),
@@ -1517,6 +1527,36 @@ class _CalendarPageState extends State<CalendarPage> {
     final contentHeight = sorted.length * laneHeight;
     final visibleHeight = visibleLanes * laneHeight;
 
+    if (_isMultiDayLaneCollapsed) {
+      return Container(
+        height: laneHeight,
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: _timeColumnWidth),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() => _isMultiDayLaneCollapsed = false);
+                  },
+                  icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+                  label: Text('展开 · ${sorted.length} 条跨天任务'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       height: visibleHeight,
       decoration: BoxDecoration(
@@ -1526,25 +1566,53 @@ class _CalendarPageState extends State<CalendarPage> {
         children: [
           const SizedBox(width: _timeColumnWidth),
           Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: SizedBox(
-                width: dayWidth * _displayDayCount,
-                height: contentHeight,
-                child: Stack(
-                  children: [
-                    for (var i = 0; i < sorted.length; i++)
-                      _buildMultiDayBar(
-                        sorted[i],
-                        i,
-                        weekStart,
-                        weekEnd,
-                        dayWidth,
-                        laneHeight,
-                      ),
-                  ],
+            child: Stack(
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: SizedBox(
+                    width: dayWidth * _displayDayCount,
+                    height: contentHeight,
+                    child: Stack(
+                      children: [
+                        for (var i = 0; i < sorted.length; i++)
+                          _buildMultiDayBar(
+                            sorted[i],
+                            i,
+                            weekStart,
+                            weekEnd,
+                            dayWidth,
+                            laneHeight,
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  right: 2,
+                  top: 2,
+                  child: Tooltip(
+                    message: '折叠跨天任务',
+                    child: Material(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surface.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          setState(() => _isMultiDayLaneCollapsed = true);
+                        },
+                        child: const SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: Icon(Icons.keyboard_arrow_up, size: 18),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1594,6 +1662,7 @@ class _CalendarPageState extends State<CalendarPage> {
         dayWidth: dayWidth,
         laneHeight: laneHeight,
         onTap: () => _openTaskDetail(task),
+        onSecondaryTap: () => _jumpToMindMap(task),
         onToggle: () => _toggleTaskStatus(task),
         onMoveDay: (deltaDays) {
           final newStart = s.add(Duration(days: deltaDays));
@@ -1749,6 +1818,7 @@ class _CalendarPageState extends State<CalendarPage> {
         }
       },
       onToggle: () => _toggleTaskStatus(task),
+      onSecondaryTap: () => _jumpToMindMap(task),
       onDelete: () => _deleteTask(task),
       onMove: (target) => _moveTask(task, target),
       onResizeStart: (target) => _resizeTaskStart(task, target),
@@ -1835,6 +1905,7 @@ class _ResizableTaskBlock extends StatefulWidget {
   final String Function(DateTime) timeLabel;
   final String? parentLabel;
   final VoidCallback onOpenDetail;
+  final VoidCallback onSecondaryTap;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
   final void Function(DateTime target) onMove;
@@ -1855,6 +1926,7 @@ class _ResizableTaskBlock extends StatefulWidget {
     required this.timeLabel,
     required this.parentLabel,
     required this.onOpenDetail,
+    required this.onSecondaryTap,
     required this.onToggle,
     required this.onDelete,
     required this.onMove,
@@ -1921,7 +1993,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: w.onOpenDetail,
-                onSecondaryTap: w.onDelete,
+                onSecondaryTap: w.onSecondaryTap,
                 onLongPress: _isMobile && !w.isEditMode
                     ? () => w.onEditModeChanged(true)
                     : null,
@@ -2199,6 +2271,7 @@ class _EditableMultiDayBar extends StatefulWidget {
   final double dayWidth;
   final double laneHeight;
   final VoidCallback onTap;
+  final VoidCallback onSecondaryTap;
   final VoidCallback onToggle;
   final void Function(int deltaDays) onMoveDay;
   final void Function(int deltaDays) onResizeStartDay;
@@ -2211,6 +2284,7 @@ class _EditableMultiDayBar extends StatefulWidget {
     required this.dayWidth,
     required this.laneHeight,
     required this.onTap,
+    required this.onSecondaryTap,
     required this.onToggle,
     required this.onMoveDay,
     required this.onResizeStartDay,
@@ -2247,6 +2321,7 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: w.onTap,
+              onSecondaryTap: w.onSecondaryTap,
               onPanStart: (_) {
                 setState(() => _moveDeltaX = 0);
               },

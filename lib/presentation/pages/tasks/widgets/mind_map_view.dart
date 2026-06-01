@@ -46,6 +46,8 @@ class MindMapView extends StatefulWidget {
   final Map<String, int> taskProgress;
   final String? selectedFilter;
   final String? selectedProjectId;
+  final String? focusTaskId;
+  final int? focusRequestToken;
   final Set<String> expandedIds;
   final String userId;
   final void Function(String id) onTaskTap;
@@ -63,6 +65,8 @@ class MindMapView extends StatefulWidget {
     this.taskProgress = const {},
     this.selectedFilter,
     this.selectedProjectId,
+    this.focusTaskId,
+    this.focusRequestToken,
     this.expandedIds = const {},
     required this.userId,
     required this.onTaskTap,
@@ -98,6 +102,10 @@ class _MindMapViewState extends State<MindMapView> {
   // 空白处点击取消框选：记录背景按下位置，区分点击与平移
   Offset? _bgPointerDownPos;
 
+  // ─── 节点连线模式 ───
+  String? _connectingFromId;
+  Offset? _connectingEndPos;
+
   // ─── 布局缓存 ───
   List<_LayoutNode> _cachedPendingNodes = [];
   List<_ConnectorLine> _cachedPendingLines = [];
@@ -106,6 +114,7 @@ class _MindMapViewState extends State<MindMapView> {
   // ─── 每个 pending 节点一个稳定的 ValueNotifier（创建时即分配，拖拽期间不重建） ───
   final Map<String, ValueNotifier<Offset>> _positionNotifiers = {};
   final Set<String> _draggedIds = {};
+  int? _handledFocusRequestToken;
 
   String get _storageKey => 'mindmap_offsets_${widget.userId}';
 
@@ -236,6 +245,9 @@ class _MindMapViewState extends State<MindMapView> {
         _selectedIds.clear();
         _isSelecting = false;
         _selectionRect = null;
+        _connectingFromId = null;
+        _connectingEndPos = null;
+        if (_nodeDragging) _nodeDragging = false;
         setState(() {});
         return true;
       }
@@ -468,6 +480,40 @@ class _MindMapViewState extends State<MindMapView> {
     return Size(maxX + _kCanvasPadding * 2 + 300, maxY + _kCanvasPadding * 2 + 300);
   }
 
+  void _centerLayoutNode(_LayoutNode node, Size viewportSize) {
+    final nodePosition = _positionNotifiers[node.task.id]?.value ??
+        Offset(node.x, node.y);
+    final targetCenter = nodePosition +
+        const Offset(_kCanvasShift, _kCanvasShift) +
+        const Offset(_kNodeWidth / 2, _kNodeHeight / 2);
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    final next = Matrix4.copy(_transformController.value)
+      ..setTranslationRaw(
+        viewportSize.width / 2 - targetCenter.dx * scale,
+        viewportSize.height / 2 - targetCenter.dy * scale,
+        0,
+      );
+    _transformController.value = next;
+  }
+
+  void _focusTask(String taskId, Size viewportSize) {
+    final target = _cachedPendingNodes
+        .where((node) => node.task.id == taskId)
+        .firstOrNull;
+    if (target == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未找到可见的思维导图节点')),
+      );
+      return;
+    }
+    _centerLayoutNode(target, viewportSize);
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..add(taskId);
+    });
+  }
+
   void _focusNearestTask(Size viewportSize) {
     final now = DateTime.now().millisecondsSinceEpoch;
     _LayoutNode? nearest;
@@ -490,19 +536,64 @@ class _MindMapViewState extends State<MindMapView> {
       return;
     }
 
-    final nodePosition = _positionNotifiers[nearest.task.id]?.value ??
-        Offset(nearest.x, nearest.y);
-    final targetCenter = nodePosition +
-        const Offset(_kCanvasShift, _kCanvasShift) +
-        const Offset(_kNodeWidth / 2, _kNodeHeight / 2);
-    final scale = _transformController.value.getMaxScaleOnAxis();
-    final next = Matrix4.copy(_transformController.value)
-      ..setTranslationRaw(
-        viewportSize.width / 2 - targetCenter.dx * scale,
-        viewportSize.height / 2 - targetCenter.dy * scale,
-        0,
-      );
-    _transformController.value = next;
+    _centerLayoutNode(nearest, viewportSize);
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..add(nearest!.task.id);
+    });
+  }
+
+  // ─── 右键点击连线删除 ───
+  void _handleLineRightClick(
+      BuildContext context, Offset nodeSpacePos, Offset globalPos) {
+    final posMap = _buildPendingPositionMap();
+
+    _ConnectorLine? nearest;
+    double nearestDist = 24.0;
+
+    for (final line in _cachedPendingLines) {
+      final parentPos = posMap[line.parentId];
+      final childPos = posMap[line.childId];
+      if (parentPos == null || childPos == null) continue;
+
+      final startX = parentPos.dx + _kNodeWidth;
+      final startY = parentPos.dy + _kNodeHeight / 2;
+      final endX = childPos.dx;
+      final endY = childPos.dy + _kNodeHeight / 2;
+      final midX = (startX + endX) / 2;
+      final midY = (startY + endY) / 2;
+
+      final dist = (nodeSpacePos - Offset(midX, midY)).distance;
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = line;
+      }
+    }
+
+    if (nearest == null) return;
+    final found = nearest;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+          globalPos.dx, globalPos.dy, globalPos.dx, globalPos.dy),
+      items: [
+        const PopupMenuItem(
+          value: 'disconnect',
+          child: Row(
+            children: [
+              Icon(Icons.link_off, size: 18, color: Colors.red),
+              SizedBox(width: 8),
+              Text('断开连接', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'disconnect') {
+        widget.onMoveToParent(found.childId, null);
+      }
+    });
   }
 
   @override
@@ -564,7 +655,10 @@ class _MindMapViewState extends State<MindMapView> {
           onDragEnd: _freeDragMode
               ? (_) {
                   _saveOffsets();
-                  if (_nodeDragging) setState(() => _nodeDragging = false);
+                  // 连线模式期间保持 _nodeDragging=true，不重置
+                  if (_nodeDragging && _connectingFromId == null) {
+                    setState(() => _nodeDragging = false);
+                  }
                 }
               : null,
           onTap: () => widget.onTaskTap(node.task.id),
@@ -575,6 +669,48 @@ class _MindMapViewState extends State<MindMapView> {
               : null,
           onMoveToParent: widget.onMoveToParent,
           onAddSubtask: () => widget.onAddSubtask(node.task.id),
+          onConnectStart: (id) {
+            setState(() {
+              _connectingFromId = id;
+              _connectingEndPos = null;
+              _nodeDragging = true;
+            });
+          },
+          onConnectUpdate: (id, localPos) {
+            final nodePos = _positionNotifiers[id]?.value;
+            if (nodePos == null) return;
+            setState(() {
+              _connectingEndPos = Offset(
+                nodePos.dx + (_kNodeWidth - 2) + localPos.dx,
+                nodePos.dy + (_kNodeHeight / 2 - 14) + localPos.dy,
+              );
+            });
+          },
+          onConnectEnd: (id, localPos) {
+            final nodePos = _positionNotifiers[id]?.value;
+            if (nodePos != null) {
+              final canvasPos = Offset(
+                nodePos.dx + (_kNodeWidth - 2) + localPos.dx,
+                nodePos.dy + (_kNodeHeight / 2 - 14) + localPos.dy,
+              );
+              final targetId = _hitTestNode(canvasPos);
+              if (targetId != null && targetId != id) {
+                widget.onMoveToParent(targetId, id);
+              }
+            }
+            setState(() {
+              _connectingFromId = null;
+              _connectingEndPos = null;
+              _nodeDragging = false;
+            });
+          },
+          onConnectCancel: () {
+            setState(() {
+              _connectingFromId = null;
+              _connectingEndPos = null;
+              _nodeDragging = false;
+            });
+          },
           allTasks: widget.tasks,
           isSelected: _selectedIds.contains(node.task.id),
         ),
@@ -598,7 +734,30 @@ class _MindMapViewState extends State<MindMapView> {
           final shiftedPositions = effectivePositions
               .map((k, v) => MapEntry(k, v + const Offset(_kCanvasShift, _kCanvasShift)));
 
-          return SizedBox(
+          // 橡皮筋连线端点（shifted 坐标系）
+          Offset? cFrom;
+          Offset? cTo;
+          if (_connectingFromId != null) {
+            final fp = effectivePositions[_connectingFromId];
+            if (fp != null) {
+              cFrom = Offset(
+                fp.dx + _kNodeWidth + _kCanvasShift,
+                fp.dy + _kNodeHeight / 2 + _kCanvasShift,
+              );
+            }
+            if (_connectingEndPos != null) {
+              cTo = _connectingEndPos! + const Offset(_kCanvasShift, _kCanvasShift);
+            }
+          }
+
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onSecondaryTapUp: (details) {
+              final nodePos = details.localPosition -
+                  const Offset(_kCanvasShift, _kCanvasShift);
+              _handleLineRightClick(context, nodePos, details.globalPosition);
+            },
+            child: SizedBox(
             width: _kCanvasSize,
             height: _kCanvasSize,
             child: Stack(
@@ -608,7 +767,11 @@ class _MindMapViewState extends State<MindMapView> {
                 CustomPaint(
                   size: const Size(_kCanvasSize, _kCanvasSize),
                   painter: _MindMapLinesPainter(
-                      lines: lines, nodePositions: shiftedPositions),
+                    lines: lines,
+                    nodePositions: shiftedPositions,
+                    connectingFrom: cFrom,
+                    connectingTo: cTo,
+                  ),
                 ),
                 if (_isSelecting && _selectionRect != null)
                   Positioned.fill(
@@ -659,7 +822,8 @@ class _MindMapViewState extends State<MindMapView> {
                 ),
               ],
             ),
-          );
+          ), // SizedBox
+          ); // GestureDetector
         },
       );
     }
@@ -689,6 +853,16 @@ class _MindMapViewState extends State<MindMapView> {
       builder: (context, constraints) {
         final viewportSize =
             Size(constraints.maxWidth, constraints.maxHeight);
+        final focusTaskId = widget.focusTaskId;
+        final focusRequestToken = widget.focusRequestToken;
+        if (focusTaskId != null &&
+            focusRequestToken != null &&
+            _handledFocusRequestToken != focusRequestToken) {
+          _handledFocusRequestToken = focusRequestToken;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _focusTask(focusTaskId, viewportSize);
+          });
+        }
         return Stack(
           children: [
         // 背景点击取消框选：Listener 放在 InteractiveViewer 外层，
@@ -885,7 +1059,15 @@ class _ConnectorLine {
 class _MindMapLinesPainter extends CustomPainter {
   final List<_ConnectorLine> lines;
   final Map<String, Offset> nodePositions;
-  const _MindMapLinesPainter({required this.lines, required this.nodePositions});
+  final Offset? connectingFrom; // 橡皮筋起点（shifted 坐标）
+  final Offset? connectingTo;   // 橡皮筋终点（shifted 坐标）
+
+  const _MindMapLinesPainter({
+    required this.lines,
+    required this.nodePositions,
+    this.connectingFrom,
+    this.connectingTo,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -927,11 +1109,57 @@ class _MindMapLinesPainter extends CustomPainter {
         ..close();
       canvas.drawPath(arrowPath, arrowPaint);
     }
+
+    // 橡皮筋连线（拖拽连接中）
+    if (connectingFrom != null && connectingTo != null) {
+      final from = connectingFrom!;
+      final to = connectingTo!;
+      final midX = (from.dx + to.dx) / 2;
+
+      final rubberPath = Path()
+        ..moveTo(from.dx, from.dy)
+        ..cubicTo(midX, from.dy, midX, to.dy, to.dx, to.dy);
+
+      final rubberPaint = Paint()
+        ..color = AppTheme.primaryColor.withValues(alpha: 0.8)
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke;
+
+      _drawDashedPath(canvas, rubberPath, rubberPaint);
+
+      // 终点圆点
+      canvas.drawCircle(
+        to,
+        5,
+        Paint()
+          ..color = AppTheme.primaryColor.withValues(alpha: 0.8)
+          ..style = PaintingStyle.fill,
+      );
+    }
+  }
+
+  void _drawDashedPath(Canvas canvas, Path path, Paint paint) {
+    const dashLength = 8.0;
+    const gapLength = 4.0;
+    for (final metric in path.computeMetrics()) {
+      double dist = 0;
+      bool drawing = true;
+      while (dist < metric.length) {
+        final segLen = drawing ? dashLength : gapLength;
+        final end = math.min(dist + segLen, metric.length);
+        if (drawing) canvas.drawPath(metric.extractPath(dist, end), paint);
+        dist = end;
+        drawing = !drawing;
+      }
+    }
   }
 
   @override
   bool shouldRepaint(_MindMapLinesPainter old) =>
-      old.lines != lines || old.nodePositions != nodePositions;
+      old.lines != lines ||
+      old.nodePositions != nodePositions ||
+      old.connectingFrom != connectingFrom ||
+      old.connectingTo != connectingTo;
 }
 
 // ─── 节点卡片 ───
@@ -951,6 +1179,10 @@ class _MindMapNodeCard extends StatelessWidget {
   final VoidCallback? onToggleExpand;
   final void Function(String taskId, String? newParentId) onMoveToParent;
   final VoidCallback onAddSubtask;
+  final void Function(String nodeId)? onConnectStart;
+  final void Function(String nodeId, Offset localPos)? onConnectUpdate;
+  final void Function(String nodeId, Offset localPos)? onConnectEnd;
+  final VoidCallback? onConnectCancel;
   final List<Task> allTasks;
   final bool isSelected;
 
@@ -970,6 +1202,10 @@ class _MindMapNodeCard extends StatelessWidget {
     this.onToggleExpand,
     required this.onMoveToParent,
     required this.onAddSubtask,
+    this.onConnectStart,
+    this.onConnectUpdate,
+    this.onConnectEnd,
+    this.onConnectCancel,
     required this.allTasks,
     this.isSelected = false,
   });
@@ -1347,7 +1583,7 @@ class _MindMapNodeCard extends StatelessWidget {
               ),
             ),
           ),
-          // 右侧中间 "+" 添加子任务按钮
+          // 右侧中间 "+" 添加子任务 / 长按拖出连线
           if (!isCompleted)
             Positioned(
               top: _kNodeHeight / 2 - 14,
@@ -1355,6 +1591,12 @@ class _MindMapNodeCard extends StatelessWidget {
               child: GestureDetector(
                 onTap: onAddSubtask,
                 behavior: HitTestBehavior.opaque,
+                onLongPressStart: (_) => onConnectStart?.call(task.id),
+                onLongPressMoveUpdate: (d) =>
+                    onConnectUpdate?.call(task.id, d.localPosition),
+                onLongPressEnd: (d) =>
+                    onConnectEnd?.call(task.id, d.localPosition),
+                onLongPressCancel: () => onConnectCancel?.call(),
                 child: Container(
                   width: 28,
                   height: 28,

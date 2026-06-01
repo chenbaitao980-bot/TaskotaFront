@@ -30,7 +30,7 @@ class TaskSyncService {
   Future<void> pullAll() => syncAll();
 
   /// 鍙屽悜 LWW 鍏ㄩ噺瀵硅处锛氭媺浜戠锛堝惈澧撶煶锛夆啋 鏈湴鍚堝苟锛涙湰鍦版洿鏂?浜戠缂哄け 鈫?鎺ㄩ€佷笂浜?
-  Future<void> syncAll() async {
+  Future<void> syncAll({bool rethrowErrors = false}) async {
     if (_taskRepo == null) return;
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
@@ -67,7 +67,7 @@ class TaskSyncService {
         );
       }
       for (final row in rows) {
-        final map = row as Map<String, dynamic>;
+        final map = row;
         remoteById[map['id'] as String] = map;
         try {
           await _taskRepo!.syncFromJson(_rowToJson(map));
@@ -114,13 +114,14 @@ class TaskSyncService {
         final remoteUpdated = remote?['updated_at'] as int? ?? -1;
         // 鎺ㄩ€佹潯浠讹細浜戠缂哄け / 鏈湴鏇存柊 / 鏈湴娲讳絾浜戠鏄鐭筹紙淇娈嬬暀澧撶煶锛?
         if (remote == null || t.updatedAt > remoteUpdated) {
-          await push(t);
+          await push(t, rethrowErrors: rethrowErrors);
         }
       }
       flog(
         '[Sync] syncAll completed: remote=${rows.length}, local=${localRows.length}',
       );
     } catch (e) {
+      if (rethrowErrors) rethrow;
       flog('[Sync] 鍏ㄩ噺瀵硅处澶辫触: $e');
     }
   }
@@ -128,12 +129,13 @@ class TaskSyncService {
   // 鈹€鈹€ 鍗曡鎺ㄩ€?鈹€鈹€
 
   /// 鎺ㄩ€佷竴鏉′换鍔″埌浜戠锛坲psert锛?
-  Future<void> push(Task task) async {
+  Future<void> push(Task task, {bool rethrowErrors = false}) async {
     if (_client.auth.currentUser == null) return;
     try {
       final json = _taskToRow(task);
       await _client.from('user_tasks').upsert(json);
     } catch (e) {
+      if (rethrowErrors) rethrow;
       flog('[Sync] 鎺ㄩ€佷换鍔″け璐?${task.id}: $e');
     }
   }

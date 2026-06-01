@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -91,8 +92,11 @@ class _HomePageState extends State<HomePage> {
         onDeleteSchedule: _deleteSchedule,
       ),
       const TasksPage(),
-      const CalendarPage(),
-      ProfilePage(taskRepository: widget.taskRepository),
+      CalendarPage(onJumpToMindMap: _jumpToMindMap),
+      ProfilePage(
+        taskRepository: widget.taskRepository,
+        projectRepository: widget.projectRepository,
+      ),
     ];
   }
 
@@ -383,6 +387,21 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _jumpToMindMap(Task task) {
+    setState(() {
+      _currentIndex = 1;
+    });
+    context.read<TaskNewBloc>().add(
+      LoadTasks(
+        projectIds: {task.projectId},
+        filter: 'all',
+        clearDateRange: true,
+        focusTaskId: task.id,
+        focusRequestToken: DateTime.now().microsecondsSinceEpoch,
+      ),
+    );
+  }
+
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
@@ -525,6 +544,8 @@ class _HomeContentState extends State<_HomeContent> {
 
   bool _loading = false;
   bool _modeSwitchGuard = false;
+  // 节点类型多选过滤：'parent' | 'child' | 'multiday'，空集合 = 全部显示
+  Set<String> _nodeTypeFilters = {};
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
   String _statsPeriod = 'day'; // 完成率统计周期: 'day'|'week'|'month'|'year'
@@ -696,6 +717,29 @@ class _HomeContentState extends State<_HomeContent> {
     });
   }
 
+  Set<String> get _parentIds =>
+      _timelineTasks.map((t) => t.parentId).whereType<String>().toSet();
+
+  bool _isParentNode(_TimelineTask t) => _parentIds.contains(t.id);
+  bool _isChildNode(_TimelineTask t) => t.parentId != null;
+  bool _isMultiDayNode(_TimelineTask t) {
+    if (t.endDate == null) return false;
+    final s = t.date;
+    final e = t.endDate!;
+    return !(s.year == e.year && s.month == e.month && s.day == e.day);
+  }
+
+  List<_TimelineTask> get _displayTasks {
+    if (_nodeTypeFilters.isEmpty) return _filteredTasks;
+    return _filteredTasks.where((t) {
+      if (_nodeTypeFilters.contains('parent') && _isParentNode(t)) return true;
+      if (_nodeTypeFilters.contains('child') && _isChildNode(t)) return true;
+      if (_nodeTypeFilters.contains('multiday') && _isMultiDayNode(t)) return true;
+      if (_nodeTypeFilters.contains('singleday') && !_isMultiDayNode(t)) return true;
+      return false;
+    }).toList();
+  }
+
   void _applyProjectFilter() {
     if (_filterProjectIds.isEmpty) {
       _filteredTasks = List.from(_timelineTasks);
@@ -739,7 +783,7 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   void _scrollToNearestTask() {
-    if (!_timelineController.hasClients || _filteredTasks.isEmpty) return;
+    if (!_timelineController.hasClients || _displayTasks.isEmpty) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -750,7 +794,7 @@ class _HomeContentState extends State<_HomeContent> {
       _timelineController.jumpTo(max(0.0, target - midScreen + _hourWidth / 2));
 
       // Select nearest task for today if any
-      final todayTasks = _filteredTasks
+      final todayTasks = _displayTasks
           .where((t) => _isSameDayDate(t.date, today) && !t.isCompleted)
           .toList();
       if (todayTasks.isNotEmpty) {
@@ -764,7 +808,7 @@ class _HomeContentState extends State<_HomeContent> {
     // Find nearest task (closest to now, preferring future tasks)
     _TimelineTask? nearest;
     Duration minDiff = const Duration(days: 365 * 10);
-    for (final task in _filteredTasks) {
+    for (final task in _displayTasks) {
       if (task.isCompleted) continue;
       final diff = task.date.difference(now).abs();
       if (diff < minDiff) {
@@ -772,8 +816,8 @@ class _HomeContentState extends State<_HomeContent> {
         nearest = task;
       }
     }
-    if (nearest == null && _filteredTasks.isNotEmpty) {
-      nearest = _filteredTasks.first;
+    if (nearest == null && _displayTasks.isNotEmpty) {
+      nearest = _displayTasks.first;
     }
     if (nearest == null) {
       // No tasks — scroll to today
@@ -1000,10 +1044,10 @@ class _HomeContentState extends State<_HomeContent> {
         ),
         const SizedBox(height: 4),
         Text(
-          _filteredTasks.isNotEmpty
+          _displayTasks.isNotEmpty
               ? (_filterProjectIds.isNotEmpty
-                    ? '筛选出 ${_filteredTasks.length} 个任务'
-                    : '时间轴上有 ${_filteredTasks.length} 个任务节点')
+                    ? '筛选出 ${_displayTasks.length} 个任务'
+                    : '时间轴上有 ${_displayTasks.length} 个任务节点')
               : '没有匹配的任务',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 15),
         ),
@@ -1539,7 +1583,7 @@ class _HomeContentState extends State<_HomeContent> {
       final firstHour = (offset / _hourWidth).floor().clamp(0, 23);
       final lastHour = ((offset + viewport) / _hourWidth).ceil().clamp(0, 24);
       for (int h = firstHour; h < lastHour; h++) {
-        final n = _filteredTasks
+        final n = _displayTasks
             .where(
               (t) => _isSameDayDate(t.date, DateTime.now()) && t.date.hour == h,
             )
@@ -1560,7 +1604,7 @@ class _HomeContentState extends State<_HomeContent> {
       );
       for (int d = firstCol; d < lastCol; d++) {
         final day = base.add(Duration(days: d));
-        final n = _filteredTasks
+        final n = _displayTasks
             .where((t) => _isSameDayDate(t.date, day))
             .length;
         if (n > maxInCol) maxInCol = n;
@@ -1701,11 +1745,102 @@ class _HomeContentState extends State<_HomeContent> {
               ),
             ),
           const Spacer(),
-          // Toggle
+          // 节点类型多选过滤
+          _buildNodeTypeFilterChip(),
+          const SizedBox(width: 4),
           _buildModeChip('小时', 'hour'),
           const SizedBox(width: 4),
           _buildModeChip('天', 'day'),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNodeTypeFilterChip() {
+    final hasFilter = _nodeTypeFilters.isNotEmpty;
+    final labelMap = {
+      'parent': '父节点',
+      'child': '子节点',
+      'multiday': '跨天',
+      'singleday': '非跨天',
+    };
+    final label = hasFilter
+        ? _nodeTypeFilters.map((k) => labelMap[k] ?? k).join('·')
+        : '全部';
+
+    return PopupMenuButton<String>(
+      tooltip: '节点类型筛选',
+      offset: const Offset(0, 28),
+      onSelected: (value) {
+        setState(() {
+          if (value == 'all') {
+            _nodeTypeFilters.clear();
+          } else {
+            if (_nodeTypeFilters.contains(value)) {
+              _nodeTypeFilters.remove(value);
+            } else {
+              _nodeTypeFilters.add(value);
+            }
+          }
+        });
+      },
+      itemBuilder: (_) {
+        Widget itemRow(String key, String text) {
+          final checked = key == 'all'
+              ? _nodeTypeFilters.isEmpty
+              : _nodeTypeFilters.contains(key);
+          return Row(
+            children: [
+              Icon(
+                checked ? Icons.check_box : Icons.check_box_outline_blank,
+                size: 16,
+                color: checked ? AppTheme.primaryColor : AppTheme.textHint,
+              ),
+              const SizedBox(width: 8),
+              Text(text, style: const TextStyle(fontSize: 13)),
+            ],
+          );
+        }
+
+        return [
+          PopupMenuItem(value: 'all', height: 36, child: itemRow('all', '全部')),
+          PopupMenuItem(value: 'parent', height: 36, child: itemRow('parent', '父节点')),
+          PopupMenuItem(value: 'child', height: 36, child: itemRow('child', '子节点')),
+          PopupMenuItem(value: 'multiday', height: 36, child: itemRow('multiday', '跨天任务')),
+          PopupMenuItem(value: 'singleday', height: 36, child: itemRow('singleday', '非跨天任务')),
+        ];
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: hasFilter
+              ? AppTheme.primaryColor.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: hasFilter ? AppTheme.primaryColor : AppTheme.borderSubtle,
+            width: hasFilter ? 1.5 : 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: hasFilter ? FontWeight.w600 : FontWeight.w400,
+                color: hasFilter ? AppTheme.primaryColor : AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 14,
+              color: hasFilter ? AppTheme.primaryColor : AppTheme.textSecondary,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1752,7 +1887,7 @@ class _HomeContentState extends State<_HomeContent> {
 
   Widget _buildDayColumn(DateTime dayDate, bool isToday, int dayIndex) {
     // Find tasks for this day
-    final dayTasks = _filteredTasks.where((t) {
+    final dayTasks = _displayTasks.where((t) {
       return t.date.year == dayDate.year &&
           t.date.month == dayDate.month &&
           t.date.day == dayDate.day;
@@ -1834,7 +1969,7 @@ class _HomeContentState extends State<_HomeContent> {
     final hourDateTime = DateTime(today.year, today.month, today.day, hour);
 
     // Find tasks for this hour
-    final hourTasks = _filteredTasks.where((t) {
+    final hourTasks = _displayTasks.where((t) {
       return _isSameDayDate(t.date, today) && t.date.hour == hour;
     }).toList();
 
@@ -1910,7 +2045,8 @@ class _HomeContentState extends State<_HomeContent> {
 
   Widget _buildTaskDots(List<_TimelineTask> tasks) {
     // 单列内允许上下滚动（任务多时）
-    return SingleChildScrollView(
+    return _containWheelScroll(
+      SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: tasks.map((task) {
@@ -1964,6 +2100,18 @@ class _HomeContentState extends State<_HomeContent> {
           );
         }).toList(),
       ),
+      ),
+    );
+  }
+
+  Widget _containWheelScroll(Widget child) {
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is PointerScrollEvent) {
+          GestureBinding.instance.pointerSignalResolver.register(event, (_) {});
+        }
+      },
+      child: child,
     );
   }
 
@@ -2469,7 +2617,14 @@ class _HomeContentState extends State<_HomeContent> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadDbTask(taskId));
       return const SizedBox.shrink();
     }
-    return AttachmentSection(task: dbTask);
+    return _containWheelScroll(
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 240),
+        child: SingleChildScrollView(
+          child: AttachmentSection(task: dbTask),
+        ),
+      ),
+    );
   }
 
   Widget _buildChecklistWidget(_TimelineTask task) {
@@ -2480,14 +2635,16 @@ class _HomeContentState extends State<_HomeContent> {
         (_) => _loadChecklists(taskId),
       );
     }
-    return ChecklistSection(
-      items: items,
-      taskId: taskId,
-      onToggle: (id) => _homeToggleChecklist(id, taskId),
-      onDelete: (id) => _homeDeleteChecklist(id, taskId),
-      onEdit: (id, title) => _homeEditChecklist(id, title, taskId),
-      onAdd: _homeAddChecklist,
-      onSetObsidianUri: (id, uri) => _homeSetObsidianUri(id, uri, taskId),
+    return _containWheelScroll(
+      ChecklistSection(
+        items: items,
+        taskId: taskId,
+        onToggle: (id) => _homeToggleChecklist(id, taskId),
+        onDelete: (id) => _homeDeleteChecklist(id, taskId),
+        onEdit: (id, title) => _homeEditChecklist(id, title, taskId),
+        onAdd: _homeAddChecklist,
+        onSetObsidianUri: (id, uri) => _homeSetObsidianUri(id, uri, taskId),
+      ),
     );
   }
 
@@ -2869,7 +3026,7 @@ class _HomeContentState extends State<_HomeContent> {
     final now = DateTime.now();
 
     final scored = <_TimelineTask, int>{};
-    for (final t in _filteredTasks) {
+    for (final t in _displayTasks) {
       if (t.isCompleted) continue;
       final pmap = <String, int>{'P0': 5, 'P1': 3, 'P2': 1, 'P3': 0};
       final p = pmap[t.priority] ?? 0;

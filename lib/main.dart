@@ -217,11 +217,6 @@ class MyApp extends StatelessWidget {
                     checklistRepository: checklistRepository,
                   );
                 }
-                if (state is AuthLoading) {
-                  return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
-                  );
-                }
                 return const LoginPage();
               },
             ),

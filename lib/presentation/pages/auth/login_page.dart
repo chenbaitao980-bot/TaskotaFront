@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -67,7 +67,7 @@ class _LoginPageState extends State<LoginPage>
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      showAppSnackBar(context, '璇疯緭鍏ラ偖绠卞拰瀵嗙爜');
+      showAppSnackBar(context, '请输入邮箱和密码');
       return;
     }
 
@@ -84,20 +84,18 @@ class _LoginPageState extends State<LoginPage>
           }
         } else {
           if (mounted) {
-            showAppSnackBar(context, '瀵嗙爜閿欒');
+            showAppSnackBar(context, '密码错误');
           }
         }
       } catch (e) {
         if (mounted) {
-          showAppSnackBar(context, '鐧诲綍澶辫触: $e');
+          showAppSnackBar(context, '登录失败: $e');
         }
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }
     } else {
-      context.read<AuthBloc>().add(
-        LoggedIn(email: email, password: password),
-      );
+      context.read<AuthBloc>().add(LoggedIn(email: email, password: password));
     }
   }
 
@@ -110,12 +108,12 @@ class _LoginPageState extends State<LoginPage>
 
   Future<void> _requestPhoneOtp() async {
     if (AppConstants.supabaseUrl == 'YOUR_SUPABASE_URL') {
-      showAppSnackBar(context, '鏈湴妯″紡涓嶆敮鎸佹墜鏈洪獙璇佺爜鐧诲綍');
+      showAppSnackBar(context, '本地模式不支持手机验证码登录');
       return;
     }
     final phone = _normalizedPhone();
     if (phone.isEmpty || !phone.startsWith('+')) {
-      showAppSnackBar(context, '璇疯緭鍏ュ甫鍥藉鍖哄彿鐨勬墜鏈哄彿锛屼緥濡?+8613812345678');
+      showAppSnackBar(context, '请输入带国家区号的手机号，例如 +8613812345678');
       return;
     }
     _otpPhone = phone;
@@ -126,7 +124,7 @@ class _LoginPageState extends State<LoginPage>
     final phone = _otpPhone ?? _normalizedPhone();
     final token = _otpController.text.trim();
     if (phone.isEmpty || token.isEmpty) {
-      showAppSnackBar(context, '璇疯緭鍏ユ墜鏈哄彿鍜岄獙璇佺爜');
+      showAppSnackBar(context, '请输入手机号和验证码');
       return;
     }
     context.read<AuthBloc>().add(PhoneOtpVerified(phone: phone, token: token));
@@ -199,7 +197,7 @@ class _LoginPageState extends State<LoginPage>
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '浣犵殑 AI 鏃ョ▼绠″',
+                            '你的 AI 日程管家',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AppTheme.textSecondary,
@@ -212,7 +210,7 @@ class _LoginPageState extends State<LoginPage>
                               ButtonSegment(
                                 value: _LoginMode.email,
                                 icon: Icon(Icons.email_outlined, size: 18),
-                                label: Text('閭'),
+                                label: Text('邮箱'),
                               ),
                               ButtonSegment(
                                 value: _LoginMode.phone,
@@ -224,61 +222,64 @@ class _LoginPageState extends State<LoginPage>
                             onSelectionChanged: isSubmitting
                                 ? null
                                 : (value) => setState(() {
-                                      _loginMode = value.first;
-                                      _otpSent = false;
-                                      _otpController.clear();
-                                    }),
+                                    _loginMode = value.first;
+                                    _otpSent = false;
+                                    _otpController.clear();
+                                  }),
                           ),
                           const SizedBox(height: 16),
                           if (_loginMode == _LoginMode.email) ...[
-                          TextField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            textInputAction: TextInputAction.next,
-                            decoration: const InputDecoration(
-                              labelText: '閭',
-                              prefixIcon: Icon(Icons.email_outlined, size: 20),
-                            ),
-                            onTapOutside: (_) =>
-                                FocusScope.of(context).unfocus(),
-                            onSubmitted: (_) =>
-                                FocusScope.of(context).nextFocus(),
-                          ),
-                          const SizedBox(height: 14),
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            textInputAction: TextInputAction.done,
-                            decoration: InputDecoration(
-                              labelText: '瀵嗙爜',
-                              prefixIcon: const Icon(
-                                Icons.lock_outlined,
-                                size: 20,
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
+                            TextField(
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: '邮箱',
+                                prefixIcon: Icon(
+                                  Icons.email_outlined,
                                   size: 20,
                                 ),
-                                onPressed: () => setState(
-                                  () => _obscurePassword = !_obscurePassword,
+                              ),
+                              onTapOutside: (_) =>
+                                  FocusScope.of(context).unfocus(),
+                              onSubmitted: (_) =>
+                                  FocusScope.of(context).nextFocus(),
+                            ),
+                            const SizedBox(height: 14),
+                            TextField(
+                              controller: _passwordController,
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              decoration: InputDecoration(
+                                labelText: '密码',
+                                prefixIcon: const Icon(
+                                  Icons.lock_outlined,
+                                  size: 20,
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => setState(
+                                    () => _obscurePassword = !_obscurePassword,
+                                  ),
                                 ),
                               ),
+                              onTapOutside: (_) =>
+                                  FocusScope.of(context).unfocus(),
+                              onSubmitted: (_) => _login(),
                             ),
-                            onTapOutside: (_) =>
-                                FocusScope.of(context).unfocus(),
-                            onSubmitted: (_) => _login(),
-                          ),
-                          const SizedBox(height: 4),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: () {},
-                              child: const Text('忘记密码？'),
+                            const SizedBox(height: 4),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () {},
+                                child: const Text('忘记密码？'),
+                              ),
                             ),
-                          ),
                           ] else ...[
                             TextField(
                               controller: _phoneController,
@@ -366,7 +367,7 @@ class _LoginPageState extends State<LoginPage>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                '杩樻病鏈夎处鍙凤紵',
+                                '还没有账号？',
                                 style: TextStyle(
                                   color: AppTheme.textHint,
                                   fontSize: 14,
@@ -382,7 +383,7 @@ class _LoginPageState extends State<LoginPage>
                                     horizontal: 8,
                                   ),
                                 ),
-                                child: const Text('绔嬪嵆娉ㄥ唽'),
+                                child: const Text('立即注册'),
                               ),
                             ],
                           ),

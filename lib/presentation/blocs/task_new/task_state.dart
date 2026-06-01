@@ -27,6 +27,9 @@ class TaskNewLoaded extends TaskNewState {
   final int? dateFrom;
   final int? dateTo;
   final String viewMode; // 'mindmap' or 'list'
+  final String? syncRollbackMessage;
+  final String? focusTaskId;
+  final int? focusRequestToken;
 
   TaskNewLoaded({
     this.projects = const [],
@@ -44,6 +47,9 @@ class TaskNewLoaded extends TaskNewState {
     this.dateFrom,
     this.dateTo,
     this.viewMode = 'mindmap',
+    this.syncRollbackMessage,
+    this.focusTaskId,
+    this.focusRequestToken,
   }) : selectedProjectIds = selectedProjectIds.isNotEmpty
            ? selectedProjectIds
            : (selectedProjectId == null ? const {} : {selectedProjectId});
@@ -65,6 +71,10 @@ class TaskNewLoaded extends TaskNewState {
     int? dateTo,
     bool clearDateRange = false,
     String? viewMode,
+    String? syncRollbackMessage,
+    bool clearSyncRollbackMessage = true,
+    String? focusTaskId,
+    int? focusRequestToken,
   }) {
     return TaskNewLoaded(
       projects: projects ?? this.projects,
@@ -85,6 +95,11 @@ class TaskNewLoaded extends TaskNewState {
       dateFrom: clearDateRange ? null : (dateFrom ?? this.dateFrom),
       dateTo: clearDateRange ? null : (dateTo ?? this.dateTo),
       viewMode: viewMode ?? this.viewMode,
+      syncRollbackMessage: clearSyncRollbackMessage
+          ? syncRollbackMessage
+          : (syncRollbackMessage ?? this.syncRollbackMessage),
+      focusTaskId: focusTaskId ?? this.focusTaskId,
+      focusRequestToken: focusRequestToken ?? this.focusRequestToken,
     );
   }
 
@@ -104,6 +119,9 @@ class TaskNewLoaded extends TaskNewState {
     dateFrom,
     dateTo,
     viewMode,
+    syncRollbackMessage,
+    focusTaskId,
+    focusRequestToken,
   ];
 }
 

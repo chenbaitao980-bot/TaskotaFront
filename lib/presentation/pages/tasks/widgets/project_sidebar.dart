@@ -9,9 +9,15 @@ class ProjectSidebar extends StatelessWidget {
   final String? selectedFilter;
   final Map<String, int> projectProgress;
   final Map<String, int> groupProgress;
+  final Set<String> expandedGroupIds;
+  final bool sortDescending;
   final ValueChanged<String?> onProjectSelected;
   final ValueChanged<String> onFilterSelected;
   final VoidCallback onCreateProject;
+  final void Function(String groupId, bool expanded) onToggleGroupExpanded;
+  final VoidCallback onExpandAllGroups;
+  final VoidCallback onCollapseAllGroups;
+  final VoidCallback onToggleSortDirection;
   final VoidCallback? onCreateGroup;
   final void Function(Project)? onEditProject;
   final void Function(Project)? onDeleteProject;
@@ -26,9 +32,15 @@ class ProjectSidebar extends StatelessWidget {
     this.selectedFilter,
     this.projectProgress = const {},
     this.groupProgress = const {},
+    this.expandedGroupIds = const {},
+    this.sortDescending = true,
     required this.onProjectSelected,
     required this.onFilterSelected,
     required this.onCreateProject,
+    required this.onToggleGroupExpanded,
+    required this.onExpandAllGroups,
+    required this.onCollapseAllGroups,
+    required this.onToggleSortDirection,
     this.onCreateGroup,
     this.onEditProject,
     this.onDeleteProject,
@@ -111,6 +123,44 @@ class ProjectSidebar extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
+                  IconButton(
+                    onPressed: onExpandAllGroups,
+                    icon: const Icon(Icons.unfold_more_rounded, size: 18),
+                    color: AppTheme.textSecondary,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    tooltip: '全部展开',
+                  ),
+                  IconButton(
+                    onPressed: onCollapseAllGroups,
+                    icon: const Icon(Icons.unfold_less_rounded, size: 18),
+                    color: AppTheme.textSecondary,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    tooltip: '全部收缩',
+                  ),
+                  IconButton(
+                    onPressed: onToggleSortDirection,
+                    icon: Icon(
+                      sortDescending
+                          ? Icons.arrow_downward_rounded
+                          : Icons.arrow_upward_rounded,
+                      size: 18,
+                    ),
+                    color: AppTheme.textSecondary,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    tooltip: sortDescending ? '时间倒序' : '时间升序',
+                  ),
                   if (onCreateGroup != null)
                     TextButton.icon(
                       onPressed: onCreateGroup,
@@ -137,7 +187,7 @@ class ProjectSidebar extends StatelessWidget {
             const SizedBox(height: 4),
             // 项目列表（按分组）
             Expanded(
-              child: projects.isEmpty
+              child: projects.isEmpty && groups.isEmpty
                   ? Center(
                       child: Text(
                         '暂无项目，点击 + 创建',
@@ -153,107 +203,140 @@ class ProjectSidebar extends StatelessWidget {
   }
 
   Widget _buildGroupedProjects() {
-    return Builder(builder: (ctx) {
-      // 把项目按 groupId 分桶
-      final Map<String?, List<Project>> buckets = {};
-      for (final p in projects) {
-        buckets.putIfAbsent(p.groupId, () => []).add(p);
-      }
-      final ungrouped = buckets.remove(null) ?? <Project>[];
+    return Builder(
+      builder: (ctx) {
+        // 把项目按 groupId 分桶
+        final Map<String?, List<Project>> buckets = {};
+        for (final p in projects) {
+          buckets.putIfAbsent(p.groupId, () => []).add(p);
+        }
+        final ungrouped = buckets.remove(null) ?? <Project>[];
+        final sortedGroups = [...groups]..sort(_compareCreatedAt);
+        ungrouped.sort(_compareCreatedAt);
 
-      return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        children: [
-          ...groups.map((g) {
-            final items = buckets[g.id] ?? const <Project>[];
-            // S1: 空分组也展示
-            final prog = (groupProgress[g.id] ?? 0).clamp(0, 100).toInt();
-            final groupColor = Color(int.parse(g.color.replaceFirst('#', '0xFF')));
-            return Theme(
-              data: Theme.of(ctx).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                key: PageStorageKey('group_${g.id}'),
-                initiallyExpanded: true,
-                tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-                childrenPadding: EdgeInsets.zero,
-                leading: Icon(Icons.folder_rounded, size: 22, color: groupColor),
-                title: Text(
-                  g.name,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
+        return ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          children: [
+            ...sortedGroups.map((g) {
+              final items = [...(buckets[g.id] ?? const <Project>[])]
+                ..sort(_compareCreatedAt);
+              // S1: 空分组也展示
+              final prog = (groupProgress[g.id] ?? 0).clamp(0, 100).toInt();
+              final groupColor = Color(
+                int.parse(g.color.replaceFirst('#', '0xFF')),
+              );
+              final isExpanded = expandedGroupIds.contains(g.id);
+              return Theme(
+                data: Theme.of(ctx).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: ValueKey('group_${g.id}_$isExpanded'),
+                  initiallyExpanded: isExpanded,
+                  onExpansionChanged: (expanded) =>
+                      onToggleGroupExpanded(g.id, expanded),
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+                  childrenPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.folder_rounded,
+                    size: 22,
+                    color: groupColor,
                   ),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '$prog%',
-                      style: TextStyle(
+                  title: Text(
+                    g.name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$prog%',
+                        style: TextStyle(
                           fontSize: 12,
                           color: AppTheme.textHint,
-                          fontWeight: FontWeight.w600),
-                    ),
-                    PopupMenuButton<String>(
-                      icon: Icon(Icons.more_horiz, size: 16, color: AppTheme.textHint),
-                      padding: EdgeInsets.zero,
-                      onSelected: (action) {
-                        if (action == 'edit') onEditGroup?.call(g);
-                        if (action == 'delete') onDeleteGroup?.call(g);
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('重命名分组')),
-                        PopupMenuItem(value: 'delete', child: Text('删除分组（项目保留）')),
-                      ],
-                    ),
-                  ],
-                ),
-                children: items.isEmpty
-                    ? [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(48, 4, 16, 8),
-                          child: Text(
-                            '暂无项目',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textHint.withValues(alpha: 0.7),
-                              fontStyle: FontStyle.italic,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        icon: Icon(
+                          Icons.more_horiz,
+                          size: 16,
+                          color: AppTheme.textHint,
+                        ),
+                        padding: EdgeInsets.zero,
+                        onSelected: (action) {
+                          if (action == 'edit') onEditGroup?.call(g);
+                          if (action == 'delete') onDeleteGroup?.call(g);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'edit', child: Text('重命名分组')),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text('删除分组（项目保留）'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  children: items.isEmpty
+                      ? [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(48, 4, 16, 8),
+                            child: Text(
+                              '暂无项目',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textHint.withValues(alpha: 0.7),
+                                fontStyle: FontStyle.italic,
+                              ),
                             ),
                           ),
-                        ),
-                      ]
-                    : items.map((p) {
-                        final isSelected = p.id == selectedProjectId;
-                        return _buildProjectItem(ctx,
-                            project: p, isSelected: isSelected);
-                      }).toList(),
-              ),
-            );
-          }),
-          if (ungrouped.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            if (groups.isNotEmpty)
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: Text(
-                  '未分组',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textHint,
-                    fontWeight: FontWeight.w500,
+                        ]
+                      : items.map((p) {
+                          final isSelected = p.id == selectedProjectId;
+                          return _buildProjectItem(
+                            ctx,
+                            project: p,
+                            isSelected: isSelected,
+                          );
+                        }).toList(),
+                ),
+              );
+            }),
+            if (ungrouped.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              if (groups.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Text(
+                    '未分组',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textHint,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
-            ...ungrouped.map((p) {
-              final isSelected = p.id == selectedProjectId;
-              return _buildProjectItem(ctx,
-                  project: p, isSelected: isSelected);
-            }),
+              ...ungrouped.map((p) {
+                final isSelected = p.id == selectedProjectId;
+                return _buildProjectItem(
+                  ctx,
+                  project: p,
+                  isSelected: isSelected,
+                );
+              }),
+            ],
           ],
-        ],
-      );
-    });
+        );
+      },
+    );
+  }
+
+  int _compareCreatedAt(dynamic a, dynamic b) {
+    final result = (a.createdAt as int).compareTo(b.createdAt as int);
+    return sortDescending ? -result : result;
   }
 
   Widget _buildFilterItem(
@@ -291,8 +374,9 @@ class ProjectSidebar extends StatelessWidget {
     required bool isSelected,
   }) {
     final progress = (projectProgress[project.id] ?? 0).clamp(0, 100).toInt();
-    final projectColor =
-        Color(int.parse(project.color.replaceFirst('#', '0xFF')));
+    final projectColor = Color(
+      int.parse(project.color.replaceFirst('#', '0xFF')),
+    );
     final firstChar = project.name.isNotEmpty
         ? project.name.characters.first.toUpperCase()
         : '·';
@@ -368,11 +452,7 @@ class ProjectSidebar extends StatelessWidget {
                   ),
                 ),
               ],
-              icon: Icon(
-                Icons.more_horiz,
-                size: 18,
-                color: AppTheme.textHint,
-              ),
+              icon: Icon(Icons.more_horiz, size: 18, color: AppTheme.textHint),
             ),
           ],
         ),
