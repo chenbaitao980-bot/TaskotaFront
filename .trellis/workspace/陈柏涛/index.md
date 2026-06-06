@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 2
+- **Total Sessions**: 3
 - **Last Active**: 2026-06-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~76 | Active |
+| `journal-1.md` | ~112 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 3 | 2026-06-06 | 修复过期任务通知弹窗问题 + 首页性能优化 | `8942fcb`, `1ec7210`, `fb07bee`, `47f79c6` | `master` |
 | 2 | 2026-06-06 | 思维导图切换筛选项目后布局错乱修复 | `473f875`, `072a7a9` | `master` |
 | 1 | 2026-06-06 | 任务搜索功能实现 + quality check + spec 更新 | `3b82553`, `67502de`, `36520a0` | `master` |
 <!-- @@@/auto:session-history -->

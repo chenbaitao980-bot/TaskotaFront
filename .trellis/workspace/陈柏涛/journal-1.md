@@ -74,3 +74,39 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 修复过期任务通知弹窗问题 + 首页性能优化
+
+**Date**: 2026-06-06
+**Task**: 修复过期任务通知弹窗问题 + 首页性能优化
+**Branch**: `master`
+
+### Summary
+
+修复过期任务通知弹窗三个 bug: ① onDidReceiveNotificationResponse 空回调导致点击不跳转 - 添加 payload+全局 navigatorKey 导航到首页; ② 每次 sync/resume 重复弹窗 - 缓存 _lastShownOverdueCount 去重; ③ _clearOverdueAlarms 重复取消导致卡顿 - 移除 rescheduleTaskReminders 中的冗余调用。附带首页性能优化: _debounceLoadTasks 防抖、_pages 缓存、_visibleTabIndex 通知器。通知去重和禁止重复取消模式写入 quality-guidelines.md。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8942fcb` | (see git log) |
+| `1ec7210` | (see git log) |
+| `fb07bee` | (see git log) |
+| `47f79c6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
