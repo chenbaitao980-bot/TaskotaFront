@@ -55,7 +55,7 @@ class _CalendarPageState extends State<CalendarPage> {
   bool _isTaskDragging = false;
   bool _dragSkipped = false; // onPointerMove 因拖拽任务跳过时置 true，阻止 onPointerUp 翻页
   double? _dragStartX;
-  bool _isMultiDayLaneCollapsed = false;
+  final Set<String> _collapsedMultiDayGroups = {};
 
   DateTime? _lastReloadTime;
   List<Task> _allTasks = [];
@@ -208,19 +208,6 @@ class _CalendarPageState extends State<CalendarPage> {
     return _allTasks.any((t) => t.parentId == task.id);
   }
 
-  /// 层级深度：根任务=0，每多一层 +1。用于父任务长条排序（越浅越上）
-  int _depthOf(Task task) {
-    int depth = 0;
-    var cur = task;
-    final visited = <String>{};
-    while (cur.parentId != null && visited.add(cur.id)) {
-      final parent = _allTasks.where((t) => t.id == cur.parentId).firstOrNull;
-      if (parent == null) break;
-      depth++;
-      cur = parent;
-    }
-    return depth;
-  }
 
   /// 任务的 [startDate, dueDate] 是否与 [rangeStart, rangeEndExclusive) 相交
   bool _taskOverlapsRange(
@@ -1680,50 +1667,90 @@ class _CalendarPageState extends State<CalendarPage> {
     );
     final weekEnd = weekStart.add(Duration(days: _displayDayCount));
 
-    // 排序：层级浅的（根任务）在上，深的在下
-    final sorted = [...tasks]
-      ..sort((a, b) {
-        final da = _depthOf(a);
-        final db = _depthOf(b);
-        if (da != db) return da - db;
-        return (a.startDate ?? 0).compareTo(b.startDate ?? 0);
-      });
+    // ── 分组：按组根（在 lane 内无父的最顶层任务）聚合 ──
+    final taskIds = tasks.map((t) => t.id).toSet();
+
+    Task groupRoot(Task task) {
+      var cur = task;
+      final visited = <String>{};
+      while (cur.parentId != null &&
+          taskIds.contains(cur.parentId!) &&
+          visited.add(cur.id)) {
+        final parent = tasks.where((t) => t.id == cur.parentId).firstOrNull;
+        if (parent == null) break;
+        cur = parent;
+      }
+      return cur;
+    }
+
+    final Map<String, Task> rootById = {};
+    final Map<String, List<Task>> childrenByRoot = {};
+    for (final task in tasks) {
+      final root = groupRoot(task);
+      rootById[root.id] = root;
+      childrenByRoot.putIfAbsent(root.id, () => []);
+      if (task.id != root.id) {
+        childrenByRoot[root.id]!.add(task);
+      }
+    }
+
+    // 组间按父任务跨度降序（最长在上）；父任务无日期时取子任务最大跨度兜底
+    int spanMs(Task t) {
+      final s = t.startDate;
+      final d = t.dueDate;
+      if (s == null || d == null) return 0;
+      return d - s;
+    }
+
+    int effectiveGroupSpan(String rootId) {
+      final rootSpan = spanMs(rootById[rootId]!);
+      if (rootSpan > 0) return rootSpan;
+      final children = childrenByRoot[rootId] ?? [];
+      return children.map(spanMs).fold(0, (a, b) => a > b ? a : b);
+    }
+
+    final sortedRootIds = rootById.keys.toList()
+      ..sort((a, b) => effectiveGroupSpan(b).compareTo(effectiveGroupSpan(a)));
+
+    // 组内：DFS 递归，保证父节点永远在子节点上面
+    List<Task> dfsChildren(List<Task> allChildren, String parentId) {
+      final direct = allChildren
+          .where((t) => t.parentId == parentId)
+          .toList()
+        ..sort((a, b) {
+          final so = a.sortOrder.compareTo(b.sortOrder);
+          if (so != 0) return so;
+          return (a.startDate ?? 0).compareTo(b.startDate ?? 0);
+        });
+      final result = <Task>[];
+      for (final child in direct) {
+        result.add(child);
+        result.addAll(dfsChildren(allChildren, child.id));
+      }
+      return result;
+    }
+
+    // 展开可见行：父行在上，未折叠时跟随子行（递归有序）
+    final orderedRows = <Task>[];
+    for (final rootId in sortedRootIds) {
+      orderedRows.add(rootById[rootId]!);
+      if (!_collapsedMultiDayGroups.contains(rootId)) {
+        orderedRows.addAll(dfsChildren(childrenByRoot[rootId]!, rootId));
+      }
+    }
 
     const laneHeight = 24.0;
     const maxVisibleLanes = 4;
-    final visibleLanes = sorted.length.clamp(1, maxVisibleLanes);
-    final contentHeight = sorted.length * laneHeight;
-    final visibleHeight = visibleLanes * laneHeight;
+    final totalRows = orderedRows.length;
+    final visibleRows = totalRows.clamp(1, maxVisibleLanes);
+    final contentHeight = totalRows * laneHeight;
+    final visibleHeight = visibleRows * laneHeight;
 
-    if (_isMultiDayLaneCollapsed) {
-      return Container(
-        height: laneHeight,
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: _timeColumnWidth),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () {
-                    setState(() => _isMultiDayLaneCollapsed = false);
-                  },
-                  icon: const Icon(Icons.keyboard_arrow_down, size: 18),
-                  label: Text('展开 · ${sorted.length} 条跨天任务'),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    // 全局折叠/展开：仅考虑有子任务的组
+    final groupsWithChildren =
+        sortedRootIds.where((id) => childrenByRoot[id]!.isNotEmpty).toList();
+    final allCollapsed = groupsWithChildren.isNotEmpty &&
+        groupsWithChildren.every((id) => _collapsedMultiDayGroups.contains(id));
 
     return Container(
       height: visibleHeight,
@@ -1743,38 +1770,66 @@ class _CalendarPageState extends State<CalendarPage> {
                     height: contentHeight,
                     child: Stack(
                       children: [
-                        for (var i = 0; i < sorted.length; i++)
+                        for (var i = 0; i < orderedRows.length; i++)
                           _buildMultiDayBar(
-                            sorted[i],
+                            orderedRows[i],
                             i,
                             weekStart,
                             weekEnd,
                             dayWidth,
                             laneHeight,
+                            onCollapseToggle:
+                                childrenByRoot[orderedRows[i].id]?.isNotEmpty == true
+                                    ? () {
+                                        final rootId = orderedRows[i].id;
+                                        setState(() {
+                                          if (_collapsedMultiDayGroups.contains(rootId)) {
+                                            _collapsedMultiDayGroups.remove(rootId);
+                                          } else {
+                                            _collapsedMultiDayGroups.add(rootId);
+                                          }
+                                        });
+                                      }
+                                    : null,
+                            isGroupCollapsed:
+                                _collapsedMultiDayGroups.contains(orderedRows[i].id),
                           ),
                       ],
                     ),
                   ),
                 ),
+                // 全部折叠 / 全部展开按钮
                 Positioned(
                   right: 2,
                   top: 2,
                   child: Tooltip(
-                    message: '折叠跨天任务',
+                    message: allCollapsed ? '展开全部' : '折叠全部',
                     child: Material(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surface.withValues(alpha: 0.85),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surface
+                          .withValues(alpha: 0.85),
                       borderRadius: BorderRadius.circular(12),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12),
                         onTap: () {
-                          setState(() => _isMultiDayLaneCollapsed = true);
+                          setState(() {
+                            if (allCollapsed) {
+                              _collapsedMultiDayGroups.clear();
+                            } else {
+                              _collapsedMultiDayGroups.addAll(groupsWithChildren);
+                            }
+                          });
                         },
-                        child: const SizedBox(
+                        child: SizedBox(
                           width: 26,
                           height: 26,
-                          child: Icon(Icons.keyboard_arrow_up, size: 18),
+                          child: Icon(
+                            allCollapsed
+                                ? Icons.keyboard_arrow_down
+                                : Icons.keyboard_arrow_up,
+                            size: 18,
+                          ),
                         ),
                       ),
                     ),
@@ -1794,8 +1849,10 @@ class _CalendarPageState extends State<CalendarPage> {
     DateTime weekStart,
     DateTime weekEnd,
     double dayWidth,
-    double laneHeight,
-  ) {
+    double laneHeight, {
+    VoidCallback? onCollapseToggle,
+    bool isGroupCollapsed = false,
+  }) {
     final s = DateTime.fromMillisecondsSinceEpoch(task.startDate!);
     final d = DateTime.fromMillisecondsSinceEpoch(task.dueDate!);
     final start = s.isBefore(weekStart) ? weekStart : s;
@@ -1818,16 +1875,11 @@ class _CalendarPageState extends State<CalendarPage> {
         ? Colors.grey.shade500
         : _priorityColor(task.priority);
 
-    return Positioned(
-      left: startOffset * dayWidth + 4,
-      top: row * laneHeight + 4,
-      width: dayWidth * spanDays - 8,
-      height: laneHeight - 8,
-      child: Listener(
-        onPointerDown: (_) => setState(() => _isTaskDragging = true),
-        onPointerUp: (_) => setState(() => _isTaskDragging = false),
-        onPointerCancel: (_) => setState(() => _isTaskDragging = false),
-        child: _EditableMultiDayBar(
+    final bar = Listener(
+      onPointerDown: (_) => setState(() => _isTaskDragging = true),
+      onPointerUp: (_) => setState(() => _isTaskDragging = false),
+      onPointerCancel: (_) => setState(() => _isTaskDragging = false),
+      child: _EditableMultiDayBar(
         task: task,
         color: color,
         isCompleted: isCompleted,
@@ -1856,7 +1908,37 @@ class _CalendarPageState extends State<CalendarPage> {
           _moveTaskMultiDay(task, s, newEnd);
         },
       ),
-      ), // close Listener
+    );
+
+    return Positioned(
+      left: startOffset * dayWidth + 4,
+      top: row * laneHeight + 4,
+      width: dayWidth * spanDays - 8,
+      height: laneHeight - 8,
+      child: onCollapseToggle != null
+          ? Stack(
+              children: [
+                bar,
+                Positioned(
+                  right: 2,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: onCollapseToggle,
+                      child: Icon(
+                        isGroupCollapsed
+                            ? Icons.keyboard_arrow_right
+                            : Icons.keyboard_arrow_down,
+                        size: 14,
+                        color: Colors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : bar,
     );
   }
 

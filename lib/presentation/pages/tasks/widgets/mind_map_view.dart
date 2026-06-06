@@ -116,6 +116,8 @@ class _MindMapViewState extends State<MindMapView> {
   // ─── 每个 pending 节点一个稳定的 ValueNotifier（创建时即分配，拖拽期间不重建） ───
   final Map<String, ValueNotifier<Offset>> _positionNotifiers = {};
   final Set<String> _draggedIds = {};
+  // 下次 didUpdateWidget 时，这些节点需要重置为自动布局位置（忽略 SharedPreferences 中的旧坐标）
+  final Set<String> _pendingLayoutResetIds = {};
   int? _handledFocusRequestToken;
 
   // ─── 初始定位标志 ───
@@ -140,13 +142,53 @@ class _MindMapViewState extends State<MindMapView> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tasks != widget.tasks ||
         oldWidget.expandedIds != widget.expandedIds) {
+      // 将需要重置的节点展开为完整子树（使用新的 widget.tasks）
+      if (_pendingLayoutResetIds.isNotEmpty) {
+        final expanded = <String>{};
+        for (final id in _pendingLayoutResetIds) {
+          expanded.addAll(_collectSubtreeIds(id, widget.tasks));
+        }
+        _pendingLayoutResetIds
+          ..clear()
+          ..addAll(expanded);
+        // 提前从 _draggedIds 移除，使 _syncNotifiersToLayout 给出新坐标
+        _draggedIds.removeAll(_pendingLayoutResetIds);
+      }
       _computeLayoutCache();
-      _reloadOffsets();
+      _reloadOffsets().then((_) {
+        if (_pendingLayoutResetIds.isNotEmpty) {
+          _pendingLayoutResetIds.clear();
+          _saveOffsets(); // 从 SharedPreferences 中移除已重置节点的旧坐标
+        }
+      });
     }
     if (oldWidget.selectedFilter != widget.selectedFilter ||
         oldWidget.selectedProjectId != widget.selectedProjectId) {
       _initialFocusDone = false;
     }
+  }
+
+  /// 收集 rootId 及其所有后代的 id 集合
+  Set<String> _collectSubtreeIds(String rootId, List<Task> tasks) {
+    final result = <String>{rootId};
+    final queue = [rootId];
+    while (queue.isNotEmpty) {
+      final id = queue.removeLast();
+      for (final task in tasks) {
+        if (task.parentId == id && !result.contains(task.id)) {
+          result.add(task.id);
+          queue.add(task.id);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// onMoveToParent 的内部代理：记录需要重置布局的节点，再转发给外部回调
+  void _handleMoveToParent(String taskId, String? newParentId) {
+    _pendingLayoutResetIds.add(taskId);
+    _draggedIds.remove(taskId);
+    widget.onMoveToParent(taskId, newParentId);
   }
 
   @override
@@ -232,6 +274,7 @@ class _MindMapViewState extends State<MindMapView> {
 
   /// 在 [didUpdateWidget] 中重新加载存储的 offset，不触发 [setState] 或 [_focusNearestTask]。
   /// 区别于 [_loadOffsets]（仅在 initState 调用一次，含 _offsetsLoaded 标记）。
+  /// [_pendingLayoutResetIds] 中的节点会被跳过，使其保留自动布局坐标。
   Future<void> _reloadOffsets() async {
     final prefs = await SharedPreferences.getInstance();
     final json = prefs.getString(_storageKey);
@@ -240,6 +283,8 @@ class _MindMapViewState extends State<MindMapView> {
       try {
         final map = Map<String, dynamic>.from(jsonDecode(json) as Map);
         for (final entry in map.entries) {
+          // 跳过需要重置为自动布局的节点
+          if (_pendingLayoutResetIds.contains(entry.key)) continue;
           final list = entry.value as List;
           final notifier = _positionNotifiers[entry.key];
           if (notifier != null) {
@@ -642,7 +687,7 @@ class _MindMapViewState extends State<MindMapView> {
       ],
     ).then((value) {
       if (value == 'disconnect') {
-        widget.onMoveToParent(found.childId, null);
+        _handleMoveToParent(found.childId, null);
       }
     });
   }
@@ -718,7 +763,7 @@ class _MindMapViewState extends State<MindMapView> {
           onToggleExpand: node.hasChildren
               ? () => widget.onToggleExpand(node.task.id)
               : null,
-          onMoveToParent: widget.onMoveToParent,
+          onMoveToParent: _handleMoveToParent,
           onAddSubtask: () => widget.onAddSubtask(node.task.id),
           onConnectStart: (id) {
             setState(() {
@@ -746,7 +791,7 @@ class _MindMapViewState extends State<MindMapView> {
               );
               final targetId = _hitTestNode(canvasPos);
               if (targetId != null && targetId != id) {
-                widget.onMoveToParent(targetId, id);
+                _handleMoveToParent(targetId, id);
               }
             }
             setState(() {
@@ -892,7 +937,7 @@ class _MindMapViewState extends State<MindMapView> {
           final task =
               widget.tasks.where((t) => t.id == draggedId).firstOrNull;
           if (task == null || task.parentId == null) return;
-          widget.onMoveToParent(draggedId, null);
+          _handleMoveToParent(draggedId, null);
         },
         builder: (context, candidateData, rejectedData) {
           return canvasContent();
@@ -1056,7 +1101,7 @@ class _MindMapViewState extends State<MindMapView> {
                           onDelete: () =>
                               widget.onTaskDelete(node.task.id),
                           onToggleExpand: null,
-                          onMoveToParent: widget.onMoveToParent,
+                          onMoveToParent: _handleMoveToParent,
                           onAddSubtask: () =>
                               widget.onAddSubtask(node.task.id),
                           allTasks: widget.tasks,
