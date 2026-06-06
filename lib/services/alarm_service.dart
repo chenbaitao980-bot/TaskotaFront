@@ -72,6 +72,8 @@ class AlarmService {
       id: alarmId,
       dateTime: scheduledDate,
       // 使用系统默认通知音（不指定 assetAudioPath）
+      // volume: null → 使用当前系统音量，不强制静音
+      volumeSettings: const VolumeSettings.fixed(volume: null),
       loopAudio: false,
       vibrate: true,
       androidFullScreenIntent: false,

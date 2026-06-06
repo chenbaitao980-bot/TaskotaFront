@@ -119,3 +119,59 @@ void _onNavTap(int index) {
 <!-- What reviewers should check -->
 
 (To be filled by the team)
+
+---
+
+## 通知与原生集成模式
+
+### Android 原生 AlarmManager 兜底模式
+
+当 `flutter_local_notifications` 的 `zonedSchedule` 在进程被杀后不触发时，使用原生 `AlarmManager.setAlarmClock()` 兜底。
+
+**架构**：
+```
+Dart: alarm_service.dart
+  → MethodChannel('com.taskora/native_alarm')
+    → Kotlin: MainActivity.kt (MethodChannel handler)
+      → NotificationAlarmHelper.kt (AlarmManager.setAlarmClock)
+        → NotificationAlarmReceiver.kt (BroadcastReceiver → 系统通知)
+```
+
+**MethodChannel 签名**：
+
+| 方法 | 参数 | 说明 |
+|------|------|------|
+| `scheduleNotification` | `{id: int, title: String, body: String, scheduledAtMillis: long}` | 调度闹钟 |
+| `cancelNotification` | `{id: int}` | 取消闹钟 |
+
+**切换开关**：
+```dart
+AlarmService.useNativeAlarm = true;  // 原生方案（默认）
+AlarmService.useNativeAlarm = false; // 回滚到 alarm 包
+```
+
+### 通知通道合并模式（清理旧通道）
+
+当需要精简通知分类时，先删除旧通道再创建统一通道：
+```dart
+await androidPlugin.deleteNotificationChannel('old_channel_1');
+await androidPlugin.deleteNotificationChannel('old_channel_2');
+const androidPluginDetails = AndroidNotificationChannel(
+  'unified_channel',    // 统一通道 ID
+  '统一通道名称',         // 用户可见的名称
+  importance: Importance.high,
+  playSound: true,
+);
+await androidPlugin.createNotificationChannel(androidPluginDetails);
+```
+
+**注意**：删除旧通道后，系统设置中会保留历史条目，但不再产生新通知。
+
+### 通知音效设置
+
+| 场景 | 设置 |
+|------|------|
+| `flutter_local_notifications` 通道 | `playSound: true`（通道级默认音）|
+| 原生 `NotificationChannel` | `setSound(Settings.System.DEFAULT_NOTIFICATION_URI)` |
+| `alarm` 包回滚路径 | `VolumeSettings.fixed(volume: null)` 使用当前系统音量 |
+| 自定义音效 | ❌ 不使用 `assetAudioPath` |

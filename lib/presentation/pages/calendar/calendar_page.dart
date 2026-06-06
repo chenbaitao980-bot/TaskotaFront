@@ -2212,6 +2212,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
   // 移动端长按检测（使用 Listener 绕过手势竞技场，避免被 _EagerPanGestureRecognizer 抢占）
   Timer? _longPressTimer;
   Offset? _pointerDownPosition;
+  bool _longPressActivated = false; // 长按 Timer 触发后置 true，onEnd 用于区分"长按松手"和"点击"
 
   double get _currentTopDelta => _resizeTopDelta ?? 0;
   double get _currentBottomDelta => _resizeBottomDelta ?? 0;
@@ -2224,10 +2225,12 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
 
   void _startLongPressTimer(Offset position) {
     _cancelLongPressTimer();
+    _longPressActivated = false; // 每次新手势开始时重置
     if (!widget.isEditMode && _isMobile) {
       _pointerDownPosition = position;
       _longPressTimer = Timer(const Duration(milliseconds: 400), () {
         if (mounted) {
+          _longPressActivated = true; // 标记本次手势由长按触发编辑模式
           widget.onEditModeChanged(true);
         }
       });
@@ -2238,6 +2241,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
     _longPressTimer?.cancel();
     _longPressTimer = null;
     _pointerDownPosition = null;
+    // 注意：不重置 _longPressActivated，它需要在 onEnd 中读取
   }
 
   void _onPointerDown(PointerDownEvent event) {
@@ -2336,16 +2340,23 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                         _moveDelta = null;
                                       });
                                       if (delta == null || delta.distance < 3) {
+                                        if (_longPressActivated) {
+                                          // 长按激活编辑模式后松手，不视为点击
+                                          _longPressActivated = false;
+                                          return;
+                                        }
                                         // 移动距离极小，视为点击
                                         w.onOpenDetail();
                                         return;
                                       }
+                                      _longPressActivated = false;
                                       final target = _targetFromDelta(delta);
                                       if (target != w.start) {
                                         w.onMove(target);
                                       }
                                     }
                                     ..onCancel = () {
+                                      _longPressActivated = false;
                                       setState(() {
                                         _moveDelta = null;
                                       });
