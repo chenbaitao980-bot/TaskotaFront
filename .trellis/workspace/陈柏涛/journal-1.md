@@ -110,3 +110,41 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Tab 页面切换卡顿优化
+
+**Date**: 2026-06-06
+**Task**: Tab 页面切换卡顿优化
+**Branch**: `master`
+
+### Summary
+
+性能优化：消除首页/任务/日历/我的 tab 切换卡顿
+- 用 ValueNotifier<int> _tabIndex 替代 int _currentIndex + setState
+- build() 方法中 3 个 ValueListenableBuilder 分别重建 IndexedStack / BottomNav / FAB
+- _buildBottomNav() + _navItem() 提取为独立 _BottomNavWidget StatelessWidget
+- RepaintBoundary 包裹每个 tab 页面
+- 更新 quality-guidelines.md: 新增 ValueNotifier+ValueListenableBuilder 替代 setState 模式
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e5dc5d0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
