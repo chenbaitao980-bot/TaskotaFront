@@ -1,7 +1,15 @@
+import java.util.concurrent.TimeUnit
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+    configurations.all {
+        resolutionStrategy {
+            cacheChangingModulesFor(24, TimeUnit.HOURS)
+            cacheDynamicVersionsFor(24, TimeUnit.HOURS)
+        }
     }
 }
 

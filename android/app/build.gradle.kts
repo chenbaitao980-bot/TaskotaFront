@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import java.util.concurrent.TimeUnit
 
 plugins {
     id("com.android.application")
@@ -24,8 +25,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     defaultConfig {
@@ -66,6 +69,13 @@ android {
 
 flutter {
     source = "../.."
+}
+
+configurations.all {
+    resolutionStrategy {
+        cacheChangingModulesFor(24, TimeUnit.HOURS)
+        cacheDynamicVersionsFor(24, TimeUnit.HOURS)
+    }
 }
 
 dependencies {
