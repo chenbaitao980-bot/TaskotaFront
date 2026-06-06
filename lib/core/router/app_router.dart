@@ -8,6 +8,9 @@ import '../../presentation/pages/task/task_detail_page.dart';
 import '../../presentation/pages/task/create_task_page.dart';
 
 class AppRouter {
+  /// 全局导航键，供通知点击等外部事件导航到指定页面。
+  static final navigatorKey = GlobalKey<NavigatorState>();
+
   static const String home = '/';
   static const String calendar = '/calendar';
   static const String profile = '/profile';

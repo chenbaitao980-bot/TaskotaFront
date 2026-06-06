@@ -198,6 +198,7 @@ class _PrivacyGateApp extends StatelessWidget {
             darkTheme: AppTheme.themeData,
             themeMode:
                 AppTheme.current.isDark ? ThemeMode.dark : ThemeMode.light,
+            navigatorKey: AppRouter.navigatorKey,
             locale: const Locale('zh', 'CN'),
             localizationsDelegates: const [
               GlobalMaterialLocalizations.delegate,
@@ -273,6 +274,7 @@ class MyApp extends StatelessWidget {
               themeMode: AppTheme.current.isDark
                   ? ThemeMode.dark
                   : ThemeMode.light,
+              navigatorKey: AppRouter.navigatorKey,
               locale: const Locale('zh', 'CN'),
               localizationsDelegates: const [
                 GlobalMaterialLocalizations.delegate,

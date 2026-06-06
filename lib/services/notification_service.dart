@@ -6,6 +6,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/desktop/desktop_runtime.dart';
+import '../core/router/app_router.dart';
 import '../data/database/app_database.dart' show Task;
 import '../models/entities/schedule.dart';
 import '../models/entities/task_breakdown.dart';
@@ -118,7 +119,14 @@ class NotificationService {
 
       await _plugin!.initialize(
         initSettings,
-        onDidReceiveNotificationResponse: (response) {},
+        onDidReceiveNotificationResponse: (response) {
+          // 点击过期摘要通知 → 导航到主页（任务列表）
+          // 点击过期摘要通知 → 跳转到首页，清除导航栈避免重复
+          if (response.payload == 'overdue_digest') {
+            AppRouter.navigatorKey.currentState
+                ?.pushNamedAndRemoveUntil('/', (route) => false);
+          }
+        },
       );
 
       await _createNotificationChannels();
@@ -599,9 +607,18 @@ class NotificationService {
   }
 
   static const int _overdueDigestNotificationId = 0x7ffffffe;
+  /// 缓存上次显示的过期数量，数量未变化时不重复弹通知。
+  int _lastShownOverdueCount = 0;
 
   Future<void> _showOverdueDigest(int count) async {
-    if (count <= 0) return;
+    if (count <= 0) {
+      _lastShownOverdueCount = 0;
+      return;
+    }
+    // 数量与上次相同 → 不重复弹
+    if (count == _lastShownOverdueCount) return;
+    _lastShownOverdueCount = count;
+
     final title = '你有 $count 个过期任务未完成';
     const body = '点击查看详情';
     if (!_initialized) await init();
@@ -614,6 +631,7 @@ class NotificationService {
             title,
             body,
             _notifDetails,
+            payload: 'overdue_digest',
           );
         } catch (e) {
           _log('[Notif] overdue digest show failed: $e');
@@ -623,12 +641,6 @@ class NotificationService {
       _showDesktopNativeNotification(_overdueDigestNotificationId, title, body);
     }
     _log('[Notif] overdue digest: $count tasks');
-  }
-
-  Future<void> _clearOverdueAlarms(Iterable<String> overdueIds) async {
-    for (final id in overdueIds) {
-      await cancelReminderForSchedule(id);
-    }
   }
 
   Future<void> rescheduleTaskReminders(Iterable<Task> tasks) async {
@@ -643,7 +655,7 @@ class NotificationService {
           ? null
           : DateTime.fromMillisecondsSinceEpoch(task.startDate!);
       if (startTime == null) continue;
-      // 过期任务：startTime 已过，收集但不调度
+      // 过期任务：startTime 已过，收集但不调度；提醒已在上方 cancel，无需再次取消
       if (startTime.isBefore(now)) {
         overdueTaskIds.add(task.id);
         continue;
@@ -657,9 +669,14 @@ class NotificationService {
       );
       scheduled++;
     }
-    await _clearOverdueAlarms(overdueTaskIds);
     await _showOverdueDigest(overdueTaskIds.length);
     _log('[Notif] rescheduleTaskReminders: ${tasks.length} tasks, $scheduled scheduled, ${overdueTaskIds.length} overdue');
+  }
+
+  Future<void> _clearOverdueAlarms(Iterable<String> overdueIds) async {
+    for (final id in overdueIds) {
+      await cancelReminderForSchedule(id);
+    }
   }
 
   Future<void> rescheduleBreakdownTaskReminders(
