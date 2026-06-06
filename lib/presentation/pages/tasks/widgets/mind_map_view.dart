@@ -141,6 +141,7 @@ class _MindMapViewState extends State<MindMapView> {
     if (oldWidget.tasks != widget.tasks ||
         oldWidget.expandedIds != widget.expandedIds) {
       _computeLayoutCache();
+      _reloadOffsets();
     }
     if (oldWidget.selectedFilter != widget.selectedFilter ||
         oldWidget.selectedProjectId != widget.selectedProjectId) {
@@ -227,6 +228,32 @@ class _MindMapViewState extends State<MindMapView> {
       }
     }
     if (mounted) setState(() => _offsetsLoaded = true);
+  }
+
+  /// 在 [didUpdateWidget] 中重新加载存储的 offset，不触发 [setState] 或 [_focusNearestTask]。
+  /// 区别于 [_loadOffsets]（仅在 initState 调用一次，含 _offsetsLoaded 标记）。
+  Future<void> _reloadOffsets() async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = prefs.getString(_storageKey);
+    if (!mounted) return;
+    if (json != null) {
+      try {
+        final map = Map<String, dynamic>.from(jsonDecode(json) as Map);
+        for (final entry in map.entries) {
+          final list = entry.value as List;
+          final notifier = _positionNotifiers[entry.key];
+          if (notifier != null) {
+            notifier.value = Offset(
+              (list[0] as num).toDouble(),
+              (list[1] as num).toDouble(),
+            );
+            _draggedIds.add(entry.key);
+          }
+        }
+      } catch (_) {
+        // 解析失败则忽略，使用默认布局
+      }
+    }
   }
 
   Future<void> _saveOffsets() async {
