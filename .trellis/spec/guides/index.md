@@ -23,6 +23,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+| [Code Intelligence Tool Rules](../workflow/codegraph-guidelines.md) | graphify/codegraph priority, pre-edit sequence, post-edit sync | Before any code modification |
 
 ---
 
@@ -36,6 +37,18 @@ These guides help you **ask the right questions before coding**.
 - [ ] You're not sure where to put some logic
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
+
+### When to Think About Tool Priority (graphify/codegraph before grep)
+
+- [ ] You need to understand code before modifying it
+- [ ] You're about to run `grep` / `find` for code search
+- [ ] You need to trace a data flow across files/layers
+- [ ] You want to know the impact radius of a change
+- [ ] You're debugging without knowing where the root cause is
+
+→ Read [Code Intelligence Tool Rules](../workflow/codegraph-guidelines.md)
+
+---
 
 ### When to Think About Code Reuse
 
@@ -51,14 +64,22 @@ These guides help you **ask the right questions before coding**.
 
 ## Pre-Modification Rule (CRITICAL)
 
-> **Before changing ANY value, ALWAYS search first!**
+> **Before changing ANY value, ALWAYS run graphify/codegraph first, grep last!**
 
 ```bash
-# Search for the value you're about to change
+# Step 1: Semantic search (graphify)
+npx -y @nodesify/graphify query "<feature/module/symbol>"
+
+# Step 2: Symbolic search (codegraph trio)
+npx @colbymchenry/codegraph query "<symbol>"
+npx @colbymchenry/codegraph impact "<symbol>"
+npx @colbymchenry/codegraph callers "<symbol>"
+
+# Step 3: Traditional search (last resort only)
 grep -r "value_to_change" .
 ```
 
-This single habit prevents most "forgot to update X" bugs.
+See full rules in the [Code Intelligence Tool Rules spec](../workflow/codegraph-guidelines.md).
 
 ---
 
