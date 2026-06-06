@@ -98,3 +98,142 @@ void didUpdateWidget(Widget oldWidget) {
 - 每当在 `initState` 中加载异步数据（SharedPreferences、API、数据库），问自己："这个数据在 props 变化后需要重新加载吗？"
 - 为 reload 逻辑单独提取一个方法（如 `_reloadOffsets`），与 `initState` 中的初次加载区分
 - 区分 "首次加载" 逻辑（含 setState / 焦点导航等副作用）和 "重新加载" 逻辑（仅更新数据，无副作用）
+
+---
+
+### 自由拖拽位置缓存在父子关系变更时未清除
+
+**Symptom**: 思维导图中将节点拖入另一节点建立父子关系后，被移动节点仍停在旧的自由拖拽坐标处，不受新的自动布局控制。
+
+**Cause**: `_draggedIds` 标记该节点为"已手动拖拽"，`_reloadOffsets()` 从 SharedPreferences 重新加载旧坐标并恢复该标记，导致 `_syncNotifiersToLayout()` 的新布局坐标被覆盖。
+
+**Fix**: 使用"待重置集合"模式：在父子关系变更时记录需要重置的节点，并在下次布局加载时跳过其 SharedPreferences 缓存。
+
+```dart
+// 在 State 中添加：
+final Set<String> _pendingLayoutResetIds = {};
+
+// 代理 onMoveToParent 回调：
+void _handleMoveToParent(String taskId, String? newParentId) {
+  _pendingLayoutResetIds.add(taskId);
+  _draggedIds.remove(taskId);             // 让 _syncNotifiersToLayout 立即生效
+  widget.onMoveToParent(taskId, newParentId);
+}
+
+// 在 didUpdateWidget 中：
+if (_pendingLayoutResetIds.isNotEmpty) {
+  // 展开到完整子树（用新的 widget.tasks）
+  final expanded = <String>{};
+  for (final id in _pendingLayoutResetIds) {
+    expanded.addAll(_collectSubtreeIds(id, widget.tasks));
+  }
+  _pendingLayoutResetIds..clear()..addAll(expanded);
+  _draggedIds.removeAll(_pendingLayoutResetIds);   // 子树一并从 _draggedIds 移除
+}
+_computeLayoutCache();  // _syncNotifiersToLayout 此时已拿到正确坐标
+_reloadOffsets().then((_) {
+  if (_pendingLayoutResetIds.isNotEmpty) {
+    _pendingLayoutResetIds.clear();
+    _saveOffsets();    // 将重置节点的旧坐标从 SharedPreferences 中清除
+  }
+});
+
+// 在 _reloadOffsets 中跳过待重置节点：
+for (final entry in map.entries) {
+  if (_pendingLayoutResetIds.contains(entry.key)) continue; // ← 跳过，保留自动布局坐标
+  // ... 正常恢复
+}
+```
+
+**Prevention**:
+- 凡涉及"用户操作改变数据结构（而非仅位置）"的回调，都要问：位置缓存是否仍然有效？
+- 对应"重置布局"按钮已有完整先例：`_draggedIds.clear()` + `_saveOffsets()`，父子关系变更是局部版本
+
+---
+
+### 多层级列表的独立折叠状态管理
+
+**Pattern**: 将一组任务按父任务分组、支持每组独立折叠/展开（日历跨天区使用此模式）。
+
+**State**: 用 `Set<String>` 存储已折叠的组根 id，而非 `bool` 全局开关。
+
+```dart
+// ✅ 正确：每组独立折叠状态
+final Set<String> _collapsedMultiDayGroups = {};
+
+// 切换某组：
+setState(() {
+  if (_collapsedMultiDayGroups.contains(rootId)) {
+    _collapsedMultiDayGroups.remove(rootId);
+  } else {
+    _collapsedMultiDayGroups.add(rootId);
+  }
+});
+
+// 全部折叠/展开（仅针对有子任务的组）：
+final groupsWithChildren = sortedRootIds
+    .where((id) => childrenByRoot[id]!.isNotEmpty).toList();
+final allCollapsed = groupsWithChildren.isNotEmpty &&
+    groupsWithChildren.every((id) => _collapsedMultiDayGroups.contains(id));
+
+setState(() {
+  if (allCollapsed) {
+    _collapsedMultiDayGroups.clear();
+  } else {
+    _collapsedMultiDayGroups.addAll(groupsWithChildren);
+  }
+});
+```
+
+**Grouping logic**: 找到任务在 lane 内的最顶层祖先作为组根（需加循环引用保护）：
+
+```dart
+Task groupRoot(Task task) {
+  var cur = task;
+  final visited = <String>{};
+  while (cur.parentId != null && taskIds.contains(cur.parentId!) && visited.add(cur.id)) {
+    final parent = tasks.where((t) => t.id == cur.parentId).firstOrNull;
+    if (parent == null) break;
+    cur = parent;
+  }
+  return cur;
+}
+```
+
+**Sort**: 组间按父任务总跨度降序（最长在最上方）；父任务自身无日期时，取所有子任务跨度最大值作为组的排序依据：
+
+```dart
+int effectiveGroupSpan(String rootId) {
+  final rootSpan = spanMs(rootById[rootId]!);
+  if (rootSpan > 0) return rootSpan;
+  final children = childrenByRoot[rootId] ?? [];
+  return children.map(spanMs).fold(0, (a, b) => a > b ? a : b);
+}
+```
+
+**⚠️ 组内排序必须用 DFS 递归，禁止扁平化后直接排序**：将所有非 root 任务扁平化后按 `sortOrder/startDate` 排序，在多层级（祖→父→子）结构中会导致父任务被子任务压到下面。正确做法是 DFS 递归，保证任何父节点永远先于其子节点输出：
+
+```dart
+List<Task> dfsChildren(List<Task> allChildren, String parentId) {
+  final direct = allChildren
+      .where((t) => t.parentId == parentId)
+      .toList()
+    ..sort((a, b) {
+      final so = a.sortOrder.compareTo(b.sortOrder);
+      if (so != 0) return so;
+      return (a.startDate ?? 0).compareTo(b.startDate ?? 0);
+    });
+  final result = <Task>[];
+  for (final child in direct) {
+    result.add(child);
+    result.addAll(dfsChildren(allChildren, child.id)); // 递归子树
+  }
+  return result;
+}
+
+// 使用：
+for (final rootId in sortedRootIds) {
+  orderedRows.add(rootById[rootId]!);
+  orderedRows.addAll(dfsChildren(childrenByRoot[rootId]!, rootId));
+}
+```
