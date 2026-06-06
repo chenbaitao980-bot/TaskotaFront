@@ -148,3 +148,38 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 思维导图布局重置 + 日历多层任务排序修复
+
+**Date**: 2026-06-06
+**Task**: 思维导图布局重置 + 日历多层任务排序修复
+**Branch**: `master`
+
+### Summary
+
+Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制清除旧拖拽坐标，使子树重置为自动布局。Feature 2: 日历跨天区改用 DFS 递归排序，保证多层级任务树中父节点永远在子节点上方；并修复父任务无日期时组排序依据（effectiveGroupSpan）。同步修复 Android Gradle 构建配置（jvmTarget DSL 迁移、TimeUnit import、并行构建开启）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7827dea` | (see git log) |
+| `511d9ed` | (see git log) |
+| `1a05678` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
