@@ -1,4 +1,4 @@
--- Smart Assistant - 云同步数据表
+-- Taskora - 云同步数据表
 -- 使用方法：登录 Supabase Dashboard → SQL Editor → 粘贴此脚本 → 运行
 
 -- 本地任务云同步表（存储跨设备同步的任务 JSON 快照）

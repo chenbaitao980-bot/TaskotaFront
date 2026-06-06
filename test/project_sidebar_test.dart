@@ -147,6 +147,7 @@ Project _project({
     groupId: groupId,
     sortOrder: 0,
     archived: 0,
+    isTemplate: 0,
     deleted: 0,
     createdAt: createdAt,
     updatedAt: createdAt,

@@ -1,22 +1,29 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'task_event.dart';
 import 'task_state.dart';
+import '../../../core/exceptions/quota_exceeded_exception.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../data/repositories/checklist_repository.dart';
+import '../../../data/repositories/node_template_repository.dart';
+import '../../../models/node_template_payload.dart';
 import '../../../domain/tasks/task_progress_calculator.dart';
 import '../../../services/supabase_service.dart';
 import '../../../core/utils/file_logger.dart';
 import '../../../services/local_storage_service.dart';
+import '../../../services/notification_service.dart';
 import '../../../services/task_sync_service.dart';
+import '../../../services/task_attachment_service.dart';
 
 class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   final ProjectRepository projectRepository;
   final ProjectGroupRepository? projectGroupRepository;
   final TaskRepository taskRepository;
   final ChecklistRepository checklistRepository;
+  final NodeTemplateRepository nodeTemplateRepository;
   final SupabaseService? supabaseService;
   final LocalStorageService _storage = LocalStorageService();
 
@@ -25,8 +32,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     this.projectGroupRepository,
     required this.taskRepository,
     required this.checklistRepository,
+    required this.nodeTemplateRepository,
     this.supabaseService,
   }) : super(TaskNewInitial()) {
+    _storage.init();
     on<LoadProjects>(_onLoadProjects);
     on<CreateProject>(_onCreateProject);
     on<UpdateProject>(_onUpdateProject);
@@ -47,6 +56,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<ToggleChecklistItem>(_onToggleChecklistItem);
     on<DeleteChecklistItem>(_onDeleteChecklistItem);
     on<SetChecklistItemObsidianUri>(_onSetChecklistItemObsidianUri);
+    on<ReorderChecklistItems>(_onReorderChecklistItems);
 
     on<LoadSubTree>(_onLoadSubTree);
     on<AddSubTask>(_onAddSubTask);
@@ -62,6 +72,24 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<CollapseAllTasks>(_onCollapseAllTasks);
     on<SyncFromCloud>(_onSyncFromCloud);
     on<ToggleViewMode>(_onToggleViewMode);
+    on<MergeSubTasksToChecklist>(_onMergeSubTasksToChecklist);
+    on<ApplyTemplate>(_onApplyTemplate);
+  }
+
+  @visibleForTesting
+  static Set<String> resolveSubTreeExpandedNodesForRefresh({
+    required String rootTaskId,
+    required List<Task> descendants,
+    required Set<String>? currentExpanded,
+  }) {
+    if (currentExpanded != null) {
+      final descendantIds = descendants.map((t) => t.id).toSet();
+      return currentExpanded.where(descendantIds.contains).toSet();
+    }
+    return descendants
+        .where((t) => t.parentId == rootTaskId)
+        .map((t) => t.id)
+        .toSet();
   }
 
   // --- 椤圭洰 ---
@@ -70,7 +98,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     LoadProjects event,
     Emitter<TaskNewState> emit,
   ) async {
-    emit(TaskNewLoading());
+    if (state is! TaskNewLoaded) emit(TaskNewLoading());
     try {
       final projects = await projectRepository.getActive();
       final tasks = await taskRepository.getAll();
@@ -114,8 +142,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         name: event.name,
         color: event.color,
         groupId: event.groupId,
+        isTemplate: event.isTemplate,
       );
-      final projects = await projectRepository.getActive();
+      final projects = event.isTemplate
+          ? await projectRepository.getTemplateProjects()
+          : await projectRepository.getActive();
       if (state is TaskNewLoaded) {
         final current = state as TaskNewLoaded;
         emit(current.copyWith(projects: projects));
@@ -123,7 +154,8 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         emit(TaskNewLoaded(projects: projects));
       }
     } catch (e) {
-      emit(TaskNewError(e.toString()));
+      final isQuota = e is QuotaExceededException;
+      emit(TaskNewError(e.toString(), isQuotaExceeded: isQuota));
     }
   }
 
@@ -257,6 +289,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     Map<String, List<Task>> preservedSubTrees = const {};
     Map<String, Set<String>> preservedExpanded = const {};
     String preservedViewMode = 'mindmap';
+    String preservedFilter = 'all';
+    String preservedStatusFilter = 'all';
+    Set<String> preservedProjectIds = const {};
     int? preservedDateFrom;
     int? preservedDateTo;
     if (state is TaskNewLoaded) {
@@ -264,27 +299,66 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       preservedSubTrees = current.subTrees;
       preservedExpanded = current.expandedNodes;
       preservedViewMode = current.viewMode;
+      preservedFilter = current.selectedFilter ?? 'all';
+      preservedStatusFilter = current.selectedStatusFilter;
+      preservedProjectIds = current.selectedProjectIds;
       preservedDateFrom = current.dateFrom;
       preservedDateTo = current.dateTo;
     }
 
-    emit(TaskNewLoading());
+    if (state is! TaskNewLoaded) emit(TaskNewLoading());
     try {
-      final projects = await projectRepository.getActive();
+      final isTemplateMode = event.filter == 'templates';
+      final templateProjects = await projectRepository.getTemplateProjects();
+      final projects = isTemplateMode
+          ? templateProjects
+          : await projectRepository.getActive();
       await _storage.init();
+      // 首次加载时从本地/云端恢复筛选状态
+      if (state is! TaskNewLoaded) {
+        final localPrefs = _storage.getTaskFilterState();
+        final cloudPrefs = await supabaseService?.fetchPreferences();
+        final prefs = cloudPrefs ?? localPrefs;
+        if (prefs != null) {
+          preservedFilter = prefs['selectedFilter'] as String? ?? 'all';
+          preservedStatusFilter =
+              prefs['selectedStatusFilter'] as String? ?? 'all';
+          preservedViewMode = prefs['viewMode'] as String? ?? 'mindmap';
+          preservedProjectIds = (prefs['projectIds'] as List<dynamic>? ?? [])
+              .cast<String>()
+              .toSet();
+          preservedDateFrom = prefs['dateFrom'] as int?;
+          preservedDateTo = prefs['dateTo'] as int?;
+        }
+      }
       final excludedProjectIds = _storage.excludedProjectIds;
+      final templateProjIds = templateProjects.map((p) => p.id).toSet();
       final allTasks = (await taskRepository.getAll())
           .where((t) => !excludedProjectIds.contains(t.projectId))
+          .where((t) => isTemplateMode
+              ? templateProjIds.contains(t.projectId)
+              : !templateProjIds.contains(t.projectId))
           .toList();
-      final selectedProjectIds = event.projectIds
-          .where((id) => !excludedProjectIds.contains(id))
-          .toSet();
+      final selectedProjectIds =
+          (event.hasProjectSelectionOverride
+                  ? event.projectIds
+                  : preservedProjectIds)
+              .where((id) => !excludedProjectIds.contains(id))
+              .toSet();
+      final selectedFilter = event.filter ?? preservedFilter;
+      final selectedStatusFilter = event.statusFilter ?? preservedStatusFilter;
+      final selectedDateFrom = event.clearDateRange
+          ? null
+          : (event.dateFrom ?? preservedDateFrom);
+      final selectedDateTo = event.clearDateRange
+          ? null
+          : (event.dateTo ?? preservedDateTo);
       List<Task> tasks;
-      if (event.filter == 'today') {
+      if (selectedFilter == 'today') {
         tasks = (await taskRepository.getToday())
             .where((t) => !excludedProjectIds.contains(t.projectId))
             .toList();
-      } else if (event.filter == 'important') {
+      } else if (selectedFilter == 'important') {
         tasks = (await taskRepository.getImportant())
             .where((t) => !excludedProjectIds.contains(t.projectId))
             .toList();
@@ -297,38 +371,35 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       }
 
       // 鏃ユ湡鍖洪棿杩囨护锛氫换鍔＄殑 [startDate, dueDate] 涓?[dateFrom, dateTo] 鏈変氦闆?
-      if (event.dateFrom != null && event.dateTo != null) {
+      if (selectedDateFrom != null && selectedDateTo != null) {
         tasks = tasks.where((t) {
           final s = t.startDate ?? t.dueDate;
           final d = t.dueDate ?? t.startDate;
           if (s == null && d == null) return false;
           final taskStart = s ?? d!;
           final taskEnd = d ?? s!;
-          return taskStart <= event.dateTo! && taskEnd >= event.dateFrom!;
+          return taskStart <= selectedDateTo && taskEnd >= selectedDateFrom;
         }).toList();
       }
 
       // DEBUG: 璇婃柇瀛愪换鍔℃秷澶?
-      final allChildTasks = allTasks.where((t) => t.parentId != null).toList();
-      final childTasks = tasks.where((t) => t.parentId != null).toList();
-      flog(
-        '[LoadTasks] filter=${event.filter}, projectIds=$selectedProjectIds',
-      );
-      flog(
-        '[LoadTasks] allTasks鎬绘暟=${allTasks.length}, allChildren=${allChildTasks.length}',
-      );
-      flog(
-        '[LoadTasks] 杩囨护鍚巘asks=${tasks.length}, filteredChildren=${childTasks.length}',
-      );
-      for (final c in allChildTasks) {
-        final inFiltered = tasks.any((t) => t.id == c.id);
-        final parentInFiltered = tasks.any((t) => t.id == c.parentId);
-        flog(
-          '[LoadTasks]   child: id=${c.id.substring(0, 8)}, title=${c.title}, parentId=${c.parentId?.substring(0, 8)}, projectId=${c.projectId}, deleted=${c.deleted}, inFiltered=$inFiltered, parentInFiltered=$parentInFiltered',
-        );
+      if (selectedStatusFilter == 'pending') {
+        tasks = tasks.where((t) => t.status == 0).toList();
+      } else if (selectedStatusFilter == 'completed') {
+        tasks = tasks.where((t) => t.status == 2).toList();
       }
 
-      final progress = await _calculateProgress(allTasks);
+      flog(
+        '[LoadTasks] filter=$selectedFilter, projectIds=$selectedProjectIds, tasks=${tasks.length}/${allTasks.length}',
+      );
+
+      final allProjects = isTemplateMode
+          ? templateProjects
+          : [...projects, ...templateProjects];
+      final progress = await _calculateProgress(
+        allTasks,
+        cachedProjects: allProjects,
+      );
 
       // 榛樿灞曞紑鎵€鏈夋湁瀛愯妭鐐圭殑浠诲姟
       final newExpanded = Map<String, Set<String>>.from(preservedExpanded);
@@ -354,26 +425,53 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           groups: groups,
           tasks: tasks,
           selectedProjectIds: selectedProjectIds,
-          selectedFilter: event.filter ?? 'all',
+          selectedFilter: selectedFilter,
+          selectedStatusFilter: selectedStatusFilter,
           subTrees: preservedSubTrees,
           expandedNodes: newExpanded,
           taskProgress: progress.taskProgress,
           projectProgress: progress.projectProgress,
           groupProgress: progress.groupProgress,
-          dateFrom: event.clearDateRange
-              ? null
-              : (event.dateFrom ?? preservedDateFrom),
-          dateTo: event.clearDateRange
-              ? null
-              : (event.dateTo ?? preservedDateTo),
+          dateFrom: selectedDateFrom,
+          dateTo: selectedDateTo,
           viewMode: event.focusTaskId != null ? 'mindmap' : preservedViewMode,
+          isTemplateMode: isTemplateMode,
+          templateProjects: templateProjects,
           focusTaskId: event.focusTaskId,
           focusRequestToken: event.focusRequestToken,
         ),
       );
+      _persistFilterState(
+        selectedFilter: selectedFilter,
+        selectedStatusFilter: selectedStatusFilter,
+        viewMode: event.focusTaskId != null ? 'mindmap' : preservedViewMode,
+        selectedProjectIds: selectedProjectIds,
+        dateFrom: selectedDateFrom,
+        dateTo: selectedDateTo,
+      );
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }
+  }
+
+  Future<void> _persistFilterState({
+    required String selectedFilter,
+    required String selectedStatusFilter,
+    required String viewMode,
+    required Set<String> selectedProjectIds,
+    required int? dateFrom,
+    required int? dateTo,
+  }) async {
+    final data = {
+      'selectedFilter': selectedFilter,
+      'selectedStatusFilter': selectedStatusFilter,
+      'viewMode': viewMode,
+      'projectIds': selectedProjectIds.toList(),
+      'dateFrom': dateFrom,
+      'dateTo': dateTo,
+    };
+    await _storage.saveTaskFilterState(data);
+    supabaseService?.syncPreferences(data);
   }
 
   Set<String> _ancestorIds(String taskId, List<Task> tasks) {
@@ -402,8 +500,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
   Future<void> _runOptimisticTaskChange(
     Emitter<TaskNewState> emit,
-    Future<void> Function() action,
-  ) async {
+    Future<void> Function() action, {
+    TaskNewLoaded Function(TaskNewLoaded snapshot)? adjustSnapshot,
+  }) async {
     if (state is! TaskNewLoaded) {
       await action();
       add(LoadTasks());
@@ -414,13 +513,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     final rollbackSnapshot = await taskRepository.getAllRaw();
     try {
       await action();
-      await _emitTaskSnapshot(previous, emit);
+      await _emitTaskSnapshot(previous, emit, adjustSnapshot: adjustSnapshot);
       try {
         await TaskSyncService.instance.syncAll(rethrowErrors: true);
-      } catch (_) {
-        await taskRepository.restoreRawTasks(rollbackSnapshot);
-        emit(previous.copyWith(syncRollbackMessage: '鍚屾澶辫触锛屽凡鍥為€€鏈鎿嶄綔'));
+      } catch (e) {
+        flog('[TaskBloc] syncAll failed (non-fatal): $e');
       }
+    } on QuotaExceededException catch (e) {
+      emit(TaskNewError(e.toString(), isQuotaExceeded: true));
     } catch (e) {
       await taskRepository.restoreRawTasks(rollbackSnapshot);
       emit(TaskNewError(e.toString()));
@@ -429,18 +529,31 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
   Future<void> _emitTaskSnapshot(
     TaskNewLoaded previous,
-    Emitter<TaskNewState> emit,
-  ) async {
-    final projects = await projectRepository.getActive();
+    Emitter<TaskNewState> emit, {
+    TaskNewLoaded Function(TaskNewLoaded snapshot)? adjustSnapshot,
+  }) async {
+    final isTemplate = previous.isTemplateMode;
+    final projects = isTemplate
+        ? await projectRepository.getTemplateProjects()
+        : await projectRepository.getActive();
     await _storage.init();
     final excludedProjectIds = _storage.excludedProjectIds;
+    final templateProjIds = isTemplate
+        ? projects.map((p) => p.id).toSet()
+        : (await projectRepository.getTemplateProjects())
+            .map((p) => p.id)
+            .toSet();
     final allTasks = (await taskRepository.getAll())
         .where((t) => !excludedProjectIds.contains(t.projectId))
+        .where((t) => isTemplate
+            ? templateProjIds.contains(t.projectId)
+            : !templateProjIds.contains(t.projectId))
         .toList();
     final selectedProjectIds = previous.selectedProjectIds
         .where((id) => !excludedProjectIds.contains(id))
         .toSet();
     final filter = previous.selectedFilter ?? 'all';
+    final statusFilter = previous.selectedStatusFilter;
 
     List<Task> tasks;
     if (filter == 'today') {
@@ -470,51 +583,154 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       }).toList();
     }
 
+    if (statusFilter == 'pending') {
+      tasks = tasks.where((t) => t.status == 0).toList();
+    } else if (statusFilter == 'completed') {
+      tasks = tasks.where((t) => t.status == 2).toList();
+    }
+
     final progress = await _calculateProgress(allTasks);
     final groups =
         await (projectGroupRepository?.getAll() ??
             Future.value(<ProjectGroup>[]));
-    emit(
-      previous.copyWith(
-        projects: projects,
-        groups: groups,
-        tasks: tasks,
-        selectedProjectIds: selectedProjectIds,
-        selectedFilter: filter,
-        taskProgress: progress.taskProgress,
-        projectProgress: progress.projectProgress,
-        groupProgress: progress.groupProgress,
-      ),
+    final snapshot = previous.copyWith(
+      projects: projects,
+      groups: groups,
+      tasks: tasks,
+      selectedProjectIds: selectedProjectIds,
+      selectedFilter: filter,
+      taskProgress: progress.taskProgress,
+      projectProgress: progress.projectProgress,
+      groupProgress: progress.groupProgress,
     );
+    emit(adjustSnapshot == null ? snapshot : adjustSnapshot(snapshot));
   }
 
   Future<void> _onCreateTask(
     CreateTask event,
     Emitter<TaskNewState> emit,
   ) async {
-    await _runOptimisticTaskChange(emit, () async {
-      final newTask = await taskRepository.create(
-        projectId: event.projectId,
-        title: event.title,
-        description: event.description,
-        priority: event.priority,
-        startDate: event.startDate,
-        dueDate: event.dueDate,
-        parentId: event.parentId,
-        syncImmediately: false,
-      );
-      for (final shifted in event.shiftedTasks) {
-        await taskRepository.update(
-          shifted.taskId,
-          startDate: shifted.start.millisecondsSinceEpoch,
-          dueDate: shifted.end.millisecondsSinceEpoch,
-          syncImmediately: false,
+    String? createdTaskId;
+    await _runOptimisticTaskChange(
+      emit,
+      () async {
+        final newTask = await taskRepository.create(
+          projectId: event.projectId,
+          title: event.title,
+          description: event.description,
+          priority: event.priority,
+          startDate: event.startDate,
+          dueDate: event.dueDate,
+          parentId: event.parentId,
+          remindBeforeMinutes: event.remindBeforeMinutes,
+          reminderEnabled: event.reminderEnabled,
+          syncImmediately: true,
         );
-      }
-      flog(
-        '[CreateTask] local commit: id=${newTask.id.substring(0, 8)}, title=${newTask.title}, parentId=${newTask.parentId?.substring(0, 8)}, projectId=${newTask.projectId}',
+        createdTaskId = newTask.id;
+        // 新建时附带的图片
+        if (event.pendingImages.isNotEmpty) {
+          final attachSvc = TaskAttachmentService();
+          for (final img in event.pendingImages) {
+            try {
+              await attachSvc.saveAttachment(newTask.id, img);
+            } catch (_) {}
+          }
+        }
+        for (final image in event.templatePayload.images) {
+          try {
+            await TaskAttachmentService().saveImageBytes(
+              newTask.id,
+              fileName: image.fileName,
+              bytes: image.bytes,
+            );
+          } catch (_) {}
+        }
+        for (final title in event.templatePayload.checklistTitles) {
+          await checklistRepository.create(taskId: newTask.id, title: title);
+        }
+        for (final subtask in event.templatePayload.subtasks) {
+          await _createTemplateSubtaskTree(
+            subtask,
+            projectId: event.projectId,
+            parentId: newTask.id,
+          );
+        }
+        await _expandAncestorDatesForTaskId(newTask.id, syncImmediately: false);
+        for (final shifted in event.shiftedTasks) {
+          await taskRepository.update(
+            shifted.taskId,
+            startDate: shifted.start.millisecondsSinceEpoch,
+            dueDate: shifted.end.millisecondsSinceEpoch,
+            syncImmediately: false,
+          );
+          await _expandAncestorDatesForTaskId(
+            shifted.taskId,
+            syncImmediately: false,
+          );
+        }
+        flog(
+          '[CreateTask] local commit: id=${newTask.id.substring(0, 8)}, title=${newTask.title}, parentId=${newTask.parentId?.substring(0, 8)}, projectId=${newTask.projectId}',
+        );
+      },
+      adjustSnapshot: (snapshot) {
+        final taskId = createdTaskId;
+        if (taskId == null) return snapshot;
+        final newExpanded = Map<String, Set<String>>.from(
+          snapshot.expandedNodes,
+        );
+        final mainTree = Set<String>.from(newExpanded['main_tree'] ?? {});
+        if (event.parentId != null) mainTree.add(event.parentId!);
+        mainTree.addAll(_ancestorIds(taskId, snapshot.tasks));
+        newExpanded['main_tree'] = mainTree;
+        // 确保新任务不被当前项目过滤排除
+        final newProjectIds = snapshot.selectedProjectIds.isEmpty
+            ? snapshot.selectedProjectIds
+            : <String>{...snapshot.selectedProjectIds, event.projectId};
+        return snapshot.copyWith(
+          expandedNodes: newExpanded,
+          viewMode: 'mindmap',
+          selectedProjectIds: newProjectIds,
+          focusTaskId: taskId,
+          focusRequestToken: DateTime.now().microsecondsSinceEpoch,
+        );
+      },
+    );
+  }
+
+  Future<void> _createTemplateSubtaskTree(
+    NodeTemplateSubtask template, {
+    required String projectId,
+    required String parentId,
+  }) async {
+    final task = await taskRepository.create(
+      projectId: projectId,
+      title: template.title.trim(),
+      description: template.description.trim(),
+      priority: 1,
+      parentId: parentId,
+      syncImmediately: false,
+    );
+    for (final child in template.children) {
+      await _createTemplateSubtaskTree(
+        child,
+        projectId: projectId,
+        parentId: task.id,
       );
-    });
+    }
+  }
+
+  Future<void> _expandAncestorDatesForTaskId(
+    String taskId, {
+    bool syncImmediately = true,
+  }) async {
+    final task = await taskRepository.get(taskId);
+    if (task == null) return;
+    await taskRepository.expandAncestorDates(
+      task.parentId,
+      task.startDate,
+      task.dueDate,
+      syncImmediately: syncImmediately,
+    );
   }
 
   Future<void> _onUpdateTask(
@@ -535,62 +751,57 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         syncImmediately: false,
       );
 
-      if ((event.startDate != null || event.dueDate != null) &&
-          state is TaskNewLoaded) {
-        final tasks = (state as TaskNewLoaded).tasks;
-        final updatedTask = tasks.where((t) => t.id == event.id).firstOrNull;
+      if (event.startDate != null || event.dueDate != null) {
+        final updatedTask = await taskRepository.get(event.id);
         if (updatedTask != null) {
           final childStart = event.startDate ?? updatedTask.startDate;
           final childEnd = event.dueDate ?? updatedTask.dueDate;
-          await _expandAncestorDates(
+          await taskRepository.expandAncestorDates(
             updatedTask.parentId,
             childStart,
             childEnd,
-            tasks,
             syncImmediately: false,
           );
         }
       }
+
+      for (final shifted in event.shiftedTasks) {
+        await taskRepository.update(
+          shifted.taskId,
+          startDate: shifted.start.millisecondsSinceEpoch,
+          dueDate: shifted.end.millisecondsSinceEpoch,
+          syncImmediately: false,
+        );
+        await _expandAncestorDatesForTaskId(
+          shifted.taskId,
+          syncImmediately: false,
+        );
+      }
     });
   }
 
-  Future<void> _expandAncestorDates(
-    String? parentId,
-    int? childStart,
-    int? childEnd,
-    List<Task> tasks, {
-    bool syncImmediately = true,
-  }) async {
-    String? currentParentId = parentId;
-    while (currentParentId != null) {
-      final parent = tasks.where((t) => t.id == currentParentId).firstOrNull;
-      if (parent == null) break;
 
-      int? ns = parent.startDate;
-      int? nd = parent.dueDate;
-      if (childStart != null)
-        ns = (ns == null || childStart < ns) ? childStart : ns;
-      if (childEnd != null) nd = (nd == null || childEnd > nd) ? childEnd : nd;
-
-      if (ns != parent.startDate || nd != parent.dueDate) {
-        await taskRepository.update(
-          parent.id,
-          startDate: ns,
-          dueDate: nd,
-          syncImmediately: syncImmediately,
-        );
-      }
-      currentParentId = parent.parentId;
-    }
-  }
 
   Future<void> _onDeleteTask(
     DeleteTask event,
     Emitter<TaskNewState> emit,
   ) async {
+    // 删除前取消所有相关通知
+    final descendants = await taskRepository.getDescendants(event.id);
+    final allIds = <String>[event.id, ...descendants.map((d) => d.id)];
+    final notif = NotificationService();
+    for (final id in allIds) {
+      await notif.cancelReminderForSchedule(id);
+    }
     await _runOptimisticTaskChange(
       emit,
-      () => taskRepository.delete(event.id, syncImmediately: false),
+      () async {
+        await taskRepository.delete(event.id, syncImmediately: false);
+        // 立即推送上云，不依赖 syncAll push 循环传播墓碑
+        final raw = await taskRepository.getAllRaw();
+        final target = raw.where((t) => t.id == event.id).firstOrNull;
+        if (target != null) TaskSyncService.instance.push(target);
+      },
     );
   }
 
@@ -598,10 +809,32 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     ToggleTaskStatus event,
     Emitter<TaskNewState> emit,
   ) async {
-    await _runOptimisticTaskChange(
-      emit,
-      () => taskRepository.toggleStatus(event.id, syncImmediately: false),
-    );
+    await _runOptimisticTaskChange(emit, () async {
+      final task = await taskRepository.get(event.id);
+      if (task == null) return;
+      final nextStatus = task.status == 0 ? 2 : 0;
+      // 完成任务时取消通知
+      if (nextStatus == 2) {
+        final notif = NotificationService();
+        await notif.cancelReminderForSchedule(event.id);
+        if (event.cascadeChildren) {
+          final descendants = await taskRepository.getDescendants(event.id);
+          for (final d in descendants) {
+            await notif.cancelReminderForSchedule(d.id);
+          }
+        }
+      }
+      if (event.cascadeChildren) {
+        await taskRepository.setStatusCascade(
+          event.id,
+          nextStatus,
+          includeDescendants: nextStatus == 2,
+          syncImmediately: false,
+        );
+      } else {
+        await taskRepository.toggleStatus(event.id, syncImmediately: false);
+      }
+    });
   }
   // --- 妫€鏌ラ」 ---
 
@@ -695,6 +928,18 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
+  Future<void> _onReorderChecklistItems(
+    ReorderChecklistItems event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    try {
+      await checklistRepository.reorderItems(event.taskId, event.orderedIds);
+      add(LoadChecklistItems(taskId: event.taskId));
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
   // --- 瀛愪换鍔℃爲 ---
 
   Future<void> _onLoadSubTree(
@@ -710,13 +955,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         final newTrees = Map<String, List<Task>>.from(current.subTrees);
         newTrees[event.rootTaskId] = descendants;
 
-        final directChildren = descendants
-            .where((t) => t.parentId == event.rootTaskId)
-            .toList();
         final newExpanded = Map<String, Set<String>>.from(
           current.expandedNodes,
         );
-        newExpanded[event.rootTaskId] = {for (final c in directChildren) c.id};
+        newExpanded[event.rootTaskId] = resolveSubTreeExpandedNodesForRefresh(
+          rootTaskId: event.rootTaskId,
+          descendants: descendants,
+          currentExpanded: current.expandedNodes[event.rootTaskId],
+        );
 
         emit(
           current.copyWith(
@@ -835,11 +1081,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     return taskId;
   }
 
-  Future<TaskProgressSnapshot> _calculateProgress(List<Task> allTasks) async {
+  Future<TaskProgressSnapshot> _calculateProgress(
+    List<Task> allTasks, {
+    List<Project>? cachedProjects,
+  }) async {
     final checklistItems = await checklistRepository.getByTaskIds(
       allTasks.map((task) => task.id).toList(),
     );
-    final projects = await projectRepository.getAll();
+    final projects = cachedProjects ?? await projectRepository.getAll();
     return TaskProgressCalculator.calculate(
       tasks: allTasks,
       checklistItems: checklistItems,
@@ -873,6 +1122,13 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
             .firstOrNull;
         final child = tasks.where((t) => t.id == event.taskId).firstOrNull;
         if (parent != null && child != null) {
+          if (child.projectId != parent.projectId) {
+            await taskRepository.update(
+              child.id,
+              projectId: parent.projectId,
+              syncImmediately: false,
+            );
+          }
           int? ns = parent.startDate;
           int? nd = parent.dueDate;
           final cs = child.startDate;
@@ -964,11 +1220,173 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     }
   }
 
-  void _onToggleViewMode(ToggleViewMode event, Emitter<TaskNewState> emit) {
+  Future<void> _onToggleViewMode(
+    ToggleViewMode event,
+    Emitter<TaskNewState> emit,
+  ) async {
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       final newMode = current.viewMode == 'mindmap' ? 'list' : 'mindmap';
       emit(current.copyWith(viewMode: newMode));
+      await _persistFilterState(
+        selectedFilter: current.selectedFilter ?? 'all',
+        selectedStatusFilter: current.selectedStatusFilter,
+        viewMode: newMode,
+        selectedProjectIds: current.selectedProjectIds,
+        dateFrom: current.dateFrom,
+        dateTo: current.dateTo,
+      );
     }
+  }
+
+  Future<void> _onMergeSubTasksToChecklist(
+    MergeSubTasksToChecklist event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    try {
+      final descendants = await taskRepository.getDescendants(event.taskId);
+      final directChildren = descendants
+          .where((t) => t.parentId == event.taskId)
+          .toList();
+
+      // 获取现有检查项标题用于去重
+      final existingItems = await checklistRepository.getByTask(event.taskId);
+      final existingTitles = existingItems.map((i) => i.title.trim()).toSet();
+
+      for (final child in directChildren) {
+        // 只处理叶子节点
+        if (descendants.any((d) => d.parentId == child.id)) continue;
+        // 只合并已完成的子任务
+        if (child.status != 2) continue;
+        // 去重：同名检查项已存在则跳过
+        if (existingTitles.contains(child.title.trim())) continue;
+
+        final attachments = await TaskAttachmentService().getAttachments(
+          child.id,
+        );
+        final hasContent =
+            attachments.isNotEmpty || child.description.trim().isNotEmpty;
+        if (!hasContent) {
+          final item = await checklistRepository.create(
+            taskId: event.taskId,
+            title: child.title,
+          );
+          // 标记检查项为已完成，与子任务状态一致
+          await checklistRepository.toggleStatus(item.id);
+          existingTitles.add(child.title.trim());
+          await taskRepository.delete(child.id);
+        }
+      }
+
+      // 在同一 handler 内一次性 emit，避免多次 emit 互相覆盖导致检查项不刷新
+      final newDescendants = await taskRepository.getDescendants(event.taskId);
+      final newItems = await checklistRepository.getByTask(event.taskId);
+      final allTasks = await taskRepository.getAll();
+      final progress = await _calculateProgress(allTasks);
+
+      if (state is TaskNewLoaded) {
+        final current = state as TaskNewLoaded;
+        final newTrees = Map<String, List<Task>>.from(current.subTrees);
+        newTrees[event.taskId] = newDescendants;
+        final newMap = Map<String, List<ChecklistItem>>.from(
+          current.checklistItems,
+        );
+        newMap[event.taskId] = newItems;
+        final newExpanded = Map<String, Set<String>>.from(
+          current.expandedNodes,
+        );
+        newExpanded[event.taskId] = resolveSubTreeExpandedNodesForRefresh(
+          rootTaskId: event.taskId,
+          descendants: newDescendants,
+          currentExpanded: current.expandedNodes[event.taskId],
+        );
+        emit(
+          current.copyWith(
+            subTrees: newTrees,
+            expandedNodes: newExpanded,
+            checklistItems: newMap,
+            taskProgress: progress.taskProgress,
+            projectProgress: progress.projectProgress,
+            groupProgress: progress.groupProgress,
+          ),
+        );
+      }
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onApplyTemplate(
+    ApplyTemplate event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    await _runOptimisticTaskChange(emit, () async {
+      final templateTasks = await taskRepository.getAll();
+      final tasksInTemplate = templateTasks
+          .where((t) => t.projectId == event.templateProjectId)
+          .toList();
+      if (tasksInTemplate.isEmpty) return;
+
+      final roots = tasksInTemplate
+          .where((t) => t.parentId == null)
+          .toList();
+      if (roots.isEmpty) return;
+
+      final earliestStart = roots
+          .where((t) => t.startDate != null)
+          .map((t) => t.startDate!)
+          .fold<int?>(null, (a, b) => a == null ? b : (b < a ? b : a));
+      final offsetMillis = earliestStart != null
+          ? event.startTimeMillis - earliestStart
+          : 0;
+
+      final idMapping = <String, String>{};
+      final cloneChecklistItems = await Future.wait(
+        tasksInTemplate.map((t) => checklistRepository.getByTask(t.id)),
+      );
+      final checklistByTask = <String, List<ChecklistItem>>{};
+      for (var i = 0; i < tasksInTemplate.length; i++) {
+        checklistByTask[tasksInTemplate[i].id] = cloneChecklistItems[i];
+      }
+
+      Future<void> cloneTree(List<Task> siblings, String? parentId) async {
+        for (final t in siblings) {
+          final newStart = t.startDate != null
+              ? t.startDate! + offsetMillis
+              : null;
+          final newDue = t.dueDate != null
+              ? t.dueDate! + offsetMillis
+              : null;
+          final newTask = await taskRepository.create(
+            projectId: event.targetProjectId,
+            title: t.title,
+            description: t.description,
+            priority: t.priority,
+            startDate: newStart,
+            dueDate: newDue,
+            parentId: parentId ?? event.parentId,
+            syncImmediately: false,
+          );
+          idMapping[t.id] = newTask.id;
+
+          final items = checklistByTask[t.id] ?? [];
+          for (final item in items) {
+            await checklistRepository.create(
+              taskId: newTask.id,
+              title: item.title,
+            );
+          }
+
+          final children = tasksInTemplate
+              .where((c) => c.parentId == t.id)
+              .toList();
+          if (children.isNotEmpty) {
+            await cloneTree(children, newTask.id);
+          }
+        }
+      }
+
+      await cloneTree(roots, null);
+    });
   }
 }

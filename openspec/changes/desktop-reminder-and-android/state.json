@@ -1,7 +1,7 @@
 {
   "state": "implemented",
-  "intent_summary": "为Smart Assistant增加桌面端提醒功能（默认提前15分钟提醒，支持自定义提前时间、重复提醒和一次性提醒），并打包成Android APK，实现Windows和手机端云数据同步",
-  "why": "用户需要任务准时提醒功能，以及跨平台数据同步能力",
+  "intent_summary": "Add desktop reminders for Taskora, package Android APK, and support Windows/mobile cloud sync",
+  "why": "Users need reliable task reminders and cross-platform data sync",
   "created_at": "2026-05-26T16:30:00+08:00",
   "updated_at": "2026-05-27T10:00:00+08:00"
 }

@@ -1,6 +1,6 @@
-# smart_assistant
+# Taskora
 
-A new Flutter project.
+Taskora is a Flutter task management app.
 
 ## Getting Started
 

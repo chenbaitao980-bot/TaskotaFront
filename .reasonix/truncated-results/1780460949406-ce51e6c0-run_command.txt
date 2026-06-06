@@ -1,0 +1,177 @@
+$ C:\Users\Administrator\AppData\Local\Android\Sdk\platform-tools\adb.exe -s 127.0.0.1:16384 logcat -d -s flutter:I | findstr "Notif"
+[exit 0]
+06-03 12:25:52.829  2858  2858 I flutter : [Notif] init tz.local=Asia/Shanghai
+06-03 12:26:05.574  2858  2858 I flutter : [Notif] rescheduleTaskReminders: 0 tasks, 0 scheduled
+06-03 12:26:05.896  2858  2858 I flutter : [Notif] rescheduleTaskReminders: 0 tasks, 0 scheduled
+06-03 12:26:09.416  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:09.420  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.421  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.422  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.422  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:09.424  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.425  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.425  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.439  2858  2858 I flutter : [Notif] sched id=316638373 useOs=true plugin=true
+06-03 12:26:09.441  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.442  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.443  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.443  2858  2858 I flutter : [Notif] sched id=316638374 useOs=true plugin=true
+06-03 12:26:09.445  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.446  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.446  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.490  2858  2858 I flutter : [Notif] sched id=42214825 useOs=true plugin=true
+06-03 12:26:09.493  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.494  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.494  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.494  2858  2858 I flutter : [Notif] sched id=42214826 useOs=true plugin=true
+06-03 12:26:09.496  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.497  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.497  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.528  2858  2858 I flutter : [Notif] sched id=116580919 useOs=true plugin=true
+06-03 12:26:09.531  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.531  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.532  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.532  2858  2858 I flutter : [Notif] sched id=116580920 useOs=true plugin=true
+06-03 12:26:09.534  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:09.535  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.536  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:09.680  2858  2858 I flutter : [Notif] rescheduleTaskReminders: 25 tasks, 4 scheduled
+06-03 12:26:10.125  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:10.125  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:10.127  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.128  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.128  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.128  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.129  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.129  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:10.129  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.129  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:10.132  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.132  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.132  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.132  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.133  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.133  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.154  2858  2858 I flutter : [Notif] sched id=316638373 useOs=true plugin=true
+06-03 12:26:10.154  2858  2858 I flutter : [Notif] sched id=316638373 useOs=true plugin=true
+06-03 12:26:10.162  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.163  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.164  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.164  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.165  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.165  2858  2858 I flutter : [Notif] sched id=316638374 useOs=true plugin=true
+06-03 12:26:10.165  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.165  2858  2858 I flutter : [Notif] sched id=316638374 useOs=true plugin=true
+06-03 12:26:10.169  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.169  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.170  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.170  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.171  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.171  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.239  2858  2858 I flutter : [Notif] sched id=42214825 useOs=true plugin=true
+06-03 12:26:10.239  2858  2858 I flutter : [Notif] sched id=42214825 useOs=true plugin=true
+06-03 12:26:10.242  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.242  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.243  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.243  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.243  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.244  2858  2858 I flutter : [Notif] sched id=42214826 useOs=true plugin=true
+06-03 12:26:10.244  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.244  2858  2858 I flutter : [Notif] sched id=42214826 useOs=true plugin=true
+06-03 12:26:10.246  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.246  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.247  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.247  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.248  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.248  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.283  2858  2858 I flutter : [Notif] sched id=116580919 useOs=true plugin=true
+06-03 12:26:10.284  2858  2858 I flutter : [Notif] sched id=116580919 useOs=true plugin=true
+06-03 12:26:10.288  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.289  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.289  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.289  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.290  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.290  2858  2858 I flutter : [Notif] sched id=116580920 useOs=true plugin=true
+06-03 12:26:10.290  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.290  2858  2858 I flutter : [Notif] sched id=116580920 useOs=true plugin=true
+06-03 12:26:10.292  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.293  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.293  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.294  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.294  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.294  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.460  2858  2858 I flutter : [Notif] rescheduleTaskReminders: 25 tasks, 4 scheduled
+06-03 12:26:10.462  2858  2858 I flutter : [Notif] rescheduleTaskReminders: 25 tasks, 4 scheduled
+06-03 12:26:10.802  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:10.822  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.832  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.840  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.840  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:10.858  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.866  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.874  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.907  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:10.930  2858  2858 I flutter : [Notif] sched id=316638373 useOs=true plugin=true
+06-03 12:26:10.931  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.932  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.967  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.967  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:10.979  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.991  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.996  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:10.996  2858  2858 I flutter : [Notif] sched id=316638374 useOs=true plugin=true
+06-03 12:26:10.996  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:10.999  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.007  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.013  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.022  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.026  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.055  2858  2858 I flutter : [Notif] sched id=316638373 useOs=true plugin=true
+06-03 12:26:11.075  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.079  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.085  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.085  2858  2858 I flutter : [Notif] sched id=316638374 useOs=true plugin=true
+06-03 12:26:11.156  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.160  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.171  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.210  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:11.231  2858  2858 I flutter : [Notif] sched id=42214825 useOs=true plugin=true
+06-03 12:26:11.232  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.239  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.247  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.247  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:11.254  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.259  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.264  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.264  2858  2858 I flutter : [Notif] sched id=42214826 useOs=true plugin=true
+06-03 12:26:11.264  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.270  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:11.271  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.275  2858  2858 I flutter : [Notif] sched id=1833968629 useOs=true plugin=true
+06-03 12:26:11.276  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.282  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.288  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.288  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.292  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.292  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.292  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.294  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.294  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.294  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:11.300  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.300  2858  2858 I flutter : [Notif] sched id=1833968630 useOs=true plugin=true
+06-03 12:26:11.313  2858  2858 I flutter : [Notif] sched id=42214825 useOs=true plugin=true
+06-03 12:26:11.313  2858  2858 I flutter : [Notif] sched id=316638373 useOs=true plugin=true
+06-03 12:26:11.314  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.318  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.318  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.322  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.322  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.324  2858  2858 I flutter : [Notif] all zonedSchedule modes failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.328  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.328  2858  2858 I flutter : [Notif] sched perm notif=true exact=true
+06-03 12:26:11.333  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.334  2858  2858 I flutter : [Notif] primary mode AndroidScheduleMode.exactAllowWhileIdle failed: PlatformException(invalid_icon, The resource @drawable/ic_notification could not be found. Please make sure it has been added as a drawable resource to your Android head project., null, null)
+06-03 12:26:11.339  2858  2858 I flutter : [Notif] a
+
+[… truncated 21536 chars …]

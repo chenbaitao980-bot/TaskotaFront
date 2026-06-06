@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
+import '../../services/local_data_service.dart';
 
 part 'app_database.g.dart';
 
@@ -11,7 +9,8 @@ part 'app_database.g.dart';
 class ProjectGroups extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
-  TextColumn get color => text().customConstraint('NOT NULL DEFAULT \'#4772FA\'')();
+  TextColumn get color =>
+      text().customConstraint('NOT NULL DEFAULT \'#4772FA\'')();
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
@@ -24,10 +23,13 @@ class ProjectGroups extends Table {
 class Projects extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
-  TextColumn get color => text().customConstraint('NOT NULL DEFAULT \'#4772FA\'')();
+  TextColumn get color =>
+      text().customConstraint('NOT NULL DEFAULT \'#4772FA\'')();
   TextColumn? get groupId => text().nullable()();
   IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get archived => integer().customConstraint('NOT NULL DEFAULT 0')();
+  IntColumn get isTemplate =>
+      integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
@@ -41,7 +43,8 @@ class Tasks extends Table {
   TextColumn get projectId => text().references(Projects, #id)();
   TextColumn? get parentId => text().nullable()();
   TextColumn get title => text()();
-  TextColumn get description => text().customConstraint('NOT NULL DEFAULT \'\'')();
+  TextColumn get description =>
+      text().customConstraint('NOT NULL DEFAULT \'\'')();
   IntColumn get priority => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get status => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn? get startDate => integer().nullable()();
@@ -52,8 +55,10 @@ class Tasks extends Table {
   IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
-  IntColumn get remindBeforeMinutes => integer().customConstraint('NOT NULL DEFAULT 15')();
-  IntColumn get reminderEnabled => integer().customConstraint('NOT NULL DEFAULT 1')();
+  IntColumn get remindBeforeMinutes =>
+      integer().customConstraint('NOT NULL DEFAULT 15')();
+  IntColumn get reminderEnabled =>
+      integer().customConstraint('NOT NULL DEFAULT 1')();
   IntColumn? get estimatedMinutes => integer().nullable()();
 
   @override
@@ -93,25 +98,57 @@ class ChecklistItems extends Table {
 
 // --- 数据库 ---
 
-@DriftDatabase(tables: [Projects, Tasks, ChecklistItems, ProjectGroups, TaskAttachments])
-class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+class NodeTemplates extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get title => text()();
+  TextColumn get description =>
+      text().customConstraint('NOT NULL DEFAULT \'\'')();
+  IntColumn get priority => integer().customConstraint('NOT NULL DEFAULT 1')();
+  TextColumn get checklistJson =>
+      text().customConstraint('NOT NULL DEFAULT \'[]\'')();
+  TextColumn get imagesJson =>
+      text().customConstraint('NOT NULL DEFAULT \'[]\'')();
+  TextColumn get subtasksJson =>
+      text().customConstraint('NOT NULL DEFAULT \'[]\'')();
+  IntColumn get deleted => integer().customConstraint('NOT NULL DEFAULT 0')();
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
 
   @override
-  int get schemaVersion => 7;
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(
+  tables: [
+    Projects,
+    Tasks,
+    ChecklistItems,
+    ProjectGroups,
+    TaskAttachments,
+    NodeTemplates,
+  ],
+)
+class AppDatabase extends _$AppDatabase {
+  AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
+
+  @override
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (Migrator m) async {
         await m.createAll();
-        await into(projects).insert(ProjectsCompanion(
-          id: Value('inbox'),
-          name: Value('未分类'),
-          color: Value('#4772FA'),
-          createdAt: Value(DateTime.now().millisecondsSinceEpoch),
-          updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
-        ));
+        await into(projects).insert(
+          ProjectsCompanion(
+            id: Value('inbox'),
+            name: Value('未分类'),
+            color: Value('#4772FA'),
+            createdAt: Value(DateTime.now().millisecondsSinceEpoch),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
@@ -138,6 +175,28 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(projectGroups, projectGroups.deleted);
           await m.addColumn(checklistItems, checklistItems.deleted);
         }
+        if (from < 8) {
+          await m.createTable(nodeTemplates);
+        }
+        if (from < 9) {
+          try {
+            await m.addColumn(projects, projects.isTemplate);
+          } catch (e) {
+            if (!e.toString().contains('duplicate column name')) rethrow;
+          }
+        }
+        if (from < 10) {
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks (project_id)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks (parent_id)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks (deleted)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks (due_date)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_checklist_items_task_id ON checklist_items (task_id)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_checklist_items_deleted ON checklist_items (deleted)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id ON task_attachments (task_id)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_projects_deleted ON projects (deleted)');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_projects_group_id ON projects (group_id)');
+        }
       },
     );
   }
@@ -147,24 +206,33 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       await delete(checklistItems).go();
       await delete(taskAttachments).go();
+      await delete(nodeTemplates).go();
       await delete(tasks).go();
       await delete(projects).go();
       await delete(projectGroups).go();
-      await into(projects).insert(ProjectsCompanion(
-        id: const Value('inbox'),
-        name: const Value('未分类'),
-        color: const Value('#4772FA'),
-        createdAt: Value(DateTime.now().millisecondsSinceEpoch),
-        updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
-      ));
+      await into(projects).insert(
+        ProjectsCompanion(
+          id: const Value('inbox'),
+          name: const Value('未分类'),
+          color: const Value('#4772FA'),
+          createdAt: Value(DateTime.now().millisecondsSinceEpoch),
+          updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+      );
     });
+  }
+
+  Future<void> checkpointForBackup() async {
+    await customStatement('PRAGMA wal_checkpoint(TRUNCATE);');
   }
 }
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'smart_assistant.db'));
+    final file = await LocalDataService().databaseFile();
+    if (!await file.parent.exists()) {
+      await file.parent.create(recursive: true);
+    }
     return NativeDatabase(file);
   });
 }

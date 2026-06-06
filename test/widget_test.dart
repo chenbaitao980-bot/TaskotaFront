@@ -9,6 +9,7 @@ import 'package:smart_assistant/data/repositories/project_repository.dart';
 import 'package:smart_assistant/data/repositories/project_group_repository.dart';
 import 'package:smart_assistant/data/repositories/task_repository.dart';
 import 'package:smart_assistant/data/repositories/checklist_repository.dart';
+import 'package:smart_assistant/data/repositories/node_template_repository.dart';
 import 'package:smart_assistant/main.dart';
 
 void main() {
@@ -17,6 +18,7 @@ void main() {
   late ProjectGroupRepository projectGroupRepository;
   late TaskRepository taskRepository;
   late ChecklistRepository checklistRepository;
+  late NodeTemplateRepository nodeTemplateRepository;
 
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +34,7 @@ void main() {
     projectGroupRepository = ProjectGroupRepository(database);
     taskRepository = TaskRepository(database);
     checklistRepository = ChecklistRepository(database);
+    nodeTemplateRepository = NodeTemplateRepository(database);
   });
 
   tearDownAll(() {
@@ -48,6 +51,7 @@ void main() {
         projectGroupRepository: projectGroupRepository,
         taskRepository: taskRepository,
         checklistRepository: checklistRepository,
+        nodeTemplateRepository: nodeTemplateRepository,
       ),
     );
     await tester.pump();

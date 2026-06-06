@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo =============================================
-echo  Smart Assistant - Android Build Script
+echo  Taskora - Android Build Script
 echo =============================================
 echo.
 

@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/database/app_database.dart';
 import '../data/repositories/project_repository.dart';
+import '../../core/utils/file_logger.dart';
 import '../data/repositories/project_group_repository.dart';
 
 /// 项目 + 分组的云端同步
@@ -36,10 +37,44 @@ class ProjectSyncService {
 
   Future<void> pullAll() => syncAll();
 
-  /// 双向 LWW 全量对账：拉云端（含墓石）合并到本地；本地更新/云端缺失则推送上云
-  Future<void> syncAll() async {
+  /// 纯拉取：从云端拉取所有项目/分组并合并到本地（不推送本地数据）
+  Future<void> forcePullAll() async {
     final userId = _client.auth.currentUser?.id;
-    if (userId == null || _db == null) return;
+    if (userId == null || _db == null) {
+      flog('[ProjectSync] ⚠ forcePullAll 跳过 userId=$userId db=$_db');
+      return;
+    }
+    try {
+      final groupRows = await _client
+          .from('project_groups')
+          .select()
+          .eq('user_id', userId);
+      for (final row in (groupRows as List)) {
+        await _upsertGroupFromRow(row as Map<String, dynamic>);
+      }
+      final projRows = await _client
+          .from('projects')
+          .select()
+          .eq('user_id', userId);
+      for (final row in (projRows as List)) {
+        await _upsertProjectFromRow(row as Map<String, dynamic>);
+      }
+      flog('[ProjectSync] forcePull 完成 groups=${groupRows.length} projects=${projRows.length}');
+      // 拉取后触发 UI 刷新
+      _emitChange();
+    } catch (e, st) {
+      flog('[ProjectSync] ❌ forcePull 失败: $e\n$st');
+    }
+  }
+
+  /// 双向 LWW 全量对账：拉云端（含墓石）合并到本地；本地更新/云端缺失则推送上云
+  /// [forcePush] 为 true 时跳过 updatedAt 比较，无条件推送所有本地数据（用于首次同步）
+  Future<void> syncAll({bool forcePush = false}) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null || _db == null) {
+      flog('[ProjectSync] ⚠ syncAll 跳过 userId=$userId db=$_db');
+      return;
+    }
     try {
       final groupRows = await _client
           .from('project_groups')
@@ -66,7 +101,7 @@ class ProjectSyncService {
       if (_groupRepo != null) {
         for (final g in await _groupRepo!.getAllRaw()) {
           final r = remoteGroups[g.id];
-          if (r == null || g.updatedAt > (r['updated_at'] as int? ?? -1)) {
+          if (forcePush || r == null || g.updatedAt > (r['updated_at'] as int? ?? -1)) {
             await pushGroup(g);
           }
         }
@@ -74,21 +109,21 @@ class ProjectSyncService {
       if (_projectRepo != null) {
         for (final p in await _projectRepo!.getAllRaw()) {
           final r = remoteProjects[p.id];
-          if (r == null || p.updatedAt > (r['updated_at'] as int? ?? -1)) {
+          if (forcePush || r == null || p.updatedAt > (r['updated_at'] as int? ?? -1)) {
             await pushProject(p);
           }
         }
       }
-      print('[ProjectSync] 全量对账完成 groups=${groupRows.length} projects=${projRows.length}');
+      flog('[ProjectSync] 全量对账完成 groups=${groupRows.length} projects=${projRows.length} forcePush=$forcePush');
     } catch (e, st) {
-      print('[ProjectSync] ❌ 全量对账失败: $e\n$st');
+      flog('[ProjectSync] ❌ 全量对账失败: $e\n$st');
     }
   }
 
   Future<void> pushProject(Project p) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) {
-      print('[ProjectSync] ⚠ pushProject ${p.id} 跳过（未登录 Supabase）');
+      flog('[ProjectSync] ⚠ pushProject ${p.id} 跳过（未登录 Supabase）');
       return;
     }
     try {
@@ -100,29 +135,30 @@ class ProjectSyncService {
         'group_id': p.groupId,
         'sort_order': p.sortOrder,
         'archived': p.archived,
+        'is_template': p.isTemplate,
         'deleted': p.deleted,
         'created_at': p.createdAt,
         'updated_at': p.updatedAt,
       });
-      print('[ProjectSync] ✓ pushProject ${p.id} ${p.name}');
+      flog('[ProjectSync] ✓ pushProject ${p.id} ${p.name}');
     } catch (e) {
-      print('[ProjectSync] ❌ push project 失败 ${p.id}: $e');
+      flog('[ProjectSync] ❌ push project 失败 ${p.id}: $e');
     }
   }
 
   Future<void> removeProject(String id) async {
     try {
       await _client.from('projects').delete().eq('id', id);
-      print('[ProjectSync] ✓ removeProject $id');
+      flog('[ProjectSync] ✓ removeProject $id');
     } catch (e) {
-      print('[ProjectSync] ❌ 删除 project 失败 $id: $e');
+      flog('[ProjectSync] ❌ 删除 project 失败 $id: $e');
     }
   }
 
   Future<void> pushGroup(ProjectGroup g) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) {
-      print('[ProjectSync] ⚠ pushGroup ${g.id} 跳过（未登录 Supabase）');
+      flog('[ProjectSync] ⚠ pushGroup ${g.id} 跳过（未登录 Supabase）');
       return;
     }
     try {
@@ -136,18 +172,18 @@ class ProjectSyncService {
         'created_at': g.createdAt,
         'updated_at': g.updatedAt,
       });
-      print('[ProjectSync] ✓ pushGroup ${g.id} ${g.name}');
+      flog('[ProjectSync] ✓ pushGroup ${g.id} ${g.name}');
     } catch (e) {
-      print('[ProjectSync] ❌ push group 失败 ${g.id}: $e');
+      flog('[ProjectSync] ❌ push group 失败 ${g.id}: $e');
     }
   }
 
   Future<void> removeGroup(String id) async {
     try {
       await _client.from('project_groups').delete().eq('id', id);
-      print('[ProjectSync] ✓ removeGroup $id');
+      flog('[ProjectSync] ✓ removeGroup $id');
     } catch (e) {
-      print('[ProjectSync] ❌ 删除 group 失败 $id: $e');
+      flog('[ProjectSync] ❌ 删除 group 失败 $id: $e');
     }
   }
 
@@ -177,7 +213,7 @@ class ProjectSyncService {
           schema: 'public',
           table: 'projects',
           callback: (p) async {
-            print('[ProjectSync] 收到 DELETE projects oldRecord=${p.oldRecord}');
+            flog('[ProjectSync] 收到 DELETE projects oldRecord=${p.oldRecord}');
             final id = p.oldRecord['id'] as String?;
             if (id == null || _db == null) return;
             try {
@@ -187,7 +223,7 @@ class ProjectSyncService {
                   .getSingleOrNull();
               if (localProject != null && localProject.deleted == 0) {
                 // 本地项目存活，拒绝物理删除，反推存活版本上云
-                print('[ProjectSync] 远端删除被拒绝: 本地活项目 ${id.substring(0, 8)} 反推');
+                flog('[ProjectSync] 远端删除被拒绝: 本地活项目 ${id.length > 8 ? id.substring(0, 8) : id} 反推');
                 await pushProject(localProject);
                 _emitChange();
                 return;
@@ -196,9 +232,9 @@ class ProjectSyncService {
                     ..where((t) => t.id.equals(id)))
                   .go();
               _emitChange();
-              print('[ProjectSync] ✓ 本地删 project $id');
+              flog('[ProjectSync] ✓ 本地删 project $id');
             } catch (e) {
-              print('[ProjectSync] ❌ 本地删 project 失败 $id: $e');
+              flog('[ProjectSync] ❌ 本地删 project 失败 $id: $e');
             }
           },
         )
@@ -219,7 +255,7 @@ class ProjectSyncService {
           schema: 'public',
           table: 'project_groups',
           callback: (p) async {
-            print('[ProjectSync] 收到 DELETE project_groups oldRecord=${p.oldRecord}');
+            flog('[ProjectSync] 收到 DELETE project_groups oldRecord=${p.oldRecord}');
             final id = p.oldRecord['id'] as String?;
             if (id == null || _db == null) return;
             try {
@@ -232,14 +268,14 @@ class ProjectSyncService {
                     .go();
               });
               _emitChange();
-              print('[ProjectSync] ✓ 本地删 group $id');
+              flog('[ProjectSync] ✓ 本地删 group $id');
             } catch (e) {
-              print('[ProjectSync] ❌ 本地删 group 失败 $id: $e');
+              flog('[ProjectSync] ❌ 本地删 group 失败 $id: $e');
             }
           },
         );
     _channel!.subscribe((status, [error]) {
-      print('[ProjectSync] channel status=$status ${error ?? ''}');
+      flog('[ProjectSync] channel status=$status ${error ?? ''}');
     });
   }
 
@@ -253,17 +289,20 @@ class ProjectSyncService {
     final remoteDeleted = row['deleted'] as int? ?? 0;
     final remoteUpdated = row['updated_at'] as int? ?? now;
 
-    // 墓碑保护：检查本地项目是否存活
+    // LWW tombstone: remote deleted vs local alive → latest writer wins
     final localProject = await (_db!.select(_db!.projects)
           ..where((p) => p.id.equals(id)))
         .getSingleOrNull();
     if (localProject != null && localProject.deleted == 0 && remoteDeleted == 1) {
-      // 本地项目存活，拒绝远端墓碑，反推存活版本上云
-      print('[ProjectSync] 墓碑保护: 本地活项目 ${id.substring(0, 8)} 拒绝被远端墓碑覆盖, localUpdated=${localProject.updatedAt}, remoteUpdated=$remoteUpdated');
       if (localProject.updatedAt >= remoteUpdated) {
+        // Local is newer or equal → reject remote tombstone, push alive version back
+        flog('[ProjectSync] tombstone-reject: local alive ${id.length > 8 ? id.substring(0, 8) : id} (local=$localProject.updatedAt >= remote=$remoteUpdated)');
         await pushProject(localProject);
+        return;
       }
-      return; // 不更新本地，不级联删任务
+      // Remote is newer → accept tombstone (intentional delete from another device)
+      flog('[ProjectSync] tombstone-accept: local alive ${id.length > 8 ? id.substring(0, 8) : id} overridden by remote (remote=$remoteUpdated > local=$localProject.updatedAt)');
+      // fall through to insertOnConflictUpdate below → local gets deleted=1 + cascade
     }
 
     final companion = ProjectsCompanion(
@@ -275,6 +314,7 @@ class ProjectSyncService {
           : const Value(null),
       sortOrder: Value(row['sort_order'] as int? ?? 0),
       archived: Value(row['archived'] as int? ?? 0),
+      isTemplate: Value(row['is_template'] as int? ?? 0),
       deleted: Value(remoteDeleted),
       createdAt: Value(row['created_at'] as int? ?? now),
       updatedAt: Value(remoteUpdated),
@@ -283,7 +323,9 @@ class ProjectSyncService {
     // 远端项目墓石 → 级联软删本地该项目下 tasks/checklist
     // 仅当本地项目原本就是墓碑或不存在时才执行
     if (remoteDeleted == 1 && (localProject == null || localProject.deleted == 1)) {
-      print('[ProjectSync] 级联软删项目 ${id.substring(0, 8)} 下的任务');
+      flog('[ProjectSync] 级联软删项目 ${id.length > 8 ? id.substring(0, 8) : id} 下的任务');
+      // 使用远端 updated_at 而非 local now，避免 cascaded 墓碑时间戳 > 远端活任务
+      final cascadeSeed = remoteUpdated;
       await _db!.transaction(() async {
         final tasks = await (_db!.select(_db!.tasks)
               ..where((t) => t.projectId.equals(id)))
@@ -293,11 +335,11 @@ class ProjectSyncService {
                 ..where((c) => c.taskId.equals(t.id)))
               .write(ChecklistItemsCompanion(
             deleted: const Value(1),
-            updatedAt: Value(now),
+            updatedAt: Value(cascadeSeed),
           ));
         }
         await (_db!.update(_db!.tasks)..where((t) => t.projectId.equals(id)))
-            .write(TasksCompanion(deleted: const Value(1), updatedAt: Value(now)));
+            .write(TasksCompanion(deleted: const Value(1), updatedAt: Value(cascadeSeed)));
       });
     }
     _emitChange();

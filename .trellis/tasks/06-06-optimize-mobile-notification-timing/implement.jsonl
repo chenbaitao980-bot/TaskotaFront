@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-06-optimize-mobile-notification-timing/prd.md", "reason": "核心需求文档：过期提醒合并、重启重调度、电池优化引导、微信/FCM推送兜底"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范，影响通知服务与 Bloc 层的交互设计"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量规范，影响错误处理和降级策略"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层设计指南，通知涉及 native/dart/服务端多层协作"}

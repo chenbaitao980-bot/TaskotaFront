@@ -118,6 +118,7 @@ Project _project({required String id, required String name}) {
     color: '#4772FA',
     sortOrder: 0,
     archived: 0,
+    isTemplate: 0,
     deleted: 0,
     createdAt: 0,
     updatedAt: 0,

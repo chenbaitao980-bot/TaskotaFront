@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../data/database/app_database.dart';
+import '../../../../../models/node_template_payload.dart';
 import '../../../../../services/subtask_scheduler.dart';
 import '../../../../blocs/task_new/task_bloc.dart';
 import '../../../../blocs/task_new/task_event.dart';
@@ -51,6 +53,15 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
         final descendants = state.subTrees[rootId] ?? [];
         final expandedNodes = state.expandedNodes[rootId] ?? {};
 
+        final directChildren = descendants
+            .where((t) => t.parentId == rootId)
+            .toList();
+        final allLeaves =
+            descendants.isNotEmpty &&
+            directChildren.every(
+              (c) => descendants.every((d) => d.parentId != c.id),
+            );
+
         return Container(
           decoration: BoxDecoration(
             color: AppTheme.bgCard,
@@ -81,6 +92,18 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                       ),
                     ),
                     const Spacer(),
+                    if (allLeaves)
+                      IconButton(
+                        onPressed: () => _mergeToChecklist(context, rootId),
+                        icon: const Icon(Icons.compress_rounded, size: 15),
+                        color: AppTheme.primaryColor,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 24,
+                          minHeight: 24,
+                        ),
+                        tooltip: '合并子任务为检查项',
+                      ),
                     IconButton(
                       onPressed: () => _showAddSubTaskDialog(context, rootId),
                       icon: const Icon(Icons.add_rounded, size: 16),
@@ -405,7 +428,9 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
       builder: (_) => TaskCreateSheet(
         initialProjectId: widget.projectId,
         projectRepository: bloc.projectRepository,
+        projectGroupRepository: bloc.projectGroupRepository,
         taskRepository: bloc.taskRepository,
+        nodeTemplateRepository: bloc.nodeTemplateRepository,
         initialParentId: parentId,
         availableParentTasks: availableParents,
       ),
@@ -423,6 +448,13 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
         parentId: (result['parentId'] as String?) ?? parentId,
         shiftedTasks:
             (result['shiftedTasks'] as List<ScheduledTaskShift>?) ?? const [],
+        pendingImages:
+            (result['pendingImages'] as List<PlatformFile>?) ?? const [],
+        templatePayload:
+            (result['templatePayload'] as NodeTemplatePayload?) ??
+            NodeTemplatePayload.empty,
+        remindBeforeMinutes: result['remindBeforeMinutes'] as int? ?? 15,
+        reminderEnabled: result['reminderEnabled'] as int? ?? 1,
       ),
     );
     // 刷新当前根任务子树
@@ -447,6 +479,31 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
       // 无论编辑保存还是删除，都刷新树
       if (mounted) _loadTree();
     });
+  }
+
+  void _mergeToChecklist(BuildContext context, String rootId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('合并子任务为检查项'),
+        content: const Text('将把没有附件、没有描述的子任务删除，并以其标题添加为检查项。有内容的子任务不受影响。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              context.read<TaskNewBloc>().add(
+                MergeSubTasksToChecklist(taskId: rootId),
+              );
+              Navigator.pop(ctx);
+            },
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _deleteSubTask(BuildContext context, Task task, String rootId) {

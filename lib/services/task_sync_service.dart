@@ -12,7 +12,10 @@ class TaskSyncService {
   final SupabaseClient _client = Supabase.instance.client;
   TaskRepository? _taskRepo;
   RealtimeChannel? _channel;
+  // 记录最近 push 的 taskId，忽略 Realtime 回声
+  final Set<String> _recentlyPushedIds = {};
   Future<void>? _pendingOp; // 涓茶鍖?Realtime 鍥炶皟锛岄槻姝?database locked
+  Completer<void>? _syncAllCompleter; // 互斥锁：防止 syncAll 并发执行
   final _changesCtrl = StreamController<void>.broadcast();
   Stream<void> get changes => _changesCtrl.stream;
 
@@ -34,6 +37,14 @@ class TaskSyncService {
     if (_taskRepo == null) return;
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
+
+    // 互斥锁：串行化 syncAll，防并发
+    while (_syncAllCompleter != null) {
+      await _syncAllCompleter!.future;
+    }
+    final completer = Completer<void>();
+    _syncAllCompleter = completer;
+
     try {
       // 鍚堝苟鍓嶅揩鐓ф湰鍦板瓙浠诲姟
       final beforeMerge = await _taskRepo!.getAllRaw();
@@ -113,6 +124,18 @@ class TaskSyncService {
         final remote = remoteById[t.id];
         final remoteUpdated = remote?['updated_at'] as int? ?? -1;
         // 鎺ㄩ€佹潯浠讹細浜戠缂哄け / 鏈湴鏇存柊 / 鏈湴娲讳絾浜戠鏄鐭筹紙淇娈嬬暀澧撶煶锛?
+        // 墓碑防护：本地 deleted=1 且远端存活 → 跳过推送
+        // 有意删除已通过 delete() 的 syncImmediately 即时推送，不依赖此循环
+        if (t.deleted == 1 && remote != null) {
+          final remoteDeleted = remote['deleted'] as int? ?? 0;
+          if (remoteDeleted == 0) {
+            flog(
+              '[SyncAll] ⚠️ Skip push tombstone for live remote: id=${t.id.substring(0, 8)}, title=${t.title}',
+            );
+            continue;
+          }
+        }
+
         if (remote == null || t.updatedAt > remoteUpdated) {
           await push(t, rethrowErrors: rethrowErrors);
         }
@@ -123,6 +146,9 @@ class TaskSyncService {
     } catch (e) {
       if (rethrowErrors) rethrow;
       flog('[Sync] 鍏ㄩ噺瀵硅处澶辫触: $e');
+    } finally {
+      _syncAllCompleter = null;
+      completer.complete();
     }
   }
 
@@ -131,6 +157,8 @@ class TaskSyncService {
   /// 鎺ㄩ€佷竴鏉′换鍔″埌浜戠锛坲psert锛?
   Future<void> push(Task task, {bool rethrowErrors = false}) async {
     if (_client.auth.currentUser == null) return;
+    _recentlyPushedIds.add(task.id);
+    Future.delayed(const Duration(seconds: 3), () => _recentlyPushedIds.remove(task.id));
     try {
       final json = _taskToRow(task);
       await _client.from('user_tasks').upsert(json);
@@ -207,6 +235,11 @@ class TaskSyncService {
 
   void _onRemoteChange(Map<String, dynamic>? record) {
     if (record == null || _taskRepo == null) return;
+    final id = record['id'] as String?;
+    if (id != null && _recentlyPushedIds.contains(id)) {
+      flog('[Sync] 跳过自身 push 回声: $id');
+      return;
+    }
     _enqueue(() async {
       try {
         final json = _rowToJson(record);

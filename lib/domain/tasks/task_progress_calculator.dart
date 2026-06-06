@@ -36,14 +36,14 @@ class TaskProgressCalculator {
       if (cached != null) return cached;
       if (!visiting.add(task.id)) return const _ProgressTally(0, 0);
 
-      var tally = _ownTally(task, itemsByTask[task.id] ?? const []);
-      for (final child in childrenByParent[task.id] ?? const <Task>[]) {
+      final children = childrenByParent[task.id] ?? const <Task>[];
+      final items = itemsByTask[task.id] ?? const <ChecklistItem>[];
+      var tally = children.isEmpty
+          ? _leafTally(task, items)
+          : const _ProgressTally(0, 0); // 有子任务时进度由子任务决定
+      for (final child in children) {
         tally += tallyForTask(child, visiting);
       }
-      if (task.status == 2) {
-        tally = tally.asCompleted;
-      }
-
       visiting.remove(task.id);
       memo[task.id] = tally;
       return tally;
@@ -54,11 +54,13 @@ class TaskProgressCalculator {
       taskProgress[task.id] = tallyForTask(task, <String>{}).percent;
     }
 
+    // 项目进度：只累加根任务，每个根任务贡献其递归进度（已含子任务聚合）
     final projectTotals = <String, _ProgressTally>{};
     for (final task in tasks) {
+      if (task.parentId != null) continue; // 跳过子任务，避免重复计入
       projectTotals[task.projectId] =
           (projectTotals[task.projectId] ?? const _ProgressTally(0, 0)) +
-          _projectUnitTally(task, itemsByTask[task.id] ?? const []);
+          tallyForTask(task, <String>{});
     }
 
     final projectProgress = <String, int>{
@@ -84,35 +86,22 @@ class TaskProgressCalculator {
     );
   }
 
-  static _ProgressTally _ownTally(
+  static _ProgressTally _leafTally(
     Task task,
     List<ChecklistItem> checklistItems,
   ) {
-    if (checklistItems.isEmpty) {
-      return _ProgressTally(task.status == 2 ? 1 : 0, 1);
-    }
+    if (task.status == 2) return const _ProgressTally(1, 1);
+    final completedItems = checklistItems.where((item) => item.status == 1).length;
+    return _ProgressTally(completedItems, 1 + checklistItems.length);
+  }
 
+  /// 有子任务时，仅统计检查项贡献（无检查项则贡献 0/0，不影响子任务计算）
+  static _ProgressTally _checklistTally(List<ChecklistItem> checklistItems) {
+    if (checklistItems.isEmpty) return const _ProgressTally(0, 0);
     return _ProgressTally(
       checklistItems.where((item) => item.status == 1).length,
       checklistItems.length,
     );
-  }
-
-  static _ProgressTally _projectUnitTally(
-    Task task,
-    List<ChecklistItem> checklistItems,
-  ) {
-    if (task.status == 2) {
-      return const _ProgressTally(100, 100);
-    }
-
-    if (checklistItems.isEmpty) {
-      return const _ProgressTally(0, 100);
-    }
-
-    final completed = checklistItems.where((item) => item.status == 1).length;
-    final percent = ((completed / checklistItems.length) * 100).round();
-    return _ProgressTally(percent, 100);
   }
 }
 
@@ -130,6 +119,4 @@ class _ProgressTally {
   _ProgressTally operator +(_ProgressTally other) {
     return _ProgressTally(completed + other.completed, total + other.total);
   }
-
-  _ProgressTally get asCompleted => _ProgressTally(total, total);
 }

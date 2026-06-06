@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
+import '../../core/exceptions/quota_exceeded_exception.dart';
 import '../../services/task_sync_service.dart';
+import '../../services/subscription_service.dart';
 import '../../core/utils/file_logger.dart';
 
 class TaskRepository {
@@ -41,6 +43,14 @@ class TaskRepository {
       query.where((t) => t.status.equals(status));
     }
     return query.get();
+  }
+
+  Future<int> getActiveCountForProject(String projectId) async {
+    final result = await (_db.select(_db.tasks)
+          ..where(
+              (t) => t.projectId.equals(projectId) & t.deleted.equals(0)))
+        .get();
+    return result.length;
   }
 
   Future<List<Task>> getByProject(String projectId, {int? status}) async {
@@ -97,6 +107,73 @@ class TaskRepository {
           ..where((t) => t.parentId.equals(parentId) & t.deleted.equals(0))
           ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
         .get();
+  }
+
+  /// 检查任务是否有子任务（至少一个）
+  Future<bool> hasChildren(String id) async {
+    final result = await (_db.select(_db.tasks)
+          ..where((t) => t.parentId.equals(id) & t.deleted.equals(0))
+          ..limit(1))
+        .get();
+    return result.isNotEmpty;
+  }
+
+  /// 从当前层向上追溯，扩展每层父任务的时间范围覆盖所有子任务
+  /// 当子任务缩小时会重新计算所有子任务的 min/max，支持回缩
+  Future<void> expandAncestorDates(
+    String? childParentId,
+    int? childStart,
+    int? childEnd, {
+    bool syncImmediately = true,
+  }) async {
+    String? currentParentId = childParentId;
+    while (currentParentId != null) {
+      final parent = await get(currentParentId);
+      if (parent == null) break;
+
+      int? ns = parent.startDate;
+      int? nd = parent.dueDate;
+
+      // 1) 先尝试向外扩展（子任务超出父范围）
+      if (childStart != null) {
+        ns = (ns == null || childStart < ns) ? childStart : ns;
+      }
+      if (childEnd != null) {
+        nd = (nd == null || childEnd > nd) ? childEnd : nd;
+      }
+
+      // 2) 如果子任务在父范围内（本次未扩展），重新计算所有子任务的真实范围，支持回缩
+      if (ns == parent.startDate && nd == parent.dueDate) {
+        final children = await getSubTasks(parent.id);
+        int? minStart, maxEnd;
+        for (final c in children) {
+          if (c.startDate != null) {
+            minStart =
+                (minStart == null || c.startDate! < minStart)
+                    ? c.startDate!
+                    : minStart;
+          }
+          if (c.dueDate != null) {
+            maxEnd =
+                (maxEnd == null || c.dueDate! > maxEnd)
+                    ? c.dueDate!
+                    : maxEnd;
+          }
+        }
+        ns = minStart ?? ns;
+        nd = maxEnd ?? nd;
+      }
+
+      if (ns != parent.startDate || nd != parent.dueDate) {
+        await update(
+          parent.id,
+          startDate: ns,
+          dueDate: nd,
+          syncImmediately: syncImmediately,
+        );
+      }
+      currentParentId = parent.parentId;
+    }
   }
 
   Future<List<Task>> getDescendants(String taskId) async {
@@ -183,8 +260,20 @@ class TaskRepository {
     bool isAllDay = false,
     String? parentId,
     int? estimatedMinutes,
+    int remindBeforeMinutes = 15,
+    int reminderEnabled = 1,
     bool syncImmediately = true,
   }) async {
+    final count = await getActiveCountForProject(projectId);
+    final canCreate =
+        await SubscriptionService.instance.canCreateTask(count);
+    if (!canCreate) {
+      throw QuotaExceededException(
+        '该项目任务数已达上限(50个)，升级VIP解锁无限任务',
+        QuotaType.task,
+      );
+    }
+
     final id = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db
@@ -205,6 +294,8 @@ class TaskRepository {
             estimatedMinutes: estimatedMinutes != null
                 ? Value(estimatedMinutes)
                 : const Value.absent(),
+            remindBeforeMinutes: Value(remindBeforeMinutes),
+            reminderEnabled: Value(reminderEnabled),
             createdAt: Value(now),
             updatedAt: Value(now),
           ),
@@ -333,16 +424,9 @@ class TaskRepository {
   Future<List<Task>> getAllRaw() => _db.select(_db.tasks).get();
 
   Future<void> restoreRawTasks(List<Task> snapshot) async {
-    final snapshotIds = snapshot.map((t) => t.id).toSet();
-    final current = await getAllRaw();
+    // 只 upsert 快照中的任务，不删除任何行
+    // 避免误删：新建任务、Realtime 同步来的任务
     await _db.transaction(() async {
-      for (final task in current) {
-        if (!snapshotIds.contains(task.id)) {
-          await (_db.delete(
-            _db.tasks,
-          )..where((t) => t.id.equals(task.id))).go();
-        }
-      }
       for (final task in snapshot) {
         await _db.into(_db.tasks).insertOnConflictUpdate(task);
       }
@@ -371,6 +455,74 @@ class TaskRepository {
     );
     final toggled = await get(id);
     if (syncImmediately && toggled != null) _syncService?.push(toggled);
+    if (newStatus == 2) {
+      await completeEligibleAncestors(id, syncImmediately: syncImmediately);
+    }
+  }
+
+  Future<void> setStatusCascade(
+    String id,
+    int status, {
+    bool includeDescendants = false,
+    bool syncImmediately = true,
+  }) async {
+    final task = await get(id);
+    if (task == null) return;
+    final descendants = includeDescendants
+        ? await getDescendants(id)
+        : <Task>[];
+    final ids = <String>[id, ...descendants.map((t) => t.id)];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (final taskId in ids) {
+        batch.update(
+          _db.tasks,
+          TasksCompanion(
+            status: Value(status),
+            completedTime: status == 2 ? Value(now) : const Value.absent(),
+            updatedAt: Value(now),
+          ),
+          where: (t) => t.id.equals(taskId),
+        );
+      }
+    });
+    if (syncImmediately) {
+      for (final taskId in ids) {
+        final updated = await get(taskId);
+        if (updated != null) _syncService?.push(updated);
+      }
+    }
+    if (status == 2) {
+      await completeEligibleAncestors(id, syncImmediately: syncImmediately);
+    }
+  }
+
+  Future<void> completeEligibleAncestors(
+    String taskId, {
+    bool syncImmediately = true,
+  }) async {
+    var child = await get(taskId);
+    while (child?.parentId != null) {
+      final parent = await get(child!.parentId!);
+      if (parent == null || parent.status == 2) {
+        child = parent;
+        continue;
+      }
+      final siblings = await getSubTasks(parent.id);
+      if (siblings.isEmpty || siblings.any((t) => t.status != 2)) break;
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await (_db.update(_db.tasks)..where((t) => t.id.equals(parent.id))).write(
+        TasksCompanion(
+          status: const Value(2),
+          completedTime: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+      final updated = await get(parent.id);
+      if (syncImmediately && updated != null) _syncService?.push(updated);
+      child = updated;
+    }
   }
 
   /// 从云端同步导入任务（插入或更新，保留原始 ID）

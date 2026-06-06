@@ -1,4 +1,4 @@
--- Migration 001: Initialize Supabase Schema for 智能小管家
+-- Migration 001: Initialize Supabase Schema for Taskora
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor)
 
 -- 1. 用户画像表

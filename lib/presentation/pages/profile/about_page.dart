@@ -38,7 +38,7 @@ class AboutPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  '智能小管家',
+                  'Taskora',
                   style: TextStyle(
                     color: AppTheme.textPrimary,
                     fontSize: 22,

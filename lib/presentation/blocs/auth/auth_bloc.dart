@@ -95,6 +95,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(AuthLoading());
 
     try {
+      final count = await _supabaseService.getUserCount();
+      if (count >= SupabaseService.maxRegisteredUsers) {
+        emit(AuthError(
+          message: '当前内测名额已满（${SupabaseService.maxRegisteredUsers}人），'
+              '感谢你的关注！请关注后续开放通知。',
+        ));
+        return;
+      }
+
       final response = await _supabaseService.signUp(
         email: event.email,
         password: event.password,

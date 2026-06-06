@@ -8,9 +8,9 @@
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Single instance: use named mutex to prevent multiple copies
-  HANDLE hMutex = ::CreateMutexW(NULL, TRUE, L"SmartAssistant_SingleInstance");
+  HANDLE hMutex = ::CreateMutexW(NULL, TRUE, L"Taskora_SingleInstance");
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
-    HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"smart_assistant");
+    HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"Taskora");
     if (existing) {
       ::ShowWindow(existing, SW_RESTORE);
       ::SetForegroundWindow(existing);
@@ -39,7 +39,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"smart_assistant", origin, size)) {
+  if (!window.Create(L"Taskora", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(false);

@@ -18,6 +18,7 @@ class TaskNewLoaded extends TaskNewState {
   String? get selectedProjectId =>
       selectedProjectIds.length == 1 ? selectedProjectIds.first : null;
   final String? selectedFilter;
+  final String selectedStatusFilter;
   final Map<String, List<ChecklistItem>> checklistItems;
   final Map<String, List<Task>> subTrees;
   final Map<String, Set<String>> expandedNodes;
@@ -28,6 +29,8 @@ class TaskNewLoaded extends TaskNewState {
   final int? dateTo;
   final String viewMode; // 'mindmap' or 'list'
   final String? syncRollbackMessage;
+  final bool isTemplateMode;
+  final List<Project> templateProjects;
   final String? focusTaskId;
   final int? focusRequestToken;
 
@@ -38,6 +41,7 @@ class TaskNewLoaded extends TaskNewState {
     String? selectedProjectId,
     Set<String> selectedProjectIds = const {},
     this.selectedFilter = 'all',
+    this.selectedStatusFilter = 'all',
     this.checklistItems = const {},
     this.subTrees = const {},
     this.expandedNodes = const {},
@@ -48,6 +52,8 @@ class TaskNewLoaded extends TaskNewState {
     this.dateTo,
     this.viewMode = 'mindmap',
     this.syncRollbackMessage,
+    this.isTemplateMode = false,
+    this.templateProjects = const [],
     this.focusTaskId,
     this.focusRequestToken,
   }) : selectedProjectIds = selectedProjectIds.isNotEmpty
@@ -61,6 +67,7 @@ class TaskNewLoaded extends TaskNewState {
     String? selectedProjectId,
     Set<String>? selectedProjectIds,
     String? selectedFilter,
+    String? selectedStatusFilter,
     Map<String, List<ChecklistItem>>? checklistItems,
     Map<String, List<Task>>? subTrees,
     Map<String, Set<String>>? expandedNodes,
@@ -73,6 +80,8 @@ class TaskNewLoaded extends TaskNewState {
     String? viewMode,
     String? syncRollbackMessage,
     bool clearSyncRollbackMessage = true,
+    bool? isTemplateMode,
+    List<Project>? templateProjects,
     String? focusTaskId,
     int? focusRequestToken,
   }) {
@@ -86,6 +95,7 @@ class TaskNewLoaded extends TaskNewState {
               ? this.selectedProjectIds
               : {selectedProjectId}),
       selectedFilter: selectedFilter ?? this.selectedFilter,
+      selectedStatusFilter: selectedStatusFilter ?? this.selectedStatusFilter,
       checklistItems: checklistItems ?? this.checklistItems,
       subTrees: subTrees ?? this.subTrees,
       expandedNodes: expandedNodes ?? this.expandedNodes,
@@ -98,6 +108,8 @@ class TaskNewLoaded extends TaskNewState {
       syncRollbackMessage: clearSyncRollbackMessage
           ? syncRollbackMessage
           : (syncRollbackMessage ?? this.syncRollbackMessage),
+      isTemplateMode: isTemplateMode ?? this.isTemplateMode,
+      templateProjects: templateProjects ?? this.templateProjects,
       focusTaskId: focusTaskId ?? this.focusTaskId,
       focusRequestToken: focusRequestToken ?? this.focusRequestToken,
     );
@@ -110,6 +122,7 @@ class TaskNewLoaded extends TaskNewState {
     tasks,
     selectedProjectIds,
     selectedFilter,
+    selectedStatusFilter,
     checklistItems,
     subTrees,
     expandedNodes,
@@ -120,6 +133,8 @@ class TaskNewLoaded extends TaskNewState {
     dateTo,
     viewMode,
     syncRollbackMessage,
+    isTemplateMode,
+    templateProjects,
     focusTaskId,
     focusRequestToken,
   ];
@@ -127,7 +142,8 @@ class TaskNewLoaded extends TaskNewState {
 
 class TaskNewError extends TaskNewState {
   final String message;
-  TaskNewError(this.message);
+  final bool isQuotaExceeded;
+  TaskNewError(this.message, {this.isQuotaExceeded = false});
   @override
-  List<Object> get props => [message];
+  List<Object> get props => [message, isQuotaExceeded];
 }

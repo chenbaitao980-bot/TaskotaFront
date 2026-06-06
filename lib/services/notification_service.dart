@@ -1,10 +1,17 @@
 import 'dart:async';
 import 'dart:io' show Directory, File, Platform, Process;
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/desktop/desktop_runtime.dart';
+import '../data/database/app_database.dart' show Task;
+import '../models/entities/schedule.dart';
+import '../models/entities/task_breakdown.dart';
+import 'alarm_service.dart';
+import 'wechat_reminder_service.dart';
+import '../core/utils/file_logger.dart';
 
 class PendingNotification {
   final int id;
@@ -18,6 +25,12 @@ class PendingNotification {
   });
 }
 
+class _MobilePermResult {
+  final bool notificationsGranted;
+  final bool exactAlarmGranted;
+  const _MobilePermResult(this.notificationsGranted, this.exactAlarmGranted);
+}
+
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -25,26 +38,61 @@ class NotificationService {
 
   FlutterLocalNotificationsPlugin? _plugin;
   FlutterLocalNotificationsWindows? _windowsPlugin;
-  // 桌面端仍用 Timer（进程常驻）
   final Map<int, Timer> _timers = {};
   final List<PendingNotification> _pendingNotifications = [];
+  final List<String> _diagnosticLog = [];
   bool _initialized = false;
   bool _useOsNotifications = false;
   bool _useNativeWindowsNotifications = false;
+
+  List<String> get diagnosticLog => List.unmodifiable(_diagnosticLog);
+  String get diagnosticSummary => _diagnosticLog.join('\n');
+
+  void _log(String msg) {
+    print(msg);
+    _diagnosticLog.add(msg);
+    flog(msg);
+    if (_diagnosticLog.length > 200) _diagnosticLog.removeAt(0);
+  }
+
+  static int notificationIdForSchedule(String scheduleId, {int offset = 0}) {
+    var hash = 0x811c9dc5;
+    for (final unit in scheduleId.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0x7fffffff;
+    }
+    return (hash + offset) & 0x7fffffff;
+  }
+
+  static bool shouldRescheduleReminder({
+    required bool reminderEnabled,
+    required DateTime? startTime,
+    bool isRepeating = false,
+    int? repeatInterval,
+    DateTime? now,
+  }) {
+    if (!reminderEnabled || startTime == null) return false;
+    if (isRepeating && repeatInterval != null && repeatInterval > 0) {
+      return true;
+    }
+    return !startTime.isBefore(now ?? DateTime.now());
+  }
 
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
 
     tz.initializeTimeZones();
+    await _configureLocalTimezone();
+    _log('[Notif] init tz.local=${tz.local}');
 
     try {
       if (Platform.isWindows) {
         _windowsPlugin = FlutterLocalNotificationsWindows();
         _useNativeWindowsNotifications = await _windowsPlugin!.initialize(
           const WindowsInitializationSettings(
-            appName: 'Smart Assistant',
-            appUserModelId: 'smartassistant.desktop.app',
+            appName: 'Taskora',
+            appUserModelId: 'taskora.desktop.app',
             guid: '7d84f3c8-c11c-4cf4-bc6b-5886b4f08941',
           ),
         );
@@ -80,17 +128,29 @@ class NotificationService {
     }
   }
 
+  Future<void> _configureLocalTimezone() async {
+    try {
+      final timezone = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timezone.identifier));
+    } catch (_) {}
+  }
+
   Future<void> _createNotificationChannels() async {
     if (_plugin == null) return;
 
     final androidPlugin = AndroidFlutterLocalNotificationsPlugin();
+    // Delete old channels first — importance is locked after first creation
+    try {
+      await androidPlugin.deleteNotificationChannel('schedule_reminders');
+      await androidPlugin.deleteNotificationChannel('repeating_reminders');
+    } catch (_) {}
     try {
       await androidPlugin.createNotificationChannel(
         AndroidNotificationChannel(
           'schedule_reminders',
-          '日程提醒',
-          description: '日程开始前的提醒通知',
-          importance: Importance.high,
+          'Schedule Reminders',
+          description: 'Reminder notifications before schedule starts',
+          importance: Importance.max,
           playSound: true,
           enableVibration: true,
         ),
@@ -98,9 +158,9 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(
         AndroidNotificationChannel(
           'repeating_reminders',
-          '重复提醒',
-          description: '重复提醒通知',
-          importance: Importance.high,
+          'Repeat Reminders',
+          description: 'Repeating reminder notifications',
+          importance: Importance.max,
           playSound: true,
           enableVibration: true,
         ),
@@ -110,13 +170,14 @@ class NotificationService {
 
   static const _androidDetails = AndroidNotificationDetails(
     'schedule_reminders',
-    '日程提醒',
-    channelDescription: '日程开始前的提醒通知',
-    importance: Importance.high,
+    'Schedule Reminders',
+    channelDescription: 'Reminder notifications before schedule starts',
+    importance: Importance.max,
     priority: Priority.high,
     showWhen: true,
     enableVibration: true,
     playSound: true,
+    icon: '@mipmap/ic_launcher',
   );
   static const _iosDetails = DarwinNotificationDetails(
     presentAlert: true,
@@ -129,7 +190,6 @@ class NotificationService {
     macOS: _iosDetails,
   );
 
-  /// 调度一条一次性提醒通知
   Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -137,10 +197,11 @@ class NotificationService {
     required DateTime scheduledDate,
     String? payload,
   }) async {
+    if (!_initialized) await init();
     final now = DateTime.now();
     if (scheduledDate.isBefore(now)) return;
 
-    // 桌面端保留 Timer（进程常驻，不需要系统级持久化）
+    // Desktop: in-process Timer
     if (!Platform.isAndroid && !Platform.isIOS) {
       _timers[id]?.cancel();
       final duration = scheduledDate.difference(now);
@@ -150,34 +211,72 @@ class NotificationService {
       return;
     }
 
-    // Android / iOS：用 zonedSchedule — 进程被杀后系统 AlarmManager 仍会触发
+    // Android / iOS: zonedSchedule
+    _log('[Notif] sched id=$id useOs=$_useOsNotifications plugin=${_plugin != null}');
     if (_useOsNotifications && _plugin != null) {
+      final perm = await _ensureMobileNotificationPermissions();
+      _log('[Notif] sched perm notif=${perm.notificationsGranted} exact=${perm.exactAlarmGranted}');
+      if (!perm.notificationsGranted) {
+        _log('[Notif] sched BLOCKED: notifications not granted');
+        _pendingNotifications.add(
+          PendingNotification(id: id, title: title, body: body),
+        );
+        return;
+      }
+      final tzScheduled = tz.TZDateTime.from(scheduledDate, tz.local);
+      // Try exact first if permission granted, else skip straight to inexact
+      final mode = perm.exactAlarmGranted
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle;
       try {
-        await _ensureMobileNotificationPermissions();
-        final tzScheduled = tz.TZDateTime.from(scheduledDate, tz.local);
         await _plugin!.zonedSchedule(
           id,
           title,
           body,
           tzScheduled,
           _notifDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          androidScheduleMode: mode,
           payload: payload,
         );
-        return;
-      } catch (e) {
-        // 降级到 show（立即显示）
-        await _showOsNotification(
-          id: id,
-          title: title,
-          body: body,
-          payload: payload,
-        );
+      } catch (e1) {
+        _log('[Notif] primary mode $mode failed: $e1');
+        // Last resort: inexactAllowWhileIdle (widest compatibility, no extra permission)
+        try {
+          await _plugin!.zonedSchedule(
+            id,
+            title,
+            body,
+            tzScheduled,
+            _notifDetails,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            payload: payload,
+          );
+        } catch (e2) {
+          _log('[Notif] all zonedSchedule modes failed: $e2');
+          _pendingNotifications.add(
+            PendingNotification(id: id, title: title, body: body),
+          );
+          return;
+        }
       }
+      // 始终尝试 alarm 备份（alarm 包内部会降级处理），不依赖精确闹钟权限
+      await AlarmService().scheduleAlarm(
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: scheduledDate,
+      );
+      return;
+    } else {
+      // Plugin not ready (init failed or incomplete), track as pending for retry
+      _pendingNotifications.add(
+        PendingNotification(id: id, title: title, body: body),
+      );
     }
   }
 
-  /// 调度一条重复提醒通知（移动端每次用 zonedSchedule 重新调度下一条）
+  static const int _maxRepeatOccurrences = 20;
+
   Future<void> scheduleRepeatingNotification({
     required int id,
     required String title,
@@ -185,34 +284,32 @@ class NotificationService {
     required DateTime firstFireAt,
     required int intervalMs,
   }) async {
+    if (!_initialized) await init();
     final now = DateTime.now();
     _timers[id]?.cancel();
     _timers.remove(id);
 
     if (Platform.isAndroid || Platform.isIOS) {
-      // 移动端：调度第一条，触发后在回调里重新调度（通过 Timer 补位）
-      final target = firstFireAt.isAfter(now) ? firstFireAt : now;
-      await scheduleNotification(
-        id: id,
-        title: title,
-        body: body,
-        scheduledDate: target,
-      );
-      // 用 Timer 追踪下一次（如果 App 在前台）
-      final delay = target.difference(now);
-      _timers[id] = Timer(delay, () async {
-        await scheduleRepeatingNotification(
-          id: id,
+      // 预调度未来N次通知，每次独立注册到系统 AlarmManager，APP被杀后仍能触发
+      final interval = Duration(milliseconds: intervalMs);
+      final cutoff = now.add(const Duration(hours: 24));
+      var nextFire = firstFireAt.isAfter(now) ? firstFireAt : now.add(interval);
+      var count = 0;
+      while (count < _maxRepeatOccurrences && nextFire.isBefore(cutoff)) {
+        await scheduleNotification(
+          id: (id + count + 1) & 0x7fffffff,
           title: title,
           body: body,
-          firstFireAt: DateTime.now().add(Duration(milliseconds: intervalMs)),
-          intervalMs: intervalMs,
+          scheduledDate: nextFire,
         );
-      });
+        nextFire = nextFire.add(interval);
+        count++;
+      }
+      _log('[Notif] repeating: pre-scheduled $count occurrences for id=$id');
       return;
     }
 
-    // 桌面端：递归 Timer
+    // Desktop: recursive Timer
     void fireAndReschedule([Timer? _]) {
       _showDesktopNativeNotification(id, title, body);
       _timers[id] = Timer(
@@ -228,29 +325,13 @@ class NotificationService {
     }
   }
 
-  Future<void> _showOsNotification({
-    required int id,
-    required String title,
-    required String body,
-    String? payload,
-  }) async {
-    if (_plugin == null) return;
-    try {
-      await _plugin!.show(id, title, body, _notifDetails, payload: payload);
-    } catch (_) {
-      _showDesktopNativeNotification(id, title, body);
-    }
-  }
-
   void _showDesktopNativeNotification(int id, String title, String body) {
     try {
       final channel = resolveDesktopNotificationChannel(
         isWindows: Platform.isWindows,
         hasNativeWindowsPlugin: _useNativeWindowsNotifications,
       );
-      if (Platform.isWindows) {
-        _showWindowsPersistentNotification(title, body);
-      } else if (channel == DesktopNotificationChannel.nativePlugin) {
+      if (channel == DesktopNotificationChannel.nativePlugin) {
         unawaited(_showWindowsPluginNotification(id, title, body));
       } else if (channel == DesktopNotificationChannel.windowsScript) {
         _showWindowsNotification(title, body);
@@ -281,34 +362,18 @@ class NotificationService {
         id,
         title,
         body,
-        details: const WindowsNotificationDetails(
+        details: WindowsNotificationDetails(
           duration: WindowsNotificationDuration.short,
+          images: [
+            WindowsImage(
+              WindowsImage.getAssetUri('assets/icons/app_icon_1024.png'),
+              altText: 'Taskora',
+              placement: WindowsImagePlacement.appLogoOverride,
+              crop: WindowsImageCrop.circle,
+            ),
+          ],
         ),
       );
-    } catch (_) {
-      _showWindowsNotification(title, body);
-    }
-  }
-
-  void _showWindowsPersistentNotification(String title, String body) {
-    try {
-      final psPath =
-          '${Directory.systemTemp.path}\\sa_notify_modal_${DateTime.now().microsecondsSinceEpoch}.ps1';
-      final safeTitle = title.replaceAll("'", "''");
-      final safeBody = body.replaceAll("'", "''");
-      File(psPath).writeAsStringSync(
-        "Add-Type -AssemblyName PresentationFramework\n"
-        "[System.Windows.MessageBox]::Show('$safeBody', '$safeTitle', 'OK', 'Information') > \$null\n"
-        "Remove-Item -LiteralPath '$psPath' -Force -ErrorAction SilentlyContinue\n",
-      );
-      Process.start('powershell', [
-        '-NoProfile',
-        '-STA',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        psPath,
-      ]);
     } catch (_) {
       _showWindowsNotification(title, body);
     }
@@ -318,16 +383,22 @@ class NotificationService {
     try {
       final psPath =
           '${Directory.systemTemp.path}\\sa_notify_${DateTime.now().microsecondsSinceEpoch}.ps1';
-      final safeTitle = title.replaceAll("'", "''");
-      final safeBody = body.replaceAll("'", "''");
+      final safeTitle = title.replaceAll("'", "''").replaceAll('"', '&quot;');
+      final safeBody = body.replaceAll("'", "''").replaceAll('"', '&quot;');
+      final iconFile = File('data/flutter_assets/assets/icons/app_icon_1024.png');
+      final iconPath = iconFile.absolute.path;
+      final iconUri = 'file:///${iconPath.replaceAll('\\', '/')}';
       File(psPath).writeAsStringSync(
         "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > \$null\n"
-        "\$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)\n"
-        "\$textNodes = \$template.GetElementsByTagName('text')\n"
-        "\$textNodes.Item(0).AppendChild(\$template.CreateTextNode('$safeTitle')) > \$null\n"
-        "\$textNodes.Item(1).AppendChild(\$template.CreateTextNode('$safeBody')) > \$null\n"
-        "\$toast = [Windows.UI.Notifications.ToastNotification]::new(\$template)\n"
-        "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Smart Assistant').Show(\$toast)\n",
+        "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > \$null\n"
+        "\$xml = [Windows.Data.Xml.Dom.XmlDocument]::new()\n"
+        "\$xml.LoadXml('<toast><visual><binding template=\"ToastGeneric\">"
+        "<text>$safeTitle</text>"
+        "<text>$safeBody</text>"
+        "<image placement=\"appLogoOverride\" hint-crop=\"circle\" src=\"$iconUri\" alt=\"Taskora\"/>"
+        "</binding></visual></toast>')\n"
+        "\$toast = [Windows.UI.Notifications.ToastNotification]::new(\$xml)\n"
+        "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Taskora').Show(\$toast)\n",
       );
       Process.run('powershell', ['-NoProfile', '-File', psPath]);
     } catch (_) {}
@@ -344,9 +415,91 @@ class NotificationService {
     Process.run('notify-send', [title, body]);
   }
 
-  Future<void> _ensureMobileNotificationPermissions() async {
+  Future<bool> checkMobilePermissions() async {
+    if (_plugin == null) return false;
+    try {
+      if (Platform.isAndroid) {
+        final android = _plugin!
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+        return await android?.areNotificationsEnabled() ?? false;
+      }
+      if (Platform.isIOS) {
+        final ios = _plugin!
+            .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin
+            >();
+        final result = await ios?.checkPermissions();
+        return result?.isEnabled ?? false;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Request mobile notification permissions. Returns true if granted now.
+  /// On permission transition from denied to granted, consumes pending
+  /// notifications (caller should re-schedule reminders).
+  Future<bool> requestMobilePermissions() async {
+    if (!_initialized) await init();
+    final wasGranted = await checkMobilePermissions();
+    await _ensureMobileNotificationPermissions();
+    final isGranted = await checkMobilePermissions();
+    if (!wasGranted && isGranted) {
+      consumePending();
+    }
+    return isGranted;
+  }
+
+  /// Immediately show a test notification (fires ~1 second from now).
+  /// Returns true if scheduling succeeded, false otherwise.
+  Future<bool> showImmediateTestNotification() async {
+    if (!_initialized) await init();
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      _log('[Notif] test: not a mobile platform');
+      return false;
+    }
+    final perm = await _ensureMobileNotificationPermissions();
+    _log('[Notif] test: notif=${perm.notificationsGranted} exact=${perm.exactAlarmGranted} useOs=$_useOsNotifications');
+    if (!perm.notificationsGranted) {
+      _log('[Notif] test FAILED: notifications not granted');
+      return false;
+    }
+    try {
+      await _plugin?.zonedSchedule(
+        9999,
+        'Test Notification',
+        'Notification pipeline is working!',
+        tz.TZDateTime.from(DateTime.now().add(const Duration(seconds: 1)), tz.local),
+        _notifDetails,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+      _log('[Notif] test OK: scheduled');
+      return true;
+    } catch (e) {
+      _log('[Notif] test FAILED: $e');
+      return false;
+    }
+  }
+
+  /// Check if exact alarm / schedule-exact-alarm permission is granted (Android 12+).
+  Future<bool> checkExactAlarmPermission() async {
+    if (!Platform.isAndroid) return true;
+    if (_plugin == null) return false;
+    try {
+      final android = _plugin!
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      return await android?.canScheduleExactNotifications() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<_MobilePermResult> _ensureMobileNotificationPermissions() async {
     final plugin = _plugin;
-    if (plugin == null) return;
+    if (plugin == null) return const _MobilePermResult(false, false);
 
     if (Platform.isAndroid) {
       final android = plugin
@@ -355,7 +508,12 @@ class NotificationService {
           >();
       await android?.requestNotificationsPermission();
       await android?.requestExactAlarmsPermission();
-      return;
+      final notificationsEnabled = await android?.areNotificationsEnabled();
+      final exactEnabled = await android?.canScheduleExactNotifications();
+      return _MobilePermResult(
+        notificationsEnabled ?? false,
+        exactEnabled ?? false,
+      );
     }
 
     if (Platform.isIOS) {
@@ -364,10 +522,13 @@ class NotificationService {
             IOSFlutterLocalNotificationsPlugin
           >();
       await ios?.requestPermissions(alert: true, badge: true, sound: true);
+      final result = await ios?.checkPermissions();
+      final granted = result?.isEnabled ?? false;
+      return _MobilePermResult(granted, granted); // iOS: no separate exact alarm
     }
+    return const _MobilePermResult(true, true);
   }
 
-  /// 根据日程信息调度提醒
   Future<void> scheduleReminderForSchedule({
     required String scheduleId,
     required String title,
@@ -378,23 +539,24 @@ class NotificationService {
     bool isRepeating = false,
     int? repeatInterval,
   }) async {
+    if (!_initialized) await init();
     final now = DateTime.now();
     final remindAt = startTime.subtract(Duration(minutes: remindBeforeMinutes));
 
     if (!remindAt.isBefore(now)) {
       await scheduleNotification(
-        id: scheduleId.hashCode,
-        title: '即将开始: $title',
-        body: description ?? '您的日程将在$remindBeforeMinutes分钟后开始',
+        id: notificationIdForSchedule(scheduleId),
+        title: 'Upcoming: $title',
+        body: description ?? 'Your schedule starts in $remindBeforeMinutes minutes',
         scheduledDate: remindAt,
       );
     }
 
     if (!startTime.isBefore(now)) {
       await scheduleNotification(
-        id: scheduleId.hashCode + 1,
-        title: '日程开始: $title',
-        body: description ?? '您的日程现在开始',
+        id: notificationIdForSchedule(scheduleId, offset: 1),
+        title: 'Starting: $title',
+        body: description ?? 'Your schedule is starting now',
         scheduledDate: startTime,
       );
     }
@@ -402,13 +564,160 @@ class NotificationService {
     if (isRepeating && repeatInterval != null && repeatInterval > 0) {
       final repeatStartAt = remindAt.isAfter(now) ? remindAt : now;
       await scheduleRepeatingNotification(
-        id: scheduleId.hashCode + 1000,
-        title: '⚠️ 重复提醒: $title',
-        body: description ?? '您的日程需要关注',
+        id: notificationIdForSchedule(scheduleId, offset: 1000),
+        title: 'Repeat: $title',
+        body: description ?? 'Your schedule needs attention',
         firstFireAt: repeatStartAt,
         intervalMs: repeatInterval * 60 * 1000,
       );
     }
+
+    // 服务端推送兜底（微信 + FCM）
+    final pushBody = description ?? 'Your schedule starts in $remindBeforeMinutes minutes';
+    final pushAt = remindAt.isAfter(now) ? remindAt : startTime;
+    if (pushAt.isAfter(now)) {
+      WechatReminderService().scheduleServerPush(
+        taskId: scheduleId,
+        title: title,
+        body: pushBody,
+        scheduledAt: pushAt,
+      );
+    }
+  }
+
+  Future<void> cancelReminderForSchedule(String scheduleId) async {
+    await cancelNotification(notificationIdForSchedule(scheduleId));
+    await cancelNotification(notificationIdForSchedule(scheduleId, offset: 1));
+    // 取消所有预调度的重复通知（offset 1000 + 0..N）
+    final baseId = notificationIdForSchedule(scheduleId, offset: 1000);
+    for (var i = 0; i <= _maxRepeatOccurrences; i++) {
+      await cancelNotification((baseId + i + 1) & 0x7fffffff);
+    }
+    await cancelNotification(baseId);
+    // 取消服务端推送
+    WechatReminderService().cancelServerPush(taskId: scheduleId);
+  }
+
+  static const int _overdueDigestNotificationId = 0x7ffffffe;
+
+  Future<void> _showOverdueDigest(int count) async {
+    if (count <= 0) return;
+    final title = '你有 $count 个过期任务未完成';
+    const body = '点击查看详情';
+    if (!_initialized) await init();
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (_useOsNotifications && _plugin != null) {
+        try {
+          await _plugin!.show(
+            _overdueDigestNotificationId,
+            title,
+            body,
+            _notifDetails,
+          );
+        } catch (e) {
+          _log('[Notif] overdue digest show failed: $e');
+        }
+      }
+    } else {
+      _showDesktopNativeNotification(_overdueDigestNotificationId, title, body);
+    }
+    _log('[Notif] overdue digest: $count tasks');
+  }
+
+  Future<void> _clearOverdueAlarms(Iterable<String> overdueIds) async {
+    for (final id in overdueIds) {
+      await cancelReminderForSchedule(id);
+    }
+  }
+
+  Future<void> rescheduleTaskReminders(Iterable<Task> tasks) async {
+    final now = DateTime.now();
+    int scheduled = 0;
+    final List<String> overdueTaskIds = [];
+    for (final task in tasks) {
+      await cancelReminderForSchedule(task.id);
+      if (task.deleted != 0 || task.status == 2) continue;
+      if (task.reminderEnabled <= 0) continue;
+      final startTime = task.startDate == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(task.startDate!);
+      if (startTime == null) continue;
+      // 过期任务：startTime 已过，收集但不调度
+      if (startTime.isBefore(now)) {
+        overdueTaskIds.add(task.id);
+        continue;
+      }
+      await scheduleReminderForSchedule(
+        scheduleId: task.id,
+        title: task.title,
+        startTime: startTime,
+        description: task.description,
+        remindBeforeMinutes: task.remindBeforeMinutes,
+      );
+      scheduled++;
+    }
+    await _clearOverdueAlarms(overdueTaskIds);
+    await _showOverdueDigest(overdueTaskIds.length);
+    _log('[Notif] rescheduleTaskReminders: ${tasks.length} tasks, $scheduled scheduled, ${overdueTaskIds.length} overdue');
+  }
+
+  Future<void> rescheduleBreakdownTaskReminders(
+    Iterable<TaskBreakdown> tasks,
+  ) async {
+    final now = DateTime.now();
+    final List<String> overdueTaskIds = [];
+    for (final task in tasks) {
+      await cancelReminderForSchedule(task.id);
+      if (task.status == 'completed') continue;
+      if (!task.reminderEnabled) continue;
+      if (task.startDate == null) continue;
+      if (task.startDate!.isBefore(now)) {
+        overdueTaskIds.add(task.id);
+        continue;
+      }
+      await scheduleReminderForSchedule(
+        scheduleId: task.id,
+        title: task.title,
+        startTime: task.startDate!,
+        description: task.description,
+        remindBeforeMinutes: task.remindBeforeMinutes,
+      );
+    }
+    await _clearOverdueAlarms(overdueTaskIds);
+    // Breakdown 过期数合并到主 Task digest，此处不重复弹
+  }
+
+  Future<void> rescheduleScheduleReminders(Iterable<Schedule> schedules) async {
+    final now = DateTime.now();
+    final List<String> overdueScheduleIds = [];
+    for (final schedule in schedules) {
+      await cancelReminderForSchedule(schedule.id);
+      if (!schedule.reminderEnabled) continue;
+      if (schedule.startTime.isBefore(now) && !schedule.isRepeating) {
+        overdueScheduleIds.add(schedule.id);
+        continue;
+      }
+      if (!shouldRescheduleReminder(
+        reminderEnabled: schedule.reminderEnabled,
+        startTime: schedule.startTime,
+        isRepeating: schedule.isRepeating,
+        repeatInterval: schedule.repeatInterval,
+        now: now,
+      )) {
+        continue;
+      }
+      await scheduleReminderForSchedule(
+        scheduleId: schedule.id,
+        title: schedule.title,
+        startTime: schedule.startTime,
+        description: schedule.description,
+        remindBeforeMinutes: schedule.remindBeforeMinutes,
+        isRepeating: schedule.isRepeating,
+        repeatInterval: schedule.repeatInterval,
+      );
+    }
+    await _clearOverdueAlarms(overdueScheduleIds);
   }
 
   List<PendingNotification> consumePending() {
@@ -423,6 +732,7 @@ class NotificationService {
     _pendingNotifications.removeWhere((n) => n.id == id);
     if (_plugin != null) await _plugin!.cancel(id);
     if (_windowsPlugin != null) await _windowsPlugin!.cancel(id);
+    await AlarmService().cancelAlarm(id);
   }
 
   Future<void> cancelAll() async {

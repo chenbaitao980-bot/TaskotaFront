@@ -23,6 +23,8 @@ class ProjectSidebar extends StatelessWidget {
   final void Function(Project)? onDeleteProject;
   final void Function(ProjectGroup)? onEditGroup;
   final void Function(ProjectGroup)? onDeleteGroup;
+  final void Function(ProjectGroup)? onCreateProjectInGroup;
+  final bool isTemplateMode;
 
   const ProjectSidebar({
     super.key,
@@ -46,6 +48,8 @@ class ProjectSidebar extends StatelessWidget {
     this.onDeleteProject,
     this.onEditGroup,
     this.onDeleteGroup,
+    this.onCreateProjectInGroup,
+    this.isTemplateMode = false,
   });
 
   @override
@@ -72,7 +76,7 @@ class ProjectSidebar extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        '任务管理',
+                        isTemplateMode ? '模板管理' : '任务管理',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
@@ -82,33 +86,44 @@ class ProjectSidebar extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '共 ${projects.length} 个项目',
+                    isTemplateMode
+                        ? '共 ${projects.length} 个模板'
+                        : '共 ${projects.length} 个项目',
                     style: const TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 8),
-            // 快捷筛选
-            _buildFilterItem(
-              context,
-              icon: Icons.inbox_rounded,
-              label: '所有任务',
-              filter: 'all',
-            ),
-            _buildFilterItem(
-              context,
-              icon: Icons.today_rounded,
-              label: '今天',
-              filter: 'today',
-            ),
-            _buildFilterItem(
-              context,
-              icon: Icons.star_rounded,
-              label: '重要',
-              filter: 'important',
-            ),
-            const Divider(height: 24, indent: 16, endIndent: 16),
+            if (!isTemplateMode) ...[
+              // 快捷筛选
+              _buildFilterItem(
+                context,
+                icon: Icons.inbox_rounded,
+                label: '所有任务',
+                filter: 'all',
+              ),
+              _buildFilterItem(
+                context,
+                icon: Icons.today_rounded,
+                label: '今天',
+                filter: 'today',
+              ),
+              _buildFilterItem(
+                context,
+                icon: Icons.star_rounded,
+                label: '重要',
+                filter: 'important',
+              ),
+              // 模板节点功能暂时隐藏
+              // _buildFilterItem(
+              //   context,
+              //   icon: Icons.dashboard_customize_outlined,
+              //   label: '模板节点',
+              //   filter: 'templates',
+              // ),
+              const Divider(height: 24, indent: 16, endIndent: 16),
+            ],
             // 项目标题
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -229,7 +244,7 @@ class ProjectSidebar extends StatelessWidget {
               return Theme(
                 data: Theme.of(ctx).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
-                  key: ValueKey('group_${g.id}_$isExpanded'),
+                  key: ValueKey('group_${g.id}_${isExpanded ? 'e' : 'c'}'),
                   initiallyExpanded: isExpanded,
                   onExpansionChanged: (expanded) =>
                       onToggleGroupExpanded(g.id, expanded),
@@ -267,10 +282,12 @@ class ProjectSidebar extends StatelessWidget {
                         ),
                         padding: EdgeInsets.zero,
                         onSelected: (action) {
+                          if (action == 'create_project') onCreateProjectInGroup?.call(g);
                           if (action == 'edit') onEditGroup?.call(g);
                           if (action == 'delete') onDeleteGroup?.call(g);
                         },
                         itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'create_project', child: Text('新建项目')),
                           PopupMenuItem(value: 'edit', child: Text('重命名分组')),
                           PopupMenuItem(
                             value: 'delete',

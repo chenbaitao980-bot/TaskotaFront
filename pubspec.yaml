@@ -40,6 +40,8 @@ dependencies:
   flutter_local_notifications: ^19.5.0
   flutter_local_notifications_windows: ^1.0.3
   timezone: ^0.10.1
+  # 闹钟式提醒（绕过静音，支持全屏唤醒）
+  alarm: ^5.4.1
   
   # 自定义字体
   google_fonts: ^6.2.1
@@ -56,6 +58,12 @@ dependencies:
   archive: ^3.6.1
   xml: ">=5.0.0 <7.0.0"
   
+  # Markdown 渲染
+  flutter_markdown: ^0.7.6
+
+  # 二维码生成（VIP支付宝扫码支付）
+  qr_flutter: ^4.1.0
+
   # 工具
   intl: ^0.20.0
   uuid: ^4.5.0
@@ -69,6 +77,9 @@ dependencies:
   path: ^1.9.1
   system_tray: ^0.1.1
   window_manager: ^0.5.1
+  super_clipboard: ^0.9.1
+  desktop_drop: ^0.7.1
+  flutter_timezone: ^5.1.0
 
 dev_dependencies:
   flutter_test:
@@ -95,3 +106,4 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/audio/

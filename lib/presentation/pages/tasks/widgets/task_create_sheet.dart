@@ -1,30 +1,46 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
+import '../../../../data/repositories/project_group_repository.dart';
 import '../../../../data/repositories/project_repository.dart';
 import '../../../../data/repositories/task_repository.dart';
+import '../../../../data/repositories/node_template_repository.dart';
+import '../../../../models/node_template_payload.dart';
 import '../../../../services/subtask_scheduler.dart';
+import '../../../../services/task_conflict_service.dart';
+import '../../../../services/task_attachment_service.dart';
 import '../../../widgets/calendar_date_picker.dart';
+import '../../../widgets/task_conflict_dialog.dart';
 import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskCreateSheet extends StatefulWidget {
   final String? initialProjectId;
   final ProjectRepository projectRepository;
+  final ProjectGroupRepository? projectGroupRepository;
   final TaskRepository? taskRepository;
+  final NodeTemplateRepository? nodeTemplateRepository;
+  final List<Project> templateProjects;
   final List<Task> availableParentTasks;
   final int? initialStartDateMillis;
   final int? initialDueDateMillis;
   final String? initialParentId;
+  final bool isTemplateMode;
 
   const TaskCreateSheet({
     super.key,
     this.initialProjectId,
     required this.projectRepository,
+    this.projectGroupRepository,
     this.taskRepository,
+    this.nodeTemplateRepository,
+    this.templateProjects = const [],
     this.availableParentTasks = const [],
     this.initialStartDateMillis,
     this.initialDueDateMillis,
     this.initialParentId,
+    this.isTemplateMode = false,
   });
 
   @override
@@ -36,11 +52,28 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
   late Future<List<Project>> _projectsFuture;
+  late Future<List<ProjectGroup>> _groupsFuture;
   String? _selectedProjectId;
+  String? _selectedGroupId;
   int _priority = 1; // 默认"低"
   DateTime? _startDate;
   DateTime? _dueDate;
   String? _parentTaskId;
+  bool get _showLegacyPickers => false;
+  final List<PlatformFile> _pendingImages = [];
+  final _attachSvc = TaskAttachmentService();
+  late Future<List<NodeTemplate>> _templatesFuture;
+  NodeTemplate? _selectedTemplate;
+  NodeTemplatePayload _selectedTemplatePayload = NodeTemplatePayload.empty;
+  Project? _selectedTemplateProject;
+
+  // 时长滑块
+  bool _durationModeIsHours = true; // true=小时, false=天
+  double _durationValue = 1.0;
+
+  // 提醒状态
+  bool _reminderEnabled = true;
+  int _remindBeforeMinutes = 15;
 
   @override
   void initState() {
@@ -63,6 +96,12 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
       _dueDate = _startDate!.add(const Duration(hours: 1));
     }
     _projectsFuture = widget.projectRepository.getActive();
+    _groupsFuture =
+        widget.projectGroupRepository?.getAll() ??
+        Future.value(<ProjectGroup>[]);
+    _templatesFuture =
+        widget.nodeTemplateRepository?.getAll() ??
+        Future.value(<NodeTemplate>[]);
   }
 
   @override
@@ -129,47 +168,56 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                       v == null || v.trim().isEmpty ? '请输入标题' : null,
                 ),
                 const SizedBox(height: 12),
-                FutureBuilder<List<Project>>(
-                  future: _projectsFuture,
-                  builder: (context, snapshot) {
-                    final projects = snapshot.data ?? [];
-                    return DropdownButtonFormField<String>(
-                      value: _selectedProjectId,
-                      decoration: const InputDecoration(
-                        labelText: '所属项目',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: projects
-                          .map(
-                            (p) => DropdownMenuItem(
-                              value: p.id,
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                      color: Color(
-                                        int.parse(
-                                          p.color.replaceFirst('#', '0xFF'),
+                if (!widget.isTemplateMode) _buildProjectPickers(),
+                if (!widget.isTemplateMode && _showLegacyPickers)
+                  FutureBuilder<List<Project>>(
+                    future: _projectsFuture,
+                    builder: (context, snapshot) {
+                      final projects = snapshot.data ?? [];
+                      return DropdownButtonFormField<String>(
+                        value: _selectedProjectId,
+                        decoration: const InputDecoration(
+                          labelText: '所属项目',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: projects
+                            .map(
+                              (p) => DropdownMenuItem(
+                                value: p.id,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: Color(
+                                          int.parse(
+                                            p.color.replaceFirst('#', '0xFF'),
+                                          ),
                                         ),
+                                        shape: BoxShape.circle,
                                       ),
-                                      shape: BoxShape.circle,
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(p.name),
-                                ],
+                                    const SizedBox(width: 8),
+                                    Text(p.name),
+                                  ],
+                                ),
                               ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setState(() => _selectedProjectId = v),
-                    );
-                  },
-                ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _selectedProjectId = v),
+                      );
+                    },
+                  ),
+                if (!widget.isTemplateMode) ...[
+                  const SizedBox(height: 12),
+                  _buildTemplatePicker(),
+                ],
                 const SizedBox(height: 12),
-                if (widget.availableParentTasks.isNotEmpty)
+                _buildParentPicker(),
+                if (_showLegacyPickers &&
+                    widget.availableParentTasks.isNotEmpty)
                   DropdownButtonFormField<String>(
                     value: _parentTaskId,
                     decoration: const InputDecoration(
@@ -228,6 +276,8 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                _buildDurationSlider(),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _descController,
@@ -237,7 +287,85 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                   ),
                   maxLines: 2,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
+                // ── 提醒设置 ──
+                _buildReminderSection(),
+                const SizedBox(height: 8),
+                // 图片预览 + 添加按钮
+                if (_pendingImages.isNotEmpty) ...[
+                  SizedBox(
+                    height: 80,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _pendingImages.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, i) {
+                        final img = _pendingImages[i];
+                        final path = img.path;
+                        return Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: path != null
+                                  ? Image.file(
+                                      File(path),
+                                      width: 80,
+                                      height: 80,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Container(
+                                      width: 80,
+                                      height: 80,
+                                      color: AppTheme.bgInput,
+                                      child: const Icon(Icons.image_outlined),
+                                    ),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setState(() => _pendingImages.removeAt(i)),
+                                child: Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    size: 12,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      final file = await _attachSvc.pickImageFile();
+                      if (file != null && mounted) {
+                        setState(() => _pendingImages.add(file));
+                      }
+                    },
+                    icon: const Icon(Icons.image_outlined, size: 18),
+                    label: const Text('添加图片'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.textSecondary,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   height: 48,
@@ -259,6 +387,329 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
         ),
       ),
     );
+  }
+
+  Widget _buildProjectPickers() {
+    return FutureBuilder<List<Object>>(
+      future: Future.wait<Object>([_groupsFuture, _projectsFuture]),
+      builder: (context, snapshot) {
+        final groups = snapshot.hasData
+            ? snapshot.data![0] as List<ProjectGroup>
+            : <ProjectGroup>[];
+        final projects = snapshot.hasData
+            ? snapshot.data![1] as List<Project>
+            : <Project>[];
+        final selectedProject = projects
+            .where((project) => project.id == _selectedProjectId)
+            .firstOrNull;
+        final effectiveGroupId = _selectedGroupId ?? selectedProject?.groupId;
+        final filteredProjects = effectiveGroupId == null
+            ? projects
+            : projects
+                  .where((project) => project.groupId == effectiveGroupId)
+                  .toList();
+
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String?>(
+                    value: effectiveGroupId,
+                    decoration: const InputDecoration(
+                      labelText: '项目分组',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('全部分组'),
+                      ),
+                      ...groups.map(
+                        (group) => DropdownMenuItem<String?>(
+                          value: group.id,
+                          child: Text(group.name),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedGroupId = value;
+                        final selectedStillVisible =
+                            value == null ||
+                            projects
+                                .where((p) => p.id == _selectedProjectId)
+                                .any((p) => p.groupId == value);
+                        if (!selectedStillVisible) _selectedProjectId = null;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '新建分组',
+                  onPressed: widget.projectGroupRepository == null
+                      ? null
+                      : _createProjectGroup,
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value:
+                        filteredProjects.any((p) => p.id == _selectedProjectId)
+                        ? _selectedProjectId
+                        : null,
+                    decoration: const InputDecoration(
+                      labelText: '所属项目',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: filteredProjects
+                        .map(
+                          (project) => DropdownMenuItem(
+                            value: project.id,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: Color(
+                                      int.parse(
+                                        project.color.replaceFirst('#', '0xFF'),
+                                      ),
+                                    ),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(project.name),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(() {
+                      _selectedProjectId = value;
+                      _parentTaskId = null;
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '新建项目',
+                  onPressed: _createProject,
+                  icon: const Icon(Icons.add_box_outlined),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTemplatePicker() {
+    if (widget.templateProjects.isNotEmpty) {
+      return _buildTemplateProjectPicker();
+    }
+    if (widget.nodeTemplateRepository == null) return const SizedBox.shrink();
+    return FutureBuilder<List<NodeTemplate>>(
+      future: _templatesFuture,
+      builder: (context, snapshot) {
+        final templates = snapshot.data ?? const <NodeTemplate>[];
+        if (templates.isEmpty) return const SizedBox.shrink();
+        return DropdownButtonFormField<String?>(
+          value: _selectedTemplate?.id,
+          decoration: const InputDecoration(
+            labelText: '复用模板',
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            const DropdownMenuItem<String?>(value: null, child: Text('不使用模板')),
+            ...templates.map(
+              (template) => DropdownMenuItem<String?>(
+                value: template.id,
+                child: Text(
+                  template.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
+          onChanged: (value) {
+            final template = templates
+                .where((item) => item.id == value)
+                .firstOrNull;
+            setState(() {
+              _selectedTemplate = template;
+              _selectedTemplatePayload = template == null
+                  ? NodeTemplatePayload.empty
+                  : widget.nodeTemplateRepository!.payloadOf(template);
+              if (template != null) {
+                _titleController.text = template.title;
+                _descController.text = template.description;
+                _priority = template.priority;
+              }
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTemplateProjectPicker() {
+    return FutureBuilder<List<Task>>(
+      future: widget.taskRepository?.getAll() ?? Future.value(<Task>[]),
+      builder: (context, snapshot) {
+        final allTasks = snapshot.data ?? const <Task>[];
+        return DropdownButtonFormField<String?>(
+          value: _selectedTemplateProject?.id,
+          decoration: const InputDecoration(
+            labelText: '复用模板',
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            const DropdownMenuItem<String?>(value: null, child: Text('不使用模板')),
+            ...widget.templateProjects.map(
+              (project) => DropdownMenuItem<String?>(
+                value: project.id,
+                child: Text(
+                  project.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
+          onChanged: (value) {
+            final project = widget.templateProjects
+                .where((p) => p.id == value)
+                .firstOrNull;
+            setState(() {
+              _selectedTemplateProject = project;
+              _selectedTemplate = null;
+              _selectedTemplatePayload = NodeTemplatePayload.empty;
+              if (project != null) {
+                final rootTasks = allTasks
+                    .where((t) =>
+                        t.projectId == project.id && t.parentId == null)
+                    .toList();
+                if (rootTasks.isNotEmpty) {
+                  final root = rootTasks.first;
+                  _titleController.text = root.title;
+                  _descController.text = root.description;
+                  _priority = root.priority;
+                  if (root.startDate != null && root.dueDate != null) {
+                    final duration = root.dueDate! - root.startDate!;
+                    _dueDate = _startDate?.add(
+                      Duration(milliseconds: duration),
+                    );
+                  }
+                }
+              }
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildParentPicker() {
+    final parents = widget.availableParentTasks
+        .where(
+          (task) =>
+              _selectedProjectId == null ||
+              task.projectId == _selectedProjectId,
+        )
+        .toList();
+    if (parents.isEmpty) return const SizedBox.shrink();
+    return DropdownButtonFormField<String>(
+      value: parents.any((task) => task.id == _parentTaskId)
+          ? _parentTaskId
+          : null,
+      decoration: const InputDecoration(
+        labelText: '父任务（可选）',
+        border: OutlineInputBorder(),
+      ),
+      items: [
+        const DropdownMenuItem<String>(value: null, child: Text('无（根任务）')),
+        ...parents.map(
+          (task) => DropdownMenuItem(
+            value: task.id,
+            child: Text(
+              task.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ],
+      onChanged: (value) => setState(() {
+        _parentTaskId = value;
+        final parentProjectId = _projectIdOfParent(value);
+        if (parentProjectId != null) _selectedProjectId = parentProjectId;
+      }),
+    );
+  }
+
+  Future<void> _createProjectGroup() async {
+    final name = await _promptName('新建项目分组', '分组名称');
+    if (name == null || widget.projectGroupRepository == null) return;
+    final group = await widget.projectGroupRepository!.create(name: name);
+    setState(() {
+      _selectedGroupId = group.id;
+      _groupsFuture = widget.projectGroupRepository!.getAll();
+    });
+  }
+
+  Future<void> _createProject() async {
+    final name = await _promptName('新建项目', '项目名称');
+    if (name == null) return;
+    final project = await widget.projectRepository.create(
+      name: name,
+      groupId: _selectedGroupId,
+    );
+    setState(() {
+      _selectedProjectId = project.id;
+      _projectsFuture = widget.projectRepository.getActive();
+    });
+  }
+
+  Future<String?> _promptName(String title, String label) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(context, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result == null || result.isEmpty ? null : result;
   }
 
   List<Widget> _buildPriorityChips() {
@@ -294,6 +745,31 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     }
   }
 
+  void _syncDurationFromDates() {
+    if (_startDate == null || _dueDate == null) return;
+    final totalHours = _dueDate!.difference(_startDate!).inMinutes / 60.0;
+    if (_durationModeIsHours) {
+      _durationValue = (totalHours).clamp(0.5, 12.0);
+      _durationValue = (_durationValue * 2).roundToDouble() / 2;
+    } else {
+      _durationValue = (totalHours / 24.0).clamp(1.0, 15.0);
+      _durationValue = _durationValue.roundToDouble();
+    }
+  }
+
+  void _applyDurationToEnd() {
+    if (_startDate == null) return;
+    if (_durationModeIsHours) {
+      _dueDate = _startDate!.add(
+        Duration(minutes: (_durationValue * 60).round()),
+      );
+    } else {
+      _dueDate = _startDate!.add(
+        Duration(days: _durationValue.round()),
+      );
+    }
+  }
+
   Future<void> _pickDateTime(bool isStart) async {
     final now = DateTime.now();
     final initialDate = isStart ? _startDate : _dueDate;
@@ -308,10 +784,113 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     setState(() {
       if (isStart) {
         _startDate = picked;
+        _applyDurationToEnd();
       } else {
         _dueDate = picked;
+        _syncDurationFromDates();
       }
     });
+  }
+
+  Widget _buildDurationSlider() {
+    final min = _durationModeIsHours ? 0.5 : 1.0;
+    final max = _durationModeIsHours ? 12.0 : 15.0;
+    final divisions = _durationModeIsHours ? 23 : 14;
+    final label = _durationModeIsHours
+        ? (_durationValue % 1 == 0
+            ? '${_durationValue.toInt()} 小时'
+            : '${_durationValue} 小时')
+        : '${_durationValue.toInt()} 天';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppTheme.borderSubtle),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const SizedBox(width: 8),
+              _durationModeChip('小时', true),
+              const SizedBox(width: 6),
+              _durationModeChip('天', false),
+              const Spacer(),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: AppTheme.primaryColor,
+              inactiveTrackColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+              thumbColor: AppTheme.primaryColor,
+              overlayColor: AppTheme.primaryColor.withValues(alpha: 0.12),
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            ),
+            child: Slider(
+              value: _durationValue.clamp(min, max),
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: (v) {
+                setState(() {
+                  _durationValue = v;
+                  _applyDurationToEnd();
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _durationModeChip(String text, bool isHours) {
+    final selected = _durationModeIsHours == isHours;
+    return GestureDetector(
+      onTap: () {
+        if (selected) return;
+        setState(() {
+          final oldHours = _durationModeIsHours
+              ? _durationValue
+              : _durationValue * 24;
+          _durationModeIsHours = isHours;
+          if (_durationModeIsHours) {
+            _durationValue = oldHours.clamp(0.5, 12.0);
+            _durationValue = (_durationValue * 2).roundToDouble() / 2;
+          } else {
+            _durationValue = (oldHours / 24.0).clamp(1.0, 15.0);
+            _durationValue = _durationValue.roundToDouble();
+          }
+          _applyDurationToEnd();
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.primaryColor : AppTheme.bgInput,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: selected ? Colors.white : AppTheme.textSecondary,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _submit() async {
@@ -334,32 +913,44 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     var shiftedTasks = const <ScheduledTaskShift>[];
 
     // 子任务才做冲突检测
-    if (widget.taskRepository != null) {
-      final conflict = await _checkConflict(finalStart, finalEnd);
+    if (widget.taskRepository != null &&
+        !TaskConflictService.isRangeMultiDay(finalStart, finalEnd)) {
+      final svc = TaskConflictService(taskRepository: widget.taskRepository!);
+      final conflict = await svc.checkConflict(
+        finalStart,
+        finalEnd,
+        excludeParentId: _parentTaskId,
+      );
       if (conflict != null && mounted) {
-        final choice = await _showConflictDialog(
-          conflict,
-          finalStart,
-          finalEnd,
+        final choice = await showTaskConflictDialog(
+          context,
+          conflict: conflict,
+          newStart: finalStart,
+          newEnd: finalEnd,
         );
         if (!mounted) return;
         switch (choice) {
-          case _ConflictChoice.cancel:
+          case ConflictChoice.cancel:
             return;
-          case _ConflictChoice.parallel:
+          case ConflictChoice.parallel:
             break; // 保持原时间
-          case _ConflictChoice.autoDelay:
-            final delayed = await _calcDelayedSlot(
+          case ConflictChoice.autoDelay:
+            final delayed = await svc.calcDelayedSlot(
               finalStart,
               finalEnd,
               conflict.conflictEnd,
+              excludeParentId: _parentTaskId,
             );
             if (delayed != null) {
               finalStart = delayed.start;
               finalEnd = delayed.end;
             }
-          case _ConflictChoice.autoInsert:
-            shiftedTasks = await _calcInsertedShifts(finalStart, finalEnd);
+          case ConflictChoice.autoInsert:
+            shiftedTasks = await svc.calcInsertedShifts(
+              finalStart,
+              finalEnd,
+              excludeParentId: _parentTaskId,
+            );
           case null:
             return; // 弹窗关闭视为取消
         }
@@ -376,6 +967,13 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
       'dueDate': finalEnd.millisecondsSinceEpoch,
       'parentId': _parentTaskId,
       'shiftedTasks': shiftedTasks,
+      'pendingImages': List<PlatformFile>.from(_pendingImages),
+      'templatePayload': _selectedTemplatePayload,
+      if (_selectedTemplateProject != null)
+        'templateProjectId': _selectedTemplateProject!.id,
+      'remindBeforeMinutes':
+          _reminderEnabled ? _remindBeforeMinutes : null,
+      'reminderEnabled': _reminderEnabled ? 1 : 0,
     });
   }
 
@@ -387,122 +985,134 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     return !(s.year == e.year && s.month == e.month && s.day == e.day);
   }
 
-  bool _isSubtaskTimingOccupant(Task t) {
-    return isSubtaskTimingOccupantForTaskCreateSheet(
-      t,
-      parentTaskId: _parentTaskId,
-    );
-  }
+  // ── 提醒设置 ──
 
-  /// 检测 [newStart, newEnd) 与已有任务的时间重叠，返回首个冲突信息。
-  Future<_ConflictInfo?> _checkConflict(
-    DateTime newStart,
-    DateTime newEnd,
-  ) async {
-    final all = await widget.taskRepository!.getAll();
-    for (final t in all.where(_isSubtaskTimingOccupant)) {
-      final s = DateTime.fromMillisecondsSinceEpoch(t.startDate!);
-      final e = DateTime.fromMillisecondsSinceEpoch(t.dueDate!);
-      if (s.isBefore(newEnd) && e.isAfter(newStart)) {
-        return _ConflictInfo(title: t.title, start: s, end: e, conflictEnd: e);
-      }
-    }
-    return null;
-  }
+  static const List<Map<String, dynamic>> _remindBeforeOptions = [
+    {'label': '5 分钟', 'value': 5},
+    {'label': '10 分钟', 'value': 10},
+    {'label': '15 分钟', 'value': 15},
+    {'label': '30 分钟', 'value': 30},
+    {'label': '1 小时', 'value': 60},
+    {'label': '2 小时', 'value': 120},
+    {'label': '1 天', 'value': 1440},
+  ];
 
-  /// 显示冲突弹窗，返回用户选择。
-  Future<_ConflictChoice?> _showConflictDialog(
-    _ConflictInfo conflict,
-    DateTime newStart,
-    DateTime newEnd,
-  ) {
-    String fmt(DateTime d) =>
-        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    return showDialog<_ConflictChoice>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('时间冲突'),
-        content: Text(
-          '「${conflict.title}」已安排 ${fmt(conflict.start)}—${fmt(conflict.end)}，'
-          '与当前时段（${fmt(newStart)}—${fmt(newEnd)}）重叠。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, _ConflictChoice.cancel),
-            child: const Text('取消'),
+  Widget _buildReminderSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgInput.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderSubtle.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            secondary: Icon(
+              Icons.notifications_active,
+              size: 20,
+              color: _reminderEnabled
+                  ? AppTheme.primaryColor
+                  : AppTheme.textHint,
+            ),
+            title: Text(
+              '启用提醒',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            subtitle: Text(
+              _reminderEnabled ? '将在任务开始前通知您' : '不会发送提醒',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            value: _reminderEnabled,
+            onChanged: (v) => setState(() => _reminderEnabled = v),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, _ConflictChoice.parallel),
-            child: const Text('并行'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, _ConflictChoice.autoInsert),
-            child: const Text('自动插入'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, _ConflictChoice.autoDelay),
-            child: const Text('自动延后'),
-          ),
+          if (_reminderEnabled) ...[
+            const Divider(height: 1, indent: 52),
+            _buildDropdownTile(
+              icon: Icons.timer_outlined,
+              label: '提前提醒',
+              value: _remindBeforeMinutes,
+              options: _remindBeforeOptions,
+              onChanged: (v) => setState(() => _remindBeforeMinutes = v),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  /// 利用 SubtaskScheduler 计算从 [from] 开始的第一个空闲时段。
-  Future<ScheduledSlot?> _calcDelayedSlot(
-    DateTime start,
-    DateTime end,
-    DateTime from,
-  ) async {
-    final duration = end.difference(start).inMinutes.clamp(1, 480);
-    final all = await widget.taskRepository!.getAll();
-    final occupants = all.where(_isSubtaskTimingOccupant).toList();
-    final scheduler = SubtaskScheduler(
-      existingTasks: occupants,
-      skipWeekends: false,
+  Widget _buildDropdownTile({
+    required IconData icon,
+    required String label,
+    required int value,
+    required List<Map<String, dynamic>> options,
+    required ValueChanged<int> onChanged,
+  }) {
+    final selectedLabel =
+        options.firstWhere((o) => o['value'] == value)['label'] as String;
+    return ListTile(
+      minVerticalPadding: 8,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      leading: Icon(icon, size: 20, color: AppTheme.primaryColor),
+      title: Text(
+        label,
+        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+      ),
+      subtitle: Text(
+        selectedLabel,
+        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+      ),
+      trailing: Icon(Icons.arrow_drop_down, size: 20, color: AppTheme.textHint),
+      onTap: () => _showDropdownPicker(
+        label: label,
+        value: value,
+        options: options,
+        onChanged: onChanged,
+      ),
     );
-    final slots = scheduler.scheduleLeaves([
-      LeafToSchedule(taskId: 'tmp', minutes: duration),
-    ], from: from);
-    return slots.isNotEmpty ? slots.first : null;
   }
 
-  Future<List<ScheduledTaskShift>> _calcInsertedShifts(
-    DateTime start,
-    DateTime end,
-  ) async {
-    final all = await widget.taskRepository!.getAll();
-    final scheduler = SubtaskScheduler(
-      existingTasks: all.where(_isSubtaskTimingOccupant).toList(),
-      skipWeekends: false,
+  void _showDropdownPicker({
+    required String label,
+    required int value,
+    required List<Map<String, dynamic>> options,
+    required ValueChanged<int> onChanged,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(label),
+        children: options.map((opt) {
+          final optValue = opt['value'] as int;
+          final optLabel = opt['label'] as String;
+          return RadioListTile<int>(
+            title: Text(optLabel),
+            value: optValue,
+            groupValue: value,
+            onChanged: (v) {
+              if (v != null) {
+                onChanged(v);
+                Navigator.pop(ctx);
+              }
+            },
+          );
+        }).toList(),
+      ),
     );
-    return scheduler.autoInsert(insertStart: start, insertEnd: end);
   }
 }
-
-enum _ConflictChoice { cancel, parallel, autoDelay, autoInsert }
 
 @visibleForTesting
 bool isSubtaskTimingOccupantForTaskCreateSheet(Task t, {String? parentTaskId}) {
   if (t.startDate == null || t.dueDate == null) return false;
   if (t.status == 2 || t.deleted != 0) return false;
   if (t.id == parentTaskId) return false;
-  if (t.parentId == null) return false;
   if (_TaskCreateSheetState._isMultiDay(t)) return false;
   return true;
-}
-
-class _ConflictInfo {
-  final String title;
-  final DateTime start;
-  final DateTime end;
-  final DateTime conflictEnd;
-  const _ConflictInfo({
-    required this.title,
-    required this.start,
-    required this.end,
-    required this.conflictEnd,
-  });
 }
 
 class _DateButton extends StatelessWidget {

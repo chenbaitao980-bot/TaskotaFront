@@ -74,6 +74,19 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
     $customConstraints: 'NOT NULL DEFAULT 0',
     defaultValue: const CustomExpression('0'),
   );
+  static const VerificationMeta _isTemplateMeta = const VerificationMeta(
+    'isTemplate',
+  );
+  @override
+  late final GeneratedColumn<int> isTemplate = GeneratedColumn<int>(
+    'is_template',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
   static const VerificationMeta _deletedMeta = const VerificationMeta(
     'deleted',
   );
@@ -117,6 +130,7 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
     groupId,
     sortOrder,
     archived,
+    isTemplate,
     deleted,
     createdAt,
     updatedAt,
@@ -168,6 +182,12 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
       context.handle(
         _archivedMeta,
         archived.isAcceptableOrUnknown(data['archived']!, _archivedMeta),
+      );
+    }
+    if (data.containsKey('is_template')) {
+      context.handle(
+        _isTemplateMeta,
+        isTemplate.isAcceptableOrUnknown(data['is_template']!, _isTemplateMeta),
       );
     }
     if (data.containsKey('deleted')) {
@@ -225,6 +245,10 @@ class $ProjectsTable extends Projects with TableInfo<$ProjectsTable, Project> {
         DriftSqlType.int,
         data['${effectivePrefix}archived'],
       )!,
+      isTemplate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}is_template'],
+      )!,
       deleted: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}deleted'],
@@ -253,6 +277,7 @@ class Project extends DataClass implements Insertable<Project> {
   final String? groupId;
   final int sortOrder;
   final int archived;
+  final int isTemplate;
   final int deleted;
   final int createdAt;
   final int updatedAt;
@@ -263,6 +288,7 @@ class Project extends DataClass implements Insertable<Project> {
     this.groupId,
     required this.sortOrder,
     required this.archived,
+    required this.isTemplate,
     required this.deleted,
     required this.createdAt,
     required this.updatedAt,
@@ -278,6 +304,7 @@ class Project extends DataClass implements Insertable<Project> {
     }
     map['sort_order'] = Variable<int>(sortOrder);
     map['archived'] = Variable<int>(archived);
+    map['is_template'] = Variable<int>(isTemplate);
     map['deleted'] = Variable<int>(deleted);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -294,6 +321,7 @@ class Project extends DataClass implements Insertable<Project> {
           : Value(groupId),
       sortOrder: Value(sortOrder),
       archived: Value(archived),
+      isTemplate: Value(isTemplate),
       deleted: Value(deleted),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -312,6 +340,7 @@ class Project extends DataClass implements Insertable<Project> {
       groupId: serializer.fromJson<String?>(json['groupId']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       archived: serializer.fromJson<int>(json['archived']),
+      isTemplate: serializer.fromJson<int>(json['isTemplate']),
       deleted: serializer.fromJson<int>(json['deleted']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
@@ -327,6 +356,7 @@ class Project extends DataClass implements Insertable<Project> {
       'groupId': serializer.toJson<String?>(groupId),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'archived': serializer.toJson<int>(archived),
+      'isTemplate': serializer.toJson<int>(isTemplate),
       'deleted': serializer.toJson<int>(deleted),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
@@ -340,6 +370,7 @@ class Project extends DataClass implements Insertable<Project> {
     Value<String?> groupId = const Value.absent(),
     int? sortOrder,
     int? archived,
+    int? isTemplate,
     int? deleted,
     int? createdAt,
     int? updatedAt,
@@ -350,6 +381,7 @@ class Project extends DataClass implements Insertable<Project> {
     groupId: groupId.present ? groupId.value : this.groupId,
     sortOrder: sortOrder ?? this.sortOrder,
     archived: archived ?? this.archived,
+    isTemplate: isTemplate ?? this.isTemplate,
     deleted: deleted ?? this.deleted,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -362,6 +394,9 @@ class Project extends DataClass implements Insertable<Project> {
       groupId: data.groupId.present ? data.groupId.value : this.groupId,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       archived: data.archived.present ? data.archived.value : this.archived,
+      isTemplate: data.isTemplate.present
+          ? data.isTemplate.value
+          : this.isTemplate,
       deleted: data.deleted.present ? data.deleted.value : this.deleted,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -377,6 +412,7 @@ class Project extends DataClass implements Insertable<Project> {
           ..write('groupId: $groupId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('archived: $archived, ')
+          ..write('isTemplate: $isTemplate, ')
           ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -392,6 +428,7 @@ class Project extends DataClass implements Insertable<Project> {
     groupId,
     sortOrder,
     archived,
+    isTemplate,
     deleted,
     createdAt,
     updatedAt,
@@ -406,6 +443,7 @@ class Project extends DataClass implements Insertable<Project> {
           other.groupId == this.groupId &&
           other.sortOrder == this.sortOrder &&
           other.archived == this.archived &&
+          other.isTemplate == this.isTemplate &&
           other.deleted == this.deleted &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -418,6 +456,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
   final Value<String?> groupId;
   final Value<int> sortOrder;
   final Value<int> archived;
+  final Value<int> isTemplate;
   final Value<int> deleted;
   final Value<int> createdAt;
   final Value<int> updatedAt;
@@ -429,6 +468,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     this.groupId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.archived = const Value.absent(),
+    this.isTemplate = const Value.absent(),
     this.deleted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -441,6 +481,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     this.groupId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.archived = const Value.absent(),
+    this.isTemplate = const Value.absent(),
     this.deleted = const Value.absent(),
     required int createdAt,
     required int updatedAt,
@@ -456,6 +497,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     Expression<String>? groupId,
     Expression<int>? sortOrder,
     Expression<int>? archived,
+    Expression<int>? isTemplate,
     Expression<int>? deleted,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
@@ -468,6 +510,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
       if (groupId != null) 'group_id': groupId,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (archived != null) 'archived': archived,
+      if (isTemplate != null) 'is_template': isTemplate,
       if (deleted != null) 'deleted': deleted,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -482,6 +525,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     Value<String?>? groupId,
     Value<int>? sortOrder,
     Value<int>? archived,
+    Value<int>? isTemplate,
     Value<int>? deleted,
     Value<int>? createdAt,
     Value<int>? updatedAt,
@@ -494,6 +538,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
       groupId: groupId ?? this.groupId,
       sortOrder: sortOrder ?? this.sortOrder,
       archived: archived ?? this.archived,
+      isTemplate: isTemplate ?? this.isTemplate,
       deleted: deleted ?? this.deleted,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -522,6 +567,9 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
     if (archived.present) {
       map['archived'] = Variable<int>(archived.value);
     }
+    if (isTemplate.present) {
+      map['is_template'] = Variable<int>(isTemplate.value);
+    }
     if (deleted.present) {
       map['deleted'] = Variable<int>(deleted.value);
     }
@@ -546,6 +594,7 @@ class ProjectsCompanion extends UpdateCompanion<Project> {
           ..write('groupId: $groupId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('archived: $archived, ')
+          ..write('isTemplate: $isTemplate, ')
           ..write('deleted: $deleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -3205,6 +3254,669 @@ class TaskAttachmentsCompanion extends UpdateCompanion<TaskAttachment> {
   }
 }
 
+class $NodeTemplatesTable extends NodeTemplates
+    with TableInfo<$NodeTemplatesTable, NodeTemplate> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NodeTemplatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'\'',
+    defaultValue: const CustomExpression('\'\''),
+  );
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<int> priority = GeneratedColumn<int>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 1',
+    defaultValue: const CustomExpression('1'),
+  );
+  static const VerificationMeta _checklistJsonMeta = const VerificationMeta(
+    'checklistJson',
+  );
+  @override
+  late final GeneratedColumn<String> checklistJson = GeneratedColumn<String>(
+    'checklist_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'[]\'',
+    defaultValue: const CustomExpression('\'[]\''),
+  );
+  static const VerificationMeta _imagesJsonMeta = const VerificationMeta(
+    'imagesJson',
+  );
+  @override
+  late final GeneratedColumn<String> imagesJson = GeneratedColumn<String>(
+    'images_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'[]\'',
+    defaultValue: const CustomExpression('\'[]\''),
+  );
+  static const VerificationMeta _subtasksJsonMeta = const VerificationMeta(
+    'subtasksJson',
+  );
+  @override
+  late final GeneratedColumn<String> subtasksJson = GeneratedColumn<String>(
+    'subtasks_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'[]\'',
+    defaultValue: const CustomExpression('\'[]\''),
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<int> deleted = GeneratedColumn<int>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    title,
+    description,
+    priority,
+    checklistJson,
+    imagesJson,
+    subtasksJson,
+    deleted,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'node_templates';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NodeTemplate> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    if (data.containsKey('checklist_json')) {
+      context.handle(
+        _checklistJsonMeta,
+        checklistJson.isAcceptableOrUnknown(
+          data['checklist_json']!,
+          _checklistJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('images_json')) {
+      context.handle(
+        _imagesJsonMeta,
+        imagesJson.isAcceptableOrUnknown(data['images_json']!, _imagesJsonMeta),
+      );
+    }
+    if (data.containsKey('subtasks_json')) {
+      context.handle(
+        _subtasksJsonMeta,
+        subtasksJson.isAcceptableOrUnknown(
+          data['subtasks_json']!,
+          _subtasksJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  NodeTemplate map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NodeTemplate(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      priority: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}priority'],
+      )!,
+      checklistJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}checklist_json'],
+      )!,
+      imagesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}images_json'],
+      )!,
+      subtasksJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subtasks_json'],
+      )!,
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $NodeTemplatesTable createAlias(String alias) {
+    return $NodeTemplatesTable(attachedDatabase, alias);
+  }
+}
+
+class NodeTemplate extends DataClass implements Insertable<NodeTemplate> {
+  final String id;
+  final String name;
+  final String title;
+  final String description;
+  final int priority;
+  final String checklistJson;
+  final String imagesJson;
+  final String subtasksJson;
+  final int deleted;
+  final int createdAt;
+  final int updatedAt;
+  const NodeTemplate({
+    required this.id,
+    required this.name,
+    required this.title,
+    required this.description,
+    required this.priority,
+    required this.checklistJson,
+    required this.imagesJson,
+    required this.subtasksJson,
+    required this.deleted,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['title'] = Variable<String>(title);
+    map['description'] = Variable<String>(description);
+    map['priority'] = Variable<int>(priority);
+    map['checklist_json'] = Variable<String>(checklistJson);
+    map['images_json'] = Variable<String>(imagesJson);
+    map['subtasks_json'] = Variable<String>(subtasksJson);
+    map['deleted'] = Variable<int>(deleted);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  NodeTemplatesCompanion toCompanion(bool nullToAbsent) {
+    return NodeTemplatesCompanion(
+      id: Value(id),
+      name: Value(name),
+      title: Value(title),
+      description: Value(description),
+      priority: Value(priority),
+      checklistJson: Value(checklistJson),
+      imagesJson: Value(imagesJson),
+      subtasksJson: Value(subtasksJson),
+      deleted: Value(deleted),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory NodeTemplate.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NodeTemplate(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      title: serializer.fromJson<String>(json['title']),
+      description: serializer.fromJson<String>(json['description']),
+      priority: serializer.fromJson<int>(json['priority']),
+      checklistJson: serializer.fromJson<String>(json['checklistJson']),
+      imagesJson: serializer.fromJson<String>(json['imagesJson']),
+      subtasksJson: serializer.fromJson<String>(json['subtasksJson']),
+      deleted: serializer.fromJson<int>(json['deleted']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'title': serializer.toJson<String>(title),
+      'description': serializer.toJson<String>(description),
+      'priority': serializer.toJson<int>(priority),
+      'checklistJson': serializer.toJson<String>(checklistJson),
+      'imagesJson': serializer.toJson<String>(imagesJson),
+      'subtasksJson': serializer.toJson<String>(subtasksJson),
+      'deleted': serializer.toJson<int>(deleted),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  NodeTemplate copyWith({
+    String? id,
+    String? name,
+    String? title,
+    String? description,
+    int? priority,
+    String? checklistJson,
+    String? imagesJson,
+    String? subtasksJson,
+    int? deleted,
+    int? createdAt,
+    int? updatedAt,
+  }) => NodeTemplate(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    title: title ?? this.title,
+    description: description ?? this.description,
+    priority: priority ?? this.priority,
+    checklistJson: checklistJson ?? this.checklistJson,
+    imagesJson: imagesJson ?? this.imagesJson,
+    subtasksJson: subtasksJson ?? this.subtasksJson,
+    deleted: deleted ?? this.deleted,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  NodeTemplate copyWithCompanion(NodeTemplatesCompanion data) {
+    return NodeTemplate(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      title: data.title.present ? data.title.value : this.title,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      priority: data.priority.present ? data.priority.value : this.priority,
+      checklistJson: data.checklistJson.present
+          ? data.checklistJson.value
+          : this.checklistJson,
+      imagesJson: data.imagesJson.present
+          ? data.imagesJson.value
+          : this.imagesJson,
+      subtasksJson: data.subtasksJson.present
+          ? data.subtasksJson.value
+          : this.subtasksJson,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NodeTemplate(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('priority: $priority, ')
+          ..write('checklistJson: $checklistJson, ')
+          ..write('imagesJson: $imagesJson, ')
+          ..write('subtasksJson: $subtasksJson, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    title,
+    description,
+    priority,
+    checklistJson,
+    imagesJson,
+    subtasksJson,
+    deleted,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NodeTemplate &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.title == this.title &&
+          other.description == this.description &&
+          other.priority == this.priority &&
+          other.checklistJson == this.checklistJson &&
+          other.imagesJson == this.imagesJson &&
+          other.subtasksJson == this.subtasksJson &&
+          other.deleted == this.deleted &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class NodeTemplatesCompanion extends UpdateCompanion<NodeTemplate> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> title;
+  final Value<String> description;
+  final Value<int> priority;
+  final Value<String> checklistJson;
+  final Value<String> imagesJson;
+  final Value<String> subtasksJson;
+  final Value<int> deleted;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const NodeTemplatesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.checklistJson = const Value.absent(),
+    this.imagesJson = const Value.absent(),
+    this.subtasksJson = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  NodeTemplatesCompanion.insert({
+    required String id,
+    required String name,
+    required String title,
+    this.description = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.checklistJson = const Value.absent(),
+    this.imagesJson = const Value.absent(),
+    this.subtasksJson = const Value.absent(),
+    this.deleted = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       title = Value(title),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<NodeTemplate> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? title,
+    Expression<String>? description,
+    Expression<int>? priority,
+    Expression<String>? checklistJson,
+    Expression<String>? imagesJson,
+    Expression<String>? subtasksJson,
+    Expression<int>? deleted,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (priority != null) 'priority': priority,
+      if (checklistJson != null) 'checklist_json': checklistJson,
+      if (imagesJson != null) 'images_json': imagesJson,
+      if (subtasksJson != null) 'subtasks_json': subtasksJson,
+      if (deleted != null) 'deleted': deleted,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  NodeTemplatesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? title,
+    Value<String>? description,
+    Value<int>? priority,
+    Value<String>? checklistJson,
+    Value<String>? imagesJson,
+    Value<String>? subtasksJson,
+    Value<int>? deleted,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return NodeTemplatesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      priority: priority ?? this.priority,
+      checklistJson: checklistJson ?? this.checklistJson,
+      imagesJson: imagesJson ?? this.imagesJson,
+      subtasksJson: subtasksJson ?? this.subtasksJson,
+      deleted: deleted ?? this.deleted,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<int>(priority.value);
+    }
+    if (checklistJson.present) {
+      map['checklist_json'] = Variable<String>(checklistJson.value);
+    }
+    if (imagesJson.present) {
+      map['images_json'] = Variable<String>(imagesJson.value);
+    }
+    if (subtasksJson.present) {
+      map['subtasks_json'] = Variable<String>(subtasksJson.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<int>(deleted.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NodeTemplatesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('priority: $priority, ')
+          ..write('checklistJson: $checklistJson, ')
+          ..write('imagesJson: $imagesJson, ')
+          ..write('subtasksJson: $subtasksJson, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3215,6 +3927,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TaskAttachmentsTable taskAttachments = $TaskAttachmentsTable(
     this,
   );
+  late final $NodeTemplatesTable nodeTemplates = $NodeTemplatesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3225,6 +3938,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     checklistItems,
     projectGroups,
     taskAttachments,
+    nodeTemplates,
   ];
 }
 
@@ -3236,6 +3950,7 @@ typedef $$ProjectsTableCreateCompanionBuilder =
       Value<String?> groupId,
       Value<int> sortOrder,
       Value<int> archived,
+      Value<int> isTemplate,
       Value<int> deleted,
       required int createdAt,
       required int updatedAt,
@@ -3249,6 +3964,7 @@ typedef $$ProjectsTableUpdateCompanionBuilder =
       Value<String?> groupId,
       Value<int> sortOrder,
       Value<int> archived,
+      Value<int> isTemplate,
       Value<int> deleted,
       Value<int> createdAt,
       Value<int> updatedAt,
@@ -3315,6 +4031,11 @@ class $$ProjectsTableFilterComposer
 
   ColumnFilters<int> get archived => $composableBuilder(
     column: $table.archived,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isTemplate => $composableBuilder(
+    column: $table.isTemplate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3398,6 +4119,11 @@ class $$ProjectsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get isTemplate => $composableBuilder(
+    column: $table.isTemplate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get deleted => $composableBuilder(
     column: $table.deleted,
     builder: (column) => ColumnOrderings(column),
@@ -3440,6 +4166,11 @@ class $$ProjectsTableAnnotationComposer
 
   GeneratedColumn<int> get archived =>
       $composableBuilder(column: $table.archived, builder: (column) => column);
+
+  GeneratedColumn<int> get isTemplate => $composableBuilder(
+    column: $table.isTemplate,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get deleted =>
       $composableBuilder(column: $table.deleted, builder: (column) => column);
@@ -3510,6 +4241,7 @@ class $$ProjectsTableTableManager
                 Value<String?> groupId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<int> archived = const Value.absent(),
+                Value<int> isTemplate = const Value.absent(),
                 Value<int> deleted = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
@@ -3521,6 +4253,7 @@ class $$ProjectsTableTableManager
                 groupId: groupId,
                 sortOrder: sortOrder,
                 archived: archived,
+                isTemplate: isTemplate,
                 deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -3534,6 +4267,7 @@ class $$ProjectsTableTableManager
                 Value<String?> groupId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<int> archived = const Value.absent(),
+                Value<int> isTemplate = const Value.absent(),
                 Value<int> deleted = const Value.absent(),
                 required int createdAt,
                 required int updatedAt,
@@ -3545,6 +4279,7 @@ class $$ProjectsTableTableManager
                 groupId: groupId,
                 sortOrder: sortOrder,
                 archived: archived,
+                isTemplate: isTemplate,
                 deleted: deleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -5208,6 +5943,328 @@ typedef $$TaskAttachmentsTableProcessedTableManager =
       TaskAttachment,
       PrefetchHooks Function()
     >;
+typedef $$NodeTemplatesTableCreateCompanionBuilder =
+    NodeTemplatesCompanion Function({
+      required String id,
+      required String name,
+      required String title,
+      Value<String> description,
+      Value<int> priority,
+      Value<String> checklistJson,
+      Value<String> imagesJson,
+      Value<String> subtasksJson,
+      Value<int> deleted,
+      required int createdAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$NodeTemplatesTableUpdateCompanionBuilder =
+    NodeTemplatesCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> title,
+      Value<String> description,
+      Value<int> priority,
+      Value<String> checklistJson,
+      Value<String> imagesJson,
+      Value<String> subtasksJson,
+      Value<int> deleted,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$NodeTemplatesTableFilterComposer
+    extends Composer<_$AppDatabase, $NodeTemplatesTable> {
+  $$NodeTemplatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imagesJson => $composableBuilder(
+    column: $table.imagesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subtasksJson => $composableBuilder(
+    column: $table.subtasksJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$NodeTemplatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $NodeTemplatesTable> {
+  $$NodeTemplatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imagesJson => $composableBuilder(
+    column: $table.imagesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subtasksJson => $composableBuilder(
+    column: $table.subtasksJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$NodeTemplatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NodeTemplatesTable> {
+  $$NodeTemplatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  GeneratedColumn<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get imagesJson => $composableBuilder(
+    column: $table.imagesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get subtasksJson => $composableBuilder(
+    column: $table.subtasksJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$NodeTemplatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NodeTemplatesTable,
+          NodeTemplate,
+          $$NodeTemplatesTableFilterComposer,
+          $$NodeTemplatesTableOrderingComposer,
+          $$NodeTemplatesTableAnnotationComposer,
+          $$NodeTemplatesTableCreateCompanionBuilder,
+          $$NodeTemplatesTableUpdateCompanionBuilder,
+          (
+            NodeTemplate,
+            BaseReferences<_$AppDatabase, $NodeTemplatesTable, NodeTemplate>,
+          ),
+          NodeTemplate,
+          PrefetchHooks Function()
+        > {
+  $$NodeTemplatesTableTableManager(_$AppDatabase db, $NodeTemplatesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NodeTemplatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$NodeTemplatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$NodeTemplatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<String> checklistJson = const Value.absent(),
+                Value<String> imagesJson = const Value.absent(),
+                Value<String> subtasksJson = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => NodeTemplatesCompanion(
+                id: id,
+                name: name,
+                title: title,
+                description: description,
+                priority: priority,
+                checklistJson: checklistJson,
+                imagesJson: imagesJson,
+                subtasksJson: subtasksJson,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                required String title,
+                Value<String> description = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<String> checklistJson = const Value.absent(),
+                Value<String> imagesJson = const Value.absent(),
+                Value<String> subtasksJson = const Value.absent(),
+                Value<int> deleted = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => NodeTemplatesCompanion.insert(
+                id: id,
+                name: name,
+                title: title,
+                description: description,
+                priority: priority,
+                checklistJson: checklistJson,
+                imagesJson: imagesJson,
+                subtasksJson: subtasksJson,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$NodeTemplatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NodeTemplatesTable,
+      NodeTemplate,
+      $$NodeTemplatesTableFilterComposer,
+      $$NodeTemplatesTableOrderingComposer,
+      $$NodeTemplatesTableAnnotationComposer,
+      $$NodeTemplatesTableCreateCompanionBuilder,
+      $$NodeTemplatesTableUpdateCompanionBuilder,
+      (
+        NodeTemplate,
+        BaseReferences<_$AppDatabase, $NodeTemplatesTable, NodeTemplate>,
+      ),
+      NodeTemplate,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5222,4 +6279,6 @@ class $AppDatabaseManager {
       $$ProjectGroupsTableTableManager(_db, _db.projectGroups);
   $$TaskAttachmentsTableTableManager get taskAttachments =>
       $$TaskAttachmentsTableTableManager(_db, _db.taskAttachments);
+  $$NodeTemplatesTableTableManager get nodeTemplates =>
+      $$NodeTemplatesTableTableManager(_db, _db.nodeTemplates);
 }

@@ -1,15 +1,22 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../core/constants/app_constants.dart';
+import '../core/exceptions/quota_exceeded_exception.dart';
+import 'subscription_service.dart';
 
 /// A node in the subtask WBS tree.
 class SubtaskNode {
   final String title;
   final List<SubtaskNode> children;
+
   /// 估计完成时长（分钟）。叶子节点 AI 必填；非叶子可空（由子节点累加）
   final int? estimatedMinutes;
 
-  const SubtaskNode(this.title, [this.children = const [], this.estimatedMinutes]);
+  const SubtaskNode(
+    this.title, [
+    this.children = const [],
+    this.estimatedMinutes,
+  ]);
 
   factory SubtaskNode.fromJson(Map<String, dynamic> json) {
     final m = json['minutes'];
@@ -22,10 +29,11 @@ class SubtaskNode {
       minutes = int.tryParse(m);
     }
     // 边界：叶子超过 8h 截断；缺失默认 60
-    final children = (json['children'] as List<dynamic>?)
+    final children =
+        (json['children'] as List<dynamic>?)
             ?.map((e) => SubtaskNode.fromJson(e as Map<String, dynamic>))
-            .toList()
-        ?? [];
+            .toList() ??
+        [];
     final isLeaf = children.isEmpty;
     if (isLeaf) {
       minutes ??= 60;
@@ -43,6 +51,7 @@ class SubtaskNode {
 /// Result of a decomposition call.
 class DecomposeResult {
   final List<SubtaskNode> nodes;
+
   /// True when AI returned results but all were filtered as duplicates.
   final bool allDuplicates;
 
@@ -56,7 +65,8 @@ class TaskDecompositionService {
   final Dio _dio;
 
   TaskDecompositionService()
-      : _dio = Dio(BaseOptions(
+    : _dio = Dio(
+        BaseOptions(
           baseUrl: AppConstants.deepseekApiUrl,
           connectTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 60),
@@ -64,7 +74,8 @@ class TaskDecompositionService {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ${AppConstants.deepseekApiKey}',
           },
-        ));
+        ),
+      );
 
   /// Decompose a task into a WBS tree.
   /// [existingTaskTitles] = already created subtask titles to avoid duplicates.
@@ -73,38 +84,55 @@ class TaskDecompositionService {
     String description,
     List<String> attachmentContents, {
     List<String> existingTaskTitles = const [],
+    int maxDepth = 3,
+    int maxChildrenPerNode = 5,
   }) async {
+    if (!SubscriptionService.instance.canUseAiDecompose()) {
+      throw QuotaExceededException(
+        'AI智能拆分为VIP专属功能，升级VIP解锁',
+        QuotaType.aiDecompose,
+      );
+    }
+
     final descText = description.isNotEmpty ? description : title;
     final attachmentsText = attachmentContents.join('\n\n');
 
     try {
-      final response = await _dio.post('', data: {
-        'model': 'deepseek-chat',
-        'messages': [
-          {
-            'role': 'system',
-            'content': _systemPrompt(),
-          },
-          {
-            'role': 'user',
-            'content': _buildUserPrompt(title, descText, attachmentsText, existingTaskTitles),
-          },
-        ],
-        'temperature': 0.1,
-        'max_tokens': 4096,
-      });
+      final response = await _dio.post(
+        '',
+        data: {
+          'model': 'deepseek-chat',
+          'messages': [
+            {'role': 'system', 'content': _systemPrompt(maxDepth: maxDepth, maxChildrenPerNode: maxChildrenPerNode)},
+            {
+              'role': 'user',
+              'content': _buildUserPrompt(
+                title,
+                descText,
+                attachmentsText,
+                existingTaskTitles,
+              ),
+            },
+          ],
+          'temperature': 0.1,
+          'max_tokens': 4096,
+        },
+      );
 
       final raw = _parseResponse(response.data);
       if (raw.isNotEmpty) {
         final deduped = _deduplicate(raw, existingTaskTitles);
-        return DecomposeResult(deduped, allDuplicates: deduped.isEmpty && raw.isNotEmpty);
+        return DecomposeResult(
+          deduped,
+          allDuplicates: deduped.isEmpty && raw.isNotEmpty,
+        );
       }
     } catch (_) {}
 
     return DecomposeResult(_fallback(title, descText, existingTaskTitles));
   }
 
-  String _systemPrompt() {
+  String _systemPrompt({required int maxDepth, required int maxChildrenPerNode}) {
     return '''你是一个 WBS（工作分解结构）分解专家。你的任务是把用户的大任务拆成层级化的可执行子任务树，并对每个"叶子子任务"估计完成所需的分钟数。
 
 核心原则：
@@ -116,7 +144,7 @@ class TaskDecompositionService {
    - "做X，其中包括Y和Z" → X(一级，Y和Z是X的子任务)
 3. **无明确步骤时**：按常识拆成 3-5 个逻辑阶段
 4. **子任务标题用动词+名词**，具体可执行，保留描述中的原词
-5. **最多 3 层深度**，每级 2-5 项
+5. **最多 $maxDepth 层深度**，每级最多 $maxChildrenPerNode 项
 6. **禁止输出"已有子任务"列表中已经存在的任务**
 
 **时长估计规则（重要）**：
@@ -143,7 +171,8 @@ class TaskDecompositionService {
   ) {
     final buf = StringBuffer();
     // Content hash + timestamp to bust any prompt caching
-    final contentSeed = '${title.hashCode}_${description.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
+    final contentSeed =
+        '${title.hashCode}_${description.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
     buf.writeln('## 请求标识 (忽略此字段，仅用于刷新)');
     buf.writeln(contentSeed);
     buf.writeln('');
@@ -158,9 +187,11 @@ class TaskDecompositionService {
     if (attachments.isNotEmpty) {
       buf.writeln('');
       buf.writeln('## 参考资料');
-      buf.writeln(attachments.length > 4000
-          ? attachments.substring(0, 4000)
-          : attachments);
+      buf.writeln(
+        attachments.length > 4000
+            ? attachments.substring(0, 4000)
+            : attachments,
+      );
     }
 
     if (existingTaskTitles.isNotEmpty) {
@@ -176,7 +207,8 @@ class TaskDecompositionService {
 
   List<SubtaskNode> _parseResponse(dynamic responseData) {
     try {
-      final content = responseData?['choices']?[0]?['message']?['content'] as String?;
+      final content =
+          responseData?['choices']?[0]?['message']?['content'] as String?;
       if (content == null || content.isEmpty) return [];
 
       var jsonStr = content.trim();
@@ -206,19 +238,23 @@ class TaskDecompositionService {
   }
 
   /// Remove nodes whose titles already exist (exact + fuzzy match).
-  List<SubtaskNode> _deduplicate(List<SubtaskNode> nodes, List<String> existingTitles) {
+  List<SubtaskNode> _deduplicate(
+    List<SubtaskNode> nodes,
+    List<String> existingTitles,
+  ) {
     if (existingTitles.isEmpty) return nodes;
 
-    final existingTrimmed = existingTitles.map((t) => t.trim()).toList();
+    final existingKeys = existingTitles
+        .map(_titleKey)
+        .where((t) => t.isNotEmpty)
+        .toSet();
 
     bool isDuplicate(String title) {
-      final t = title.trim();
+      final t = _titleKey(title);
       if (t.isEmpty) return true;
-      // 1) Exact match
-      if (existingTrimmed.contains(t)) return true;
-      // 2) Character n-gram fuzzy match (Jaccard ≥ 0.45)
-      for (final existing in existingTrimmed) {
-        if (_charSimilarity(t, existing) >= 0.45) return true;
+      if (existingKeys.contains(t)) return true;
+      for (final existing in existingKeys) {
+        if (_charSimilarity(t, existing) >= 0.58) return true;
       }
       return false;
     }
@@ -233,8 +269,27 @@ class TaskDecompositionService {
     }).toList();
   }
 
+  String _titleKey(String title) {
+    var value = title.trim().toLowerCase();
+    value = value.replaceAll(
+      RegExp(r'^\s*(\d+|[一二三四五六七八九十]+)[\.、\)、\s-]*'),
+      '',
+    );
+    value = value.replaceAll(RegExp(r'[\s\p{P}]', unicode: true), '');
+    const prefixes = ['完成', '进行', '处理', '整理', '准备', '实现', '优化', '修复'];
+    for (final prefix in prefixes) {
+      if (value.startsWith(prefix) && value.length > prefix.length + 2) {
+        value = value.substring(prefix.length);
+        break;
+      }
+    }
+    return value;
+  }
+
   /// Chinese character bigram Jaccard similarity.
   double _charSimilarity(String a, String b) {
+    a = _titleKey(a);
+    b = _titleKey(b);
     if (a.isEmpty && b.isEmpty) return 1.0;
     if (a.isEmpty || b.isEmpty) return 0.0;
 
@@ -269,13 +324,18 @@ class TaskDecompositionService {
     return title.length < 2 || junk.any((j) => title.contains(j));
   }
 
-  List<SubtaskNode> _fallback(String title, String description, List<String> existingTitles) {
+  List<SubtaskNode> _fallback(
+    String title,
+    String description,
+    List<String> existingTitles,
+  ) {
     final combined = '$title $description';
 
     List<SubtaskNode> generate(List<SubtaskNode> candidates) {
-      final result = candidates.where((n) =>
-          !existingTitles.contains(n.title.trim())
-      ).toList();
+      final existingKeys = existingTitles.map(_titleKey).toSet();
+      final result = candidates
+          .where((n) => !existingKeys.contains(_titleKey(n.title)))
+          .toList();
       return result.isNotEmpty ? result : [SubtaskNode('$title（细化）')];
     }
 
@@ -323,7 +383,9 @@ class TaskDecompositionService {
     if (steps.length >= 2) {
       return steps
           .map((s) => SubtaskNode(s))
-          .where((n) => !existingTitles.contains(n.title.trim()))
+          .where(
+            (n) => !existingTitles.map(_titleKey).contains(_titleKey(n.title)),
+          )
           .toList();
     }
 
@@ -337,7 +399,8 @@ class TaskDecompositionService {
   List<String> _extractSteps(String text) {
     if (text.isEmpty) return [];
 
-    final parts = text.split(RegExp(r'[；;。.！!？?\n]'))
+    final parts = text
+        .split(RegExp(r'[；;。.！!？?\n]'))
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty && s.length > 2)
         .toList();
@@ -348,7 +411,10 @@ class TaskDecompositionService {
     final matches = numbered.allMatches(text).toList();
     if (matches.length >= 2) {
       return matches
-          .map((m) => m.group(1)!.replaceFirst(RegExp(r'^\d+[.、)\s]\s*'), '').trim())
+          .map(
+            (m) =>
+                m.group(1)!.replaceFirst(RegExp(r'^\d+[.、)\s]\s*'), '').trim(),
+          )
           .where((s) => s.length > 2)
           .toList();
     }

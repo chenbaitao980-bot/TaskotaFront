@@ -1,0 +1,23 @@
+﻿{
+    "name":  "reasonix-memory-hooks",
+    "version":  "1.0.0+codex.local-20260604-082303",
+    "description":  "Reasonix 记忆规范全局钩子：每次执行前自动走门禁流程",
+    "skills":  [
+                   {
+                       "name":  "pre-execution-hook",
+                       "path":  "./skills/pre-execution-hook",
+                       "description":  "Reasonix 全局记忆钩子 — 每次执行前自动加载并验证所有记忆规则"
+                   }
+               ],
+    "scripts":  [
+                    {
+                        "name":  "pre-execution-check",
+                        "command":  "pwsh",
+                        "args":  [
+                                     "./scripts/pre_execution_hook.ps1"
+                                 ],
+                        "description":  "执行前门禁检查脚本"
+                    }
+                ],
+    "category":  "Productivity"
+}

@@ -1,18 +1,25 @@
 import 'dart:async';
 
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
+import '../../../../services/task_conflict_service.dart';
+import '../../../../services/subtask_scheduler.dart';
 import '../../../blocs/task_new/task_bloc.dart';
 import '../../../blocs/task_new/task_event.dart';
 import '../../../blocs/task_new/task_state.dart';
 import '../../../widgets/calendar_date_picker.dart';
+import '../../../widgets/task_conflict_dialog.dart';
 import '../../../../services/notification_service.dart';
+import '../../../../services/task_attachment_service.dart';
 import 'widgets/checklist_section.dart';
 import 'widgets/subtask_tree_section.dart';
 import 'widgets/attachment_section.dart';
 import 'widgets/ai_decompose_section.dart';
+import 'widgets/markdown_description_section.dart';
+import 'widgets/markdown_editor_page.dart';
 import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskDetailPage extends StatefulWidget {
@@ -39,12 +46,21 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   bool _hasChanges = false;
   bool _allowPop = false;
   bool _isClosing = false;
+  bool _cascadeChildrenOnComplete = false;
+  int _attachmentRefreshToken = 0;
   Timer? _autoSaveTimer;
+  bool _hasChildren = false;
+  bool _isRoot = false;
+  List<ScheduledTaskShift> _pendingShiftedTasks = const [];
 
   @override
   void initState() {
     super.initState();
     final t = widget.task;
+    _isRoot = t.parentId == null;
+    context.read<TaskNewBloc>().taskRepository.hasChildren(t.id).then((v) {
+      if (mounted) setState(() => _hasChildren = v);
+    });
     _titleController = TextEditingController(text: t.title);
     _descController = TextEditingController(text: t.description);
     _startDateTime = t.startDate != null
@@ -59,6 +75,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     _selectedProjectId = t.projectId;
     _status = t.status;
     _savedStatus = t.status;
+    final bloc = context.read<TaskNewBloc>();
+    final currentState = bloc.state;
+    if (currentState is TaskNewLoaded) {
+      _checklistItems = currentState.checklistItems[widget.task.id] ?? [];
+    }
     _loadChecklist();
   }
 
@@ -93,10 +114,90 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final state = context.read<TaskNewBloc>().state;
     context.read<TaskNewBloc>().add(
       LoadTasks(
-        projectId: state is TaskNewLoaded ? state.selectedProjectId : null,
+        projectIds: state is TaskNewLoaded
+            ? state.selectedProjectIds
+            : const {},
         filter: state is TaskNewLoaded ? state.selectedFilter : null,
+        statusFilter: state is TaskNewLoaded
+            ? state.selectedStatusFilter
+            : null,
+        dateFrom: state is TaskNewLoaded ? state.dateFrom : null,
+        dateTo: state is TaskNewLoaded ? state.dateTo : null,
       ),
     );
+  }
+
+  Future<void> _toggleCompletionStatus() async {
+    final nextStatus = _status == 2 ? 0 : 2;
+    var cascade = false;
+    if (nextStatus == 2) {
+      final children = await context
+          .read<TaskNewBloc>()
+          .taskRepository
+          .getSubTasks(widget.task.id);
+      if (children.isNotEmpty && mounted) {
+        final choice = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('完成子任务'),
+            content: const Text('这个任务包含子任务，是否同时全部完成？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('仅完成父任务'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('全部完成'),
+              ),
+            ],
+          ),
+        );
+        if (choice == null) return;
+        cascade = choice;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _status = nextStatus;
+      _cascadeChildrenOnComplete = cascade;
+    });
+    _markChanged();
+  }
+
+  Future<void> _pickDescriptionImage() async {
+    final service = TaskAttachmentService();
+    final file = await service.pickImageFile();
+    if (file == null) return;
+    await service.saveAttachment(widget.task.id, file);
+    if (!mounted) return;
+    setState(() => _attachmentRefreshToken++);
+  }
+
+  Future<void> _handleDroppedDescriptionImages(DropDoneDetails detail) async {
+    var saved = 0;
+    for (final file in detail.files) {
+      final name = file.name.isNotEmpty ? file.name : file.path.split('/').last;
+      if (!TaskAttachmentService.isImageFile(name, null)) continue;
+      final bytes = await file.readAsBytes();
+      await TaskAttachmentService().saveImageBytes(
+        widget.task.id,
+        fileName: name,
+        bytes: bytes,
+      );
+      saved++;
+    }
+    if (!mounted) return;
+    if (saved == 0) {
+      showAppSnackBar(context, '只支持拖入图片文件');
+      return;
+    }
+    setState(() => _attachmentRefreshToken++);
+    showAppSnackBar(context, '已添加 $saved 张图片');
   }
 
   Future<void> _closePage() async {
@@ -175,12 +276,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   children: [
                     // 完成复选框
                     GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _status = _status == 2 ? 0 : 2;
-                        });
-                        _markChanged();
-                      },
+                      onTap: _toggleCompletionStatus,
                       child: Container(
                         width: 28,
                         height: 28,
@@ -239,12 +335,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 child: Row(
                   children: [
                     GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _status = _status == 2 ? 0 : 2;
-                        });
-                        _markChanged();
-                      },
+                      onTap: _toggleCompletionStatus,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -296,79 +387,90 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               // 主体布局：宽屏左列(描述+检查项) + 右列(子任务) + 底部附件条
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: LayoutBuilder(builder: (ctx, cons) {
-                  final wide = cons.maxWidth >= 720;
-                  final maxH = MediaQuery.of(context).size.height * 0.42;
+                child: LayoutBuilder(
+                  builder: (ctx, cons) {
+                    final wide = cons.maxWidth >= 720;
+                    final maxH = MediaQuery.of(context).size.height * 0.5;
 
-                  final desc = _buildDescriptionBox();
+                    final desc = _buildDescriptionBox();
 
-                  final checklist = ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxH),
-                    child: RepaintBoundary(
+                    final checklist = RepaintBoundary(
                       child: ChecklistSection(
                         items: _checklistItems,
                         taskId: widget.task.id,
+                        maxListHeight: wide ? 480 : 420,
                         onToggle: (id) {
                           context.read<TaskNewBloc>().add(
-                                ToggleChecklistItem(
-                                    id: id, taskId: widget.task.id),
-                              );
+                            ToggleChecklistItem(id: id, taskId: widget.task.id),
+                          );
                         },
                         onDelete: (id) {
                           context.read<TaskNewBloc>().add(
-                                DeleteChecklistItem(
-                                    id: id, taskId: widget.task.id),
-                              );
+                            DeleteChecklistItem(id: id, taskId: widget.task.id),
+                          );
                         },
                         onEdit: (id, title) {
                           context.read<TaskNewBloc>().add(
-                                UpdateChecklistItem(id: id, title: title),
-                              );
+                            UpdateChecklistItem(id: id, title: title),
+                          );
                         },
                         onAdd: (data) {
                           final (taskId, title) = data;
                           context.read<TaskNewBloc>().add(
-                                AddChecklistItem(taskId: taskId, title: title),
-                              );
+                            AddChecklistItem(taskId: taskId, title: title),
+                          );
                         },
                         onSetObsidianUri: (id, obsidianUri) {
                           context.read<TaskNewBloc>().add(
-                                SetChecklistItemObsidianUri(
-                                  id: id,
-                                  taskId: widget.task.id,
-                                  obsidianUri: obsidianUri,
-                                ),
-                              );
+                            SetChecklistItemObsidianUri(
+                              id: id,
+                              taskId: widget.task.id,
+                              obsidianUri: obsidianUri,
+                            ),
+                          );
+                        },
+                        onReorder: (orderedIds) {
+                          context.read<TaskNewBloc>().add(
+                            ReorderChecklistItems(
+                              taskId: widget.task.id,
+                              orderedIds: orderedIds,
+                            ),
+                          );
                         },
                       ),
-                    ),
-                  );
+                    );
 
-                  final subtask = ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxH),
-                    child: RepaintBoundary(
-                      child: SubtaskTreeSection(
-                        task: widget.task,
-                        projectId: _selectedProjectId,
+                    final subtask = ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: maxH),
+                      child: RepaintBoundary(
+                        child: SubtaskTreeSection(
+                          task: widget.task,
+                          projectId: _selectedProjectId,
+                        ),
                       ),
-                    ),
-                  );
+                    );
 
-                  final attach = RepaintBoundary(
-                      child: AttachmentSection(task: widget.task));
+                    final attach = RepaintBoundary(
+                      child: AttachmentSection(
+                        key: ValueKey(
+                          'attach-${widget.task.id}-$_attachmentRefreshToken',
+                        ),
+                        task: widget.task,
+                      ),
+                    );
 
-                  if (wide) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                    if (wide) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
                                 flex: 3,
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     desc,
                                     const SizedBox(height: 12),
@@ -380,28 +482,28 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                               Expanded(flex: 2, child: subtask),
                             ],
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 100),
+                            child: attach,
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Column(
+                      children: [
+                        desc,
                         const SizedBox(height: 8),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 100),
-                          child: attach,
-                        ),
+                        checklist,
+                        const SizedBox(height: 8),
+                        subtask,
+                        const SizedBox(height: 8),
+                        attach,
                       ],
                     );
-                  }
-
-                  return Column(
-                    children: [
-                      desc,
-                      const SizedBox(height: 8),
-                      checklist,
-                      const SizedBox(height: 8),
-                      subtask,
-                      const SizedBox(height: 8),
-                      attach,
-                    ],
-                  );
-                }),
+                  },
+                ),
               ),
               const SizedBox(height: 24),
             ],
@@ -412,56 +514,58 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   Widget _buildDescriptionBox() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.borderSubtle),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: EdgeInsets.only(bottom: 6),
-            child: Row(
-              children: [
-                Icon(Icons.notes_rounded, size: 14, color: AppTheme.textSecondary),
-                SizedBox(width: 4),
-                Text(
-                  '描述',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+    return DropTarget(
+      onDragDone: _handleDroppedDescriptionImages,
+      child: MarkdownDescriptionSection(
+        controller: _descController,
+        onTextChanged: _markTextChanged,
+        onEditingComplete: _saveTask,
+        onEnterEdit: _openFullEditor,
+        imageStrip: AttachmentImageStrip(
+          key: ValueKey(
+            'desc-images-${widget.task.id}-$_attachmentRefreshToken',
           ),
-          TextFormField(
-            controller: _descController,
-            minLines: 14,
-            maxLines: 30,
-            style: TextStyle(
-              fontSize: 14,
-              color: AppTheme.textPrimary,
-              height: 1.6,
+          taskId: widget.task.id,
+          maxHeight: 160,
+          showDeleteButton: true,
+        ),
+        trailingActions: [
+          IconButton(
+            tooltip: '上传图片',
+            onPressed: _pickDescriptionImage,
+            icon: Icon(
+              Icons.add_photo_alternate_outlined,
+              size: 18,
+              color: AppTheme.primaryColor,
             ),
-            decoration: const InputDecoration(
-              hintText: '添加描述...',
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-              isDense: true,
-            ),
-            onChanged: (_) => _markTextChanged(),
-            onTapOutside: (_) => _saveTask(),
-            onEditingComplete: _saveTask,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
           ),
         ],
       ),
     );
+  }
+
+  void _openFullEditor() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MarkdownEditorPage(
+          controller: _descController,
+          onTextChanged: _markTextChanged,
+          onEditingComplete: _saveTask,
+          taskId: widget.task.id,
+          onAttachmentChanged: () {
+            if (mounted) setState(() => _attachmentRefreshToken++);
+          },
+        ),
+      ),
+    ).then((_) {
+      if (mounted) {
+        setState(() {});
+        _saveTask();
+      }
+    });
   }
 
   Widget _buildMetaChipsBar(List<Project> projects) {
@@ -469,6 +573,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
+          if (_hasChildren)
+            _parentBadge(),
+          const SizedBox(width: 6),
           _projectChip(projects),
           const SizedBox(width: 6),
           _priorityChipPill(),
@@ -497,10 +604,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: borderColor ?? AppTheme.borderSubtle),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [child],
-      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [child]),
     );
     if (onTap == null) return container;
     return InkWell(
@@ -515,6 +619,31 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final color = p != null
         ? Color(int.parse(p.color.replaceFirst('#', '0xFF')))
         : AppTheme.textHint;
+    final canEdit = _isRoot;
+    final chip = _chipContainer(
+      bgColor: !canEdit ? AppTheme.bgCard : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            p?.name ?? '未分配',
+            style: TextStyle(
+              fontSize: 12,
+              color: canEdit ? AppTheme.textPrimary : AppTheme.textSecondary,
+            ),
+          ),
+          if (canEdit)
+            Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textHint),
+        ],
+      ),
+    );
+    if (!canEdit) return chip;
     return PopupMenuButton<String>(
       tooltip: '项目',
       onSelected: (v) {
@@ -522,34 +651,50 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         _markChanged();
       },
       itemBuilder: (_) => projects
-          .map((proj) => PopupMenuItem(
-                value: proj.id,
-                child: Row(children: [
+          .map(
+            (proj) => PopupMenuItem(
+              value: proj.id,
+              child: Row(
+                children: [
                   Container(
-                    width: 10, height: 10,
+                    width: 10,
+                    height: 10,
                     decoration: BoxDecoration(
-                      color: Color(int.parse(proj.color.replaceFirst('#', '0xFF'))),
+                      color: Color(
+                        int.parse(proj.color.replaceFirst('#', '0xFF')),
+                      ),
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Text(proj.name),
-                ]),
-              ))
+                ],
+              ),
+            ),
+          )
           .toList(),
-      child: _chipContainer(
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 8, height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
+      child: chip,
+    );
+  }
+
+  Widget _parentBadge() {
+    return _chipContainer(
+      bgColor: AppTheme.primaryColor.withValues(alpha: 0.08),
+      borderColor: AppTheme.primaryColor.withValues(alpha: 0.2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.account_tree_outlined, size: 12, color: AppTheme.primaryColor),
+          const SizedBox(width: 4),
           Text(
-            p?.name ?? '未分配',
-            style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+            '父任务',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textHint),
-        ]),
+        ],
       ),
     );
   }
@@ -561,7 +706,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       (3, '中', AppTheme.priorityP1),
       (5, '高', AppTheme.priorityP0),
     ];
-    final cur = opts.firstWhere((o) => o.$1 == _priority, orElse: () => opts[0]);
+    final cur = opts.firstWhere(
+      (o) => o.$1 == _priority,
+      orElse: () => opts[0],
+    );
     return PopupMenuButton<int>(
       tooltip: '优先级',
       onSelected: (v) {
@@ -569,25 +717,45 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         _markChanged();
       },
       itemBuilder: (_) => opts
-          .map((o) => PopupMenuItem(
-                value: o.$1,
-                child: Row(children: [
-                  Container(width: 8, height: 8,
-                    decoration: BoxDecoration(color: o.$3, shape: BoxShape.circle)),
+          .map(
+            (o) => PopupMenuItem(
+              value: o.$1,
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: o.$3,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   Text(o.$2),
-                ]),
-              ))
+                ],
+              ),
+            ),
+          )
           .toList(),
       child: _chipContainer(
         bgColor: cur.$3.withValues(alpha: 0.10),
         borderColor: cur.$3.withValues(alpha: 0.35),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.flag_rounded, size: 12, color: cur.$3),
-          const SizedBox(width: 4),
-          Text(cur.$2, style: TextStyle(fontSize: 12, color: cur.$3, fontWeight: FontWeight.w600)),
-          Icon(Icons.arrow_drop_down, size: 14, color: cur.$3),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.flag_rounded, size: 12, color: cur.$3),
+            const SizedBox(width: 4),
+            Text(
+              cur.$2,
+              style: TextStyle(
+                fontSize: 12,
+                color: cur.$3,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, size: 14, color: cur.$3),
+          ],
+        ),
       ),
     );
   }
@@ -595,23 +763,71 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   Widget _timeChip() {
     String fmt(DateTime d) =>
         '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    // 父任务时间不可手动编辑，由子任务自动确定
+    if (_hasChildren) {
+      return _chipContainer(
+        bgColor: AppTheme.bgCard,
+        borderColor: AppTheme.borderSubtle,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.schedule_rounded,
+              size: 12,
+              color: AppTheme.textHint,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '${fmt(_startDateTime)} ~ ${fmt(_endDateTime)}',
+              style: TextStyle(fontSize: 12, color: AppTheme.textHint),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '(子任务)',
+              style: TextStyle(
+                fontSize: 10,
+                color: AppTheme.textHint,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return _chipContainer(
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.calendar_today_rounded, size: 12, color: AppTheme.textSecondary),
-        const SizedBox(width: 4),
-        InkWell(
-          onTap: () => _pickDateTime(true),
-          child: Text(fmt(_startDateTime), style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Icon(Icons.arrow_forward_rounded, size: 10, color: AppTheme.textHint),
-        ),
-        InkWell(
-          onTap: () => _pickDateTime(false),
-          child: Text(fmt(_endDateTime), style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
-        ),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.calendar_today_rounded,
+            size: 12,
+            color: AppTheme.textSecondary,
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _pickDateTime(true),
+            child: Text(
+              fmt(_startDateTime),
+              style: TextStyle(fontSize: 12, color: AppTheme.primaryColor),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Icon(
+              Icons.arrow_forward_rounded,
+              size: 10,
+              color: AppTheme.textHint,
+            ),
+          ),
+          InkWell(
+            onTap: () => _pickDateTime(false),
+            child: Text(
+              fmt(_endDateTime),
+              style: TextStyle(fontSize: 12, color: AppTheme.primaryColor),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -647,22 +863,32 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         borderColor: enabled
             ? AppTheme.primaryColor.withValues(alpha: 0.30)
             : AppTheme.borderSubtle,
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(
-            enabled ? Icons.notifications_active_rounded : Icons.notifications_off_outlined,
-            size: 12,
-            color: enabled ? AppTheme.primaryColor : AppTheme.textHint,
-          ),
-          const SizedBox(width: 4),
-          Text(label,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              enabled
+                  ? Icons.notifications_active_rounded
+                  : Icons.notifications_off_outlined,
+              size: 12,
+              color: enabled ? AppTheme.primaryColor : AppTheme.textHint,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
               style: TextStyle(
-                  fontSize: 12,
-                  color: enabled ? AppTheme.primaryColor : AppTheme.textHint,
-                  fontWeight: FontWeight.w600)),
-          Icon(Icons.arrow_drop_down,
+                fontSize: 12,
+                color: enabled ? AppTheme.primaryColor : AppTheme.textHint,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Icon(
+              Icons.arrow_drop_down,
               size: 14,
-              color: enabled ? AppTheme.primaryColor : AppTheme.textHint),
-        ]),
+              color: enabled ? AppTheme.primaryColor : AppTheme.textHint,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -673,32 +899,57 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       onTap: _aiBusy
           ? () {}
           : () async {
+              final config = await showDecomposeConfigSheet(context);
+              if (config == null || !mounted) return;
               setState(() => _aiBusy = true);
               await runAiDecompose(
                 context: context,
                 task: widget.task,
                 projectId: _selectedProjectId,
                 currentDescription: _descController.text,
+                maxDepth: config.maxDepth,
+                maxChildrenPerNode: config.maxChildrenPerNode,
               );
-              if (mounted) setState(() => _aiBusy = false);
+              if (mounted) {
+                setState(() {
+                  _aiBusy = false;
+                  _hasChildren = true;
+                });
+                context.read<TaskNewBloc>().add(
+                  LoadSubTree(rootTaskId: widget.task.id),
+                );
+              }
             },
       bgColor: AppTheme.primaryColor.withValues(alpha: 0.10),
       borderColor: AppTheme.primaryColor.withValues(alpha: 0.35),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        _aiBusy
-            ? SizedBox(
-                width: 12, height: 12,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: AppTheme.primaryColor),
-              )
-            : Icon(Icons.auto_awesome_rounded, size: 12, color: AppTheme.primaryColor),
-        const SizedBox(width: 4),
-        Text(_aiBusy ? '拆解中…' : 'AI 拆分',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _aiBusy
+              ? SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.primaryColor,
+                  ),
+                )
+              : Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 12,
+                  color: AppTheme.primaryColor,
+                ),
+          const SizedBox(width: 4),
+          Text(
+            _aiBusy ? '拆解中…' : 'AI 拆分',
             style: TextStyle(
-                fontSize: 12,
-                color: AppTheme.primaryColor,
-                fontWeight: FontWeight.w600)),
-      ]),
+              fontSize: 12,
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -760,10 +1011,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             const SizedBox(width: 10),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 14,
-                color: AppTheme.textSecondary,
-              ),
+              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
             ),
             const Spacer(),
             Text(
@@ -804,10 +1052,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             subtitle: Text(
               _reminderEnabled ? '将在任务开始前通知您' : '不会发送提醒',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppTheme.textSecondary,
-              ),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             value: _reminderEnabled,
             onChanged: (v) {
@@ -816,11 +1061,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             },
           ),
           if (_reminderEnabled) ...[
-            Divider(
-              height: 0.5,
-              indent: 52,
-              color: AppTheme.borderSubtle,
-            ),
+            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _remindDropdownTile(
               icon: Icons.timer_outlined,
               label: '提前提醒',
@@ -868,11 +1109,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         displayLabel,
         style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
       ),
-      trailing: Icon(
-        Icons.arrow_drop_down,
-        size: 20,
-        color: AppTheme.textHint,
-      ),
+      trailing: Icon(Icons.arrow_drop_down, size: 20, color: AppTheme.textHint),
       onTap: () => _showRemindPicker(options, optionLabels, value, onChanged),
     );
   }
@@ -966,19 +1203,65 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
     );
-    if (picked != null && mounted) {
-      setState(() {
-        if (isStart) {
-          _startDateTime = picked;
-          if (_endDateTime.isBefore(_startDateTime)) {
-            _endDateTime = _startDateTime.add(const Duration(hours: 1));
-          }
-        } else {
-          _endDateTime = picked;
-        }
-      });
-      _markChanged();
+    if (picked == null || !mounted) return;
+
+    var candidateStart = isStart ? picked : _startDateTime;
+    var candidateEnd = isStart ? _endDateTime : picked;
+    if (isStart && candidateEnd.isBefore(candidateStart)) {
+      candidateEnd = candidateStart.add(const Duration(hours: 1));
     }
+
+    if (candidateEnd.isAfter(candidateStart) &&
+        !TaskConflictService.isRangeMultiDay(candidateStart, candidateEnd)) {
+      final bloc = context.read<TaskNewBloc>();
+      final svc = TaskConflictService(taskRepository: bloc.taskRepository);
+      final conflict = await svc.checkConflict(
+        candidateStart,
+        candidateEnd,
+        excludeTaskId: widget.task.id,
+      );
+      if (conflict != null && mounted) {
+        final choice = await showTaskConflictDialog(
+          context,
+          conflict: conflict,
+          newStart: candidateStart,
+          newEnd: candidateEnd,
+        );
+        if (!mounted) return;
+        switch (choice) {
+          case ConflictChoice.cancel:
+          case null:
+            return;
+          case ConflictChoice.parallel:
+            break;
+          case ConflictChoice.autoDelay:
+            final delayed = await svc.calcDelayedSlot(
+              candidateStart,
+              candidateEnd,
+              conflict.conflictEnd,
+              excludeTaskId: widget.task.id,
+            );
+            if (delayed != null) {
+              candidateStart = delayed.start;
+              candidateEnd = delayed.end;
+            }
+          case ConflictChoice.autoInsert:
+            final shifts = await svc.calcInsertedShifts(
+              candidateStart,
+              candidateEnd,
+              excludeTaskId: widget.task.id,
+            );
+            _pendingShiftedTasks = shifts;
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _startDateTime = candidateStart;
+      _endDateTime = candidateEnd;
+    });
+    _markChanged();
   }
 
   bool _saveTask({bool showErrors = false}) {
@@ -999,8 +1282,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
     final bloc = context.read<TaskNewBloc>();
     if (_status != _savedStatus) {
-      bloc.add(ToggleTaskStatus(id: widget.task.id));
+      bloc.add(
+        ToggleTaskStatus(
+          id: widget.task.id,
+          cascadeChildren: _cascadeChildrenOnComplete,
+        ),
+      );
       _savedStatus = _status;
+      _cascadeChildrenOnComplete = false;
     }
     bloc.add(
       UpdateTask(
@@ -1013,8 +1302,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         dueDate: _endDateTime.millisecondsSinceEpoch,
         remindBeforeMinutes: _remindBeforeMinutes,
         reminderEnabled: _reminderEnabled ? 1 : 0,
+        shiftedTasks: _pendingShiftedTasks,
       ),
     );
+    _pendingShiftedTasks = const [];
     // 调度提醒通知
     if (_reminderEnabled) {
       NotificationService().scheduleReminderForSchedule(
@@ -1023,6 +1314,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         startTime: _startDateTime,
         description: _descController.text.trim(),
         remindBeforeMinutes: _remindBeforeMinutes,
+      );
+    } else {
+      unawaited(
+        NotificationService().cancelReminderForSchedule(widget.task.id),
       );
     }
     _hasChanges = false;

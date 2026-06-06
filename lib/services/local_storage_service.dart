@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/entities/schedule.dart';
 import '../models/entities/task_breakdown.dart';
 import 'package:uuid/uuid.dart';
+import 'local_data_service.dart';
 import 'supabase_service.dart';
 
 class LocalStorageService {
@@ -33,6 +34,7 @@ class LocalStorageService {
       'createdAt': DateTime.now().toIso8601String(),
     };
     await _prefs?.setString(_userKey, json.encode(users));
+    await LocalDataService().persistPreferencesSnapshot();
     return true;
   }
 
@@ -131,6 +133,7 @@ class LocalStorageService {
   Future<void> _saveSchedules(List<Schedule> schedules) async {
     final jsonList = schedules.map((s) => s.toJson()).toList();
     await _prefs?.setString(_schedulesKey, json.encode(jsonList));
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   // Tasks
@@ -383,6 +386,7 @@ class LocalStorageService {
   Future<void> _saveTasks(List<TaskBreakdown> tasks) async {
     final jsonList = tasks.map((t) => t.toJson()).toList();
     await _prefs?.setString(_tasksKey, json.encode(jsonList));
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   // Demo data for first-time users
@@ -394,7 +398,7 @@ class LocalStorageService {
       final today = DateTime(now.year, now.month, now.day);
       await createSchedule(
         userId: userId,
-        title: '欢迎使用智能小管家',
+        title: '欢迎使用 Taskora',
         description: '点击日历查看和管理你的日程',
         startTime: today.add(const Duration(hours: 9)),
         endTime: today.add(const Duration(hours: 10)),
@@ -419,6 +423,7 @@ class LocalStorageService {
 
   Future<void> setOnboardingCompleted() async {
     await _prefs?.setBool(_onboardingKey, true);
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   // AI 鎺掔▼锛氭槸鍚﹁烦杩囧懆鏈?
@@ -428,6 +433,7 @@ class LocalStorageService {
 
   Future<void> setSkipWeekends(bool value) async {
     await _prefs?.setBool(_skipWeekendsKey, value);
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   static const _excludedProjectIdsKey = 'excluded_project_ids';
@@ -441,6 +447,7 @@ class LocalStorageService {
 
   Future<void> setExcludedProjectIds(Set<String> ids) async {
     await _prefs?.setStringList(_excludedProjectIdsKey, ids.toList()..sort());
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   bool get projectSidebarTimeSortDesc =>
@@ -448,19 +455,71 @@ class LocalStorageService {
 
   Future<void> setProjectSidebarTimeSortDesc(bool value) async {
     await _prefs?.setBool(_projectSidebarTimeSortDescKey, value);
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   // 涓婚閫夋嫨
   static const _themeKey = 'app_theme_id';
 
+  // 任务筛选状态
+  static const _taskFilterStateKey = 'task_filter_state';
+
+  // 首页项目筛选
+  static const _homeFilterProjectIdsKey = 'home_filter_project_ids';
+
+  List<String> getHomeFilterProjectIds() {
+    final jsonStr = _prefs?.getString(_homeFilterProjectIdsKey);
+    if (jsonStr == null) return [];
+    final decoded = json.decode(jsonStr);
+    if (decoded is List) return decoded.cast<String>();
+    if (decoded is Map<String, dynamic>) {
+      return (decoded['projectIds'] as List<dynamic>? ?? []).cast<String>();
+    }
+    return [];
+  }
+
+  Future<void> saveHomeFilterProjectIds(Set<String> ids) async {
+    await _prefs?.setString(
+      _homeFilterProjectIdsKey,
+      json.encode(ids.toList()),
+    );
+  }
+
+  Map<String, dynamic>? getHomeFilterState() {
+    final jsonStr = _prefs?.getString(_homeFilterProjectIdsKey);
+    if (jsonStr == null) return null;
+    final decoded = json.decode(jsonStr);
+    if (decoded is List) {
+      return {'projectIds': decoded.cast<String>()};
+    }
+    return decoded as Map<String, dynamic>;
+  }
+
+  Future<void> saveHomeFilterState(Map<String, dynamic> state) async {
+    await _prefs?.setString(_homeFilterProjectIdsKey, json.encode(state));
+    await LocalDataService().persistPreferencesSnapshot();
+  }
+
+  Map<String, dynamic>? getTaskFilterState() {
+    final jsonStr = _prefs?.getString(_taskFilterStateKey);
+    if (jsonStr == null) return null;
+    return json.decode(jsonStr) as Map<String, dynamic>;
+  }
+
+  Future<void> saveTaskFilterState(Map<String, dynamic> state) async {
+    await _prefs?.setString(_taskFilterStateKey, json.encode(state));
+  }
+
   String? get themeId => _prefs?.getString(_themeKey);
 
   Future<void> setThemeId(String value) async {
     await _prefs?.setString(_themeKey, value);
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   Future<void> saveExplicitProfile(Map<String, dynamic> data) async {
     await _prefs?.setString(_profileKey, json.encode(data));
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   Map<String, dynamic>? getExplicitProfile() {
@@ -471,6 +530,7 @@ class LocalStorageService {
 
   Future<void> updateImplicitProfile(Map<String, dynamic> data) async {
     await _prefs?.setString('implicit_profile', json.encode(data));
+    await LocalDataService().persistPreferencesSnapshot();
   }
 
   Map<String, dynamic>? getImplicitProfile() {
@@ -521,6 +581,7 @@ class LocalStorageService {
       if (changed) {
         final jsonList = localTasks.map((t) => t.toJson()).toList();
         await _prefs?.setString(_tasksKey, json.encode(jsonList));
+        await LocalDataService().persistPreferencesSnapshot();
       }
     } catch (_) {}
   }

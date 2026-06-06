@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
@@ -7,22 +8,58 @@ class FileLogger {
   FileLogger._();
 
   File? _logFile;
+  String? _dirPath;
+  bool _cleaned = false;
+  final _buffer = StringBuffer();
+  Timer? _flushTimer;
 
   Future<void> _ensureFile() async {
     if (_logFile != null) return;
     final dir = await getApplicationDocumentsDirectory();
-    _logFile = File('${dir.path}/task_debug.log');
+    _dirPath = '${dir.path}/logs';
+    final logDir = Directory(_dirPath!);
+    if (!await logDir.exists()) await logDir.create(recursive: true);
+
+    if (!_cleaned) {
+      _cleaned = true;
+      await _cleanOldLogs();
+    }
+
+    final date = DateTime.now().toIso8601String().substring(0, 10);
+    _logFile = File('$_dirPath/task_$date.log');
+  }
+
+  Future<void> _cleanOldLogs() async {
+    if (_dirPath == null) return;
+    try {
+      final cutoff = DateTime.now().subtract(const Duration(days: 1));
+      final logDir = Directory(_dirPath!);
+      if (!await logDir.exists()) return;
+      await for (final entry in logDir.list()) {
+        if (entry is File && entry.path.endsWith('.log')) {
+          final stat = await entry.stat();
+          if (stat.modified.isBefore(cutoff)) {
+            await entry.delete();
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> log(String message) async {
+    final timestamp = DateTime.now().toIso8601String();
+    _buffer.writeln('[$timestamp] $message');
+    _flushTimer ??= Timer(const Duration(milliseconds: 500), _flush);
+  }
+
+  Future<void> _flush() async {
+    _flushTimer = null;
+    if (_buffer.isEmpty) return;
+    final data = _buffer.toString();
+    _buffer.clear();
     try {
       await _ensureFile();
-      final timestamp = DateTime.now().toIso8601String();
-      await _logFile!.writeAsString(
-        '[$timestamp] $message\n',
-        mode: FileMode.append,
-        flush: true,
-      );
+      await _logFile!.writeAsString(data, mode: FileMode.append, flush: true);
     } catch (_) {}
   }
 
@@ -30,7 +67,7 @@ class FileLogger {
     try {
       await _ensureFile();
       await _logFile!.writeAsString(
-        '===== LOG CLEARED ${DateTime.now().toIso8601String()} =====\n',
+        '===== SESSION ${DateTime.now().toIso8601String()} =====\n',
       );
     } catch (_) {}
   }

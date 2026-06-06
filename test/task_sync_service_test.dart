@@ -37,9 +37,25 @@ void main() {
     expect(json['parentId'], 'parent-1');
     expect(json['projectId'], 'project-1');
   });
+
+  test('task sync row preserves reminder settings', () {
+    final task = _task(remindBeforeMinutes: 30, reminderEnabled: 0);
+
+    final row = TaskSyncService.taskToSyncRow(task, userId: 'user-1');
+    final json = TaskSyncService.syncRowToTaskJson(row);
+
+    expect(row['remind_before_minutes'], 30);
+    expect(row['reminder_enabled'], 0);
+    expect(json['remindBeforeMinutes'], 30);
+    expect(json['reminderEnabled'], 0);
+  });
 }
 
-Task _task({String? parentId}) {
+Task _task({
+  String? parentId,
+  int remindBeforeMinutes = 15,
+  int reminderEnabled = 1,
+}) {
   return Task(
     id: 'child-1',
     projectId: 'project-1',
@@ -53,7 +69,7 @@ Task _task({String? parentId}) {
     deleted: 0,
     createdAt: 1,
     updatedAt: 2,
-    remindBeforeMinutes: 15,
-    reminderEnabled: 1,
+    remindBeforeMinutes: remindBeforeMinutes,
+    reminderEnabled: reminderEnabled,
   );
 }

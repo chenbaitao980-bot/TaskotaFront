@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../core/utils/snackbar_helper.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
 import '../../../services/subtask_scheduler.dart';
 import '../../../services/local_storage_service.dart';
+import '../../../models/node_template_payload.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
 import '../../blocs/task_new/task_state.dart';
+import '../../widgets/upgrade_dialog.dart';
 import 'widgets/project_sidebar.dart';
 import 'widgets/task_list_view.dart';
 import 'widgets/mind_map_view.dart';
+import 'node_templates_page.dart';
 import 'widgets/task_create_sheet.dart';
 import 'task_detail/task_detail_page.dart';
 import '../../widgets/calendar_date_picker.dart';
+import '../../widgets/project_picker_content.dart';
 
 class TasksPage extends StatefulWidget {
   const TasksPage({super.key});
@@ -30,6 +35,9 @@ class _TasksPageState extends State<TasksPage> {
   Set<String> _expandedProjectGroupIds = {};
   Set<String> _knownProjectGroupIds = {};
   bool _projectSidebarSortDescending = true;
+
+  /// 缓存最近一次 TaskNewLoaded，在后续 Loading/Error 时保持 UI 不闪烁
+  TaskNewLoaded? _lastLoaded;
 
   @override
   void initState() {
@@ -103,170 +111,211 @@ class _TasksPageState extends State<TasksPage> {
         if (state is TaskNewLoaded && state.syncRollbackMessage != null) {
           showAppSnackBar(context, state.syncRollbackMessage!);
         }
+        if (state is TaskNewError && state.isQuotaExceeded) {
+          UpgradeDialog.show(context, message: state.message);
+          context.read<TaskNewBloc>().add(LoadTasks());
+        }
       },
       builder: (context, state) {
-        if (state is TaskNewLoading) {
+        // 缓存最近一次成功加载的状态，用于在 Loading/Error 时保持 UI 不闪烁
+        if (state is TaskNewLoaded) _lastLoaded = state;
+        final effective = state is TaskNewLoaded ? state : _lastLoaded;
+
+        // 真正的首次冷加载（还没有任何数据）
+        if (effective == null) {
+          if (state is TaskNewError) {
+            return Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 48, color: AppTheme.error),
+                    const SizedBox(height: 16),
+                    Text(
+                      '加载失败：${state.message}',
+                      style: TextStyle(color: AppTheme.error),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () =>
+                          context.read<TaskNewBloc>().add(LoadTasks()),
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        if (state is TaskNewError) {
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 48, color: AppTheme.error),
-                  const SizedBox(height: 16),
-                  Text(
-                    '加载失败：${state.message}',
-                    style: TextStyle(color: AppTheme.error),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () =>
-                        context.read<TaskNewBloc>().add(LoadTasks()),
-                    child: const Text('重试'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+        // 有历史数据时直接渲染，Loading 时在 AppBar 底部显示细线提示
+        final isReloading = state is TaskNewLoading;
+        _syncProjectGroupExpansion(effective.groups);
+        final projectNames = <String, String>{
+          for (final p in effective.projects) p.id: p.name,
+        };
+        final selectedFilter = effective.selectedFilter ?? 'all';
 
-        if (state is TaskNewLoaded) {
-          _syncProjectGroupExpansion(state.groups);
-          final projectNames = <String, String>{
-            for (final p in state.projects) p.id: p.name,
-          };
-          final selectedFilter = state.selectedFilter ?? 'all';
-
-          return Scaffold(
-            key: _scaffoldKey,
-            appBar: AppBar(
-              title: Text(_getTitle(state)),
-              leading: IconButton(
-                icon: const Icon(Icons.menu_rounded),
-                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              ),
-              actions: [
-                IconButton(
-                  tooltip: '排除项目',
-                  icon: Icon(
-                    Icons.visibility_off_outlined,
-                    color: _excludedProjectIds.isEmpty
-                        ? null
-                        : AppTheme.primaryColor,
-                  ),
-                  onPressed: () => _showExcludedProjectsDialog(context, state),
-                ),
-                IconButton(
-                  tooltip: '筛选项目',
-                  icon: Icon(
-                    Icons.folder_copy_outlined,
-                    color: state.selectedProjectIds.isEmpty
-                        ? null
-                        : AppTheme.primaryColor,
-                  ),
-                  onPressed: () => _showProjectFilterDialog(context, state),
-                ),
-                _buildViewModeButton(state),
-                _buildDateFilterButton(state),
-                _buildExpandCollapseButton(state),
-              ],
-            ),
-            drawer: ProjectSidebar(
-              projects: state.projects,
-              groups: state.groups,
-              selectedProjectId: state.selectedProjectId,
-              selectedFilter: selectedFilter,
-              projectProgress: state.projectProgress,
-              groupProgress: state.groupProgress,
-              expandedGroupIds: _expandedProjectGroupIds,
-              sortDescending: _projectSidebarSortDescending,
-              onToggleGroupExpanded: _toggleProjectGroupExpanded,
-              onExpandAllGroups: () => _expandAllProjectGroups(state.groups),
-              onCollapseAllGroups: _collapseAllProjectGroups,
-              onToggleSortDirection: _toggleProjectSidebarSortDirection,
-              onCreateGroup: () => _showCreateGroupDialog(context),
-              onEditGroup: (g) => _showEditGroupDialog(context, g),
-              onDeleteGroup: (g) => _confirmDeleteGroup(context, g),
-              onProjectSelected: (id) {
-                Navigator.pop(context);
-                context.read<TaskNewBloc>().add(LoadTasks(projectId: id));
-              },
-              onFilterSelected: (filter) {
-                Navigator.pop(context);
-                context.read<TaskNewBloc>().add(LoadTasks(filter: filter));
-              },
-              onCreateProject: () => _showCreateProjectDialog(context),
-              onEditProject: (project) =>
-                  _showEditProjectDialog(context, project),
-              onDeleteProject: (project) =>
-                  _confirmDeleteProject(context, project),
-            ),
-            body: state.viewMode == 'mindmap'
-                ? MindMapView(
-                    tasks: state.tasks,
-                    userId: _getUserId(),
-                    projectNames: projectNames,
-                    projects: state.projects,
-                    taskProgress: state.taskProgress,
-                    selectedFilter: selectedFilter,
-                    selectedProjectId: state.selectedProjectId,
-                    focusTaskId: state.focusTaskId,
-                    focusRequestToken: state.focusRequestToken,
-                    expandedIds: state.expandedNodes['main_tree'] ?? {},
-                    onTaskTap: (id) => _openTaskDetail(id, state),
-                    onTaskToggle: (id) => context.read<TaskNewBloc>().add(
-                      ToggleTaskStatus(id: id),
+        return Scaffold(
+          key: _scaffoldKey,
+          appBar: AppBar(
+            title: Text(_getTitle(effective)),
+            bottom: isReloading
+                ? PreferredSize(
+                    preferredSize: const Size.fromHeight(2),
+                    child: LinearProgressIndicator(
+                      value: null,
+                      minHeight: 2,
+                      backgroundColor: Colors.transparent,
+                      color: AppTheme.primaryColor.withValues(alpha: 0.5),
                     ),
-                    onTaskDelete: (id) => _confirmDeleteTask(id),
-                    onToggleExpand: (id) => context.read<TaskNewBloc>().add(
-                      ToggleTaskExpand(taskId: id),
-                    ),
-                    onMoveToParent: (taskId, newParentId) =>
-                        _handleMoveToParent(
-                          taskId,
-                          newParentId,
-                          state.selectedProjectId,
-                        ),
-                    onAddSubtask: (parentId) =>
-                        _showCreateTaskSheet(context, parentId: parentId),
                   )
-                : TaskListView(
-                    tasks: state.tasks,
-                    projectNames: projectNames,
-                    taskProgress: state.taskProgress,
-                    selectedFilter: selectedFilter,
-                    selectedProjectId: state.selectedProjectId,
-                    expandedIds: state.expandedNodes['main_tree'] ?? {},
-                    onTaskTap: (id) => _openTaskDetail(id, state),
-                    onTaskToggle: (id) => context.read<TaskNewBloc>().add(
-                      ToggleTaskStatus(id: id),
-                    ),
-                    onTaskDelete: (id) => _confirmDeleteTask(id),
-                    onToggleExpand: (id) => context.read<TaskNewBloc>().add(
-                      ToggleTaskExpand(taskId: id),
-                    ),
-                    onMoveToParent: (taskId, newParentId) =>
-                        _handleMoveToParent(
-                          taskId,
-                          newParentId,
-                          state.selectedProjectId,
-                        ),
-                  ),
-            floatingActionButton: FloatingActionButton(
-              onPressed: () => _showCreateTaskSheet(context),
-              elevation: 2,
-              backgroundColor: AppTheme.primaryColor,
-              child: const Icon(Icons.add, color: Colors.white),
+                : null,
+            leading: IconButton(
+              icon: const Icon(Icons.menu_rounded),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             ),
-          );
-        }
-
-        return const Scaffold(body: Center(child: Text('初始化中...')));
+            actions: effective.isTemplateMode
+                ? [
+                    IconButton(
+                      tooltip: '返回任务',
+                      icon: const Icon(Icons.exit_to_app_rounded),
+                      onPressed: () => context
+                          .read<TaskNewBloc>()
+                          .add(LoadTasks(filter: 'all')),
+                    ),
+                    _buildViewModeButton(effective),
+                    _buildExpandCollapseButton(effective),
+                  ]
+                : [
+                    _buildStatusFilterButton(effective),
+                    // 模板节点功能暂时隐藏
+                    // IconButton(
+                    //   tooltip: '模板节点',
+                    //   icon: const Icon(Icons.dashboard_customize_outlined),
+                    //   onPressed: () => _openNodeTemplatesPage(context),
+                    // ),
+                    IconButton(
+                      tooltip: '排除项目',
+                      icon: Icon(
+                        Icons.visibility_off_outlined,
+                        color: _excludedProjectIds.isEmpty
+                            ? null
+                            : AppTheme.primaryColor,
+                      ),
+                      onPressed: () =>
+                          _showExcludedProjectsDialog(context, effective),
+                    ),
+                    IconButton(
+                      tooltip: '筛选项目',
+                      icon: Icon(
+                        Icons.folder_copy_outlined,
+                        color: effective.selectedProjectIds.isEmpty
+                            ? null
+                            : AppTheme.primaryColor,
+                      ),
+                      onPressed: () =>
+                          _showProjectFilterDialog(context, effective),
+                    ),
+                    _buildViewModeButton(effective),
+                    _buildDateFilterButton(effective),
+                    _buildExpandCollapseButton(effective),
+                  ],
+          ),
+          drawer: ProjectSidebar(
+            projects: effective.projects,
+            groups: effective.isTemplateMode ? const [] : effective.groups,
+            selectedProjectId: effective.selectedProjectId,
+            selectedFilter: selectedFilter,
+            isTemplateMode: effective.isTemplateMode,
+            projectProgress: effective.projectProgress,
+            groupProgress: effective.groupProgress,
+            expandedGroupIds: _expandedProjectGroupIds,
+            sortDescending: _projectSidebarSortDescending,
+            onToggleGroupExpanded: _toggleProjectGroupExpanded,
+            onExpandAllGroups: () => _expandAllProjectGroups(effective.groups),
+            onCollapseAllGroups: _collapseAllProjectGroups,
+            onToggleSortDirection: _toggleProjectSidebarSortDirection,
+            onCreateGroup: () => _showCreateGroupDialog(context),
+            onEditGroup: (g) => _showEditGroupDialog(context, g),
+            onDeleteGroup: (g) => _confirmDeleteGroup(context, g),
+            onCreateProjectInGroup: (g) => _showCreateProjectDialog(context, preselectedGroupId: g.id),
+            onProjectSelected: (id) {
+              Navigator.pop(context);
+              context.read<TaskNewBloc>().add(LoadTasks(
+                projectId: id,
+                filter: effective.isTemplateMode ? 'templates' : null,
+              ));
+            },
+            onFilterSelected: (filter) {
+              Navigator.pop(context);
+              context.read<TaskNewBloc>().add(LoadTasks(
+                filter: filter,
+                projectId: null,
+                projectIds: const {},
+              ));
+            },
+            onCreateProject: () => _showCreateProjectDialog(context),
+            onEditProject: (project) =>
+                _showEditProjectDialog(context, project),
+            onDeleteProject: (project) =>
+                _confirmDeleteProject(context, project),
+          ),
+          body: effective.viewMode == 'mindmap'
+              ? MindMapView(
+                  tasks: effective.tasks,
+                  userId: _getUserId(),
+                  projectNames: projectNames,
+                  projects: effective.projects,
+                  taskProgress: effective.taskProgress,
+                  selectedFilter: selectedFilter,
+                  selectedProjectId: effective.selectedProjectId,
+                  focusTaskId: effective.focusTaskId,
+                  focusRequestToken: effective.focusRequestToken,
+                  expandedIds: effective.expandedNodes['main_tree'] ?? {},
+                  onTaskTap: (id) => _openTaskDetail(id, effective),
+                  onTaskToggle: (id) => _handleToggleTaskStatus(id, effective),
+                  onTaskDelete: (id) => _confirmDeleteTask(id),
+                  onToggleExpand: (id) => context.read<TaskNewBloc>().add(
+                    ToggleTaskExpand(taskId: id),
+                  ),
+                  onMoveToParent: (taskId, newParentId) => _handleMoveToParent(
+                    taskId,
+                    newParentId,
+                    effective.selectedProjectId,
+                  ),
+                  onAddSubtask: (parentId) =>
+                      _showCreateTaskSheet(context, parentId: parentId),
+                )
+              : TaskListView(
+                  tasks: effective.tasks,
+                  projectNames: projectNames,
+                  taskProgress: effective.taskProgress,
+                  selectedFilter: selectedFilter,
+                  selectedProjectId: effective.selectedProjectId,
+                  expandedIds: effective.expandedNodes['main_tree'] ?? {},
+                  onTaskTap: (id) => _openTaskDetail(id, effective),
+                  onTaskToggle: (id) => _handleToggleTaskStatus(id, effective),
+                  onTaskDelete: (id) => _confirmDeleteTask(id),
+                  onToggleExpand: (id) => context.read<TaskNewBloc>().add(
+                    ToggleTaskExpand(taskId: id),
+                  ),
+                  onMoveToParent: (taskId, newParentId) => _handleMoveToParent(
+                    taskId,
+                    newParentId,
+                    effective.selectedProjectId,
+                  ),
+                ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => _showCreateTaskSheet(context),
+            elevation: 2,
+            backgroundColor: AppTheme.primaryColor,
+            child: const Icon(Icons.add, color: Colors.white),
+          ),
+        );
       },
     );
   }
@@ -279,6 +328,7 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   String _getTitle(TaskNewLoaded state) {
+    if (state.isTemplateMode) return '模板节点';
     if (state.selectedFilter == 'today') return '今天';
     if (state.selectedFilter == 'important') return '重要';
     if (state.selectedProjectIds.length > 1) {
@@ -291,6 +341,60 @@ class _TasksPageState extends State<TasksPage> {
       return project?.name ?? '任务';
     }
     return '所有任务';
+  }
+
+  Widget _buildStatusFilterButton(TaskNewLoaded state) {
+    const filters = ['all', 'pending', 'completed'];
+    final selected = state.selectedStatusFilter;
+    return PopupMenuButton<String>(
+      icon: Icon(
+        selected == 'all'
+            ? Icons.filter_alt_outlined
+            : Icons.filter_alt_rounded,
+        color: selected == 'all' ? null : AppTheme.primaryColor,
+      ),
+      tooltip: '任务状态',
+      onSelected: (value) {
+        context.read<TaskNewBloc>().add(
+          LoadTasks(
+            projectIds: state.selectedProjectIds,
+            filter: state.selectedFilter,
+            statusFilter: value,
+            dateFrom: state.dateFrom,
+            dateTo: state.dateTo,
+          ),
+        );
+      },
+      itemBuilder: (context) => filters.map((value) {
+        final isSelected = value == selected;
+        return PopupMenuItem<String>(
+          value: value,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? Icons.check_rounded : Icons.circle_outlined,
+                size: 18,
+                color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+              ),
+              const SizedBox(width: 8),
+              Text(_statusFilterLabel(value)),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _statusFilterLabel(String value) {
+    switch (value) {
+      case 'pending':
+        return '未完成';
+      case 'completed':
+        return '已完成';
+      default:
+        return '全部';
+    }
   }
 
   Widget _buildViewModeButton(TaskNewLoaded state) {
@@ -403,9 +507,50 @@ class _TasksPageState extends State<TasksPage> {
         LoadTasks(
           projectIds: state.selectedProjectIds,
           filter: state.selectedFilter,
+          statusFilter: state.selectedStatusFilter,
+          dateFrom: state.dateFrom,
+          dateTo: state.dateTo,
         ),
       );
     }
+  }
+
+  Future<void> _handleToggleTaskStatus(String id, TaskNewLoaded state) async {
+    final task = state.tasks.where((t) => t.id == id).firstOrNull;
+    if (task == null) return;
+    var cascade = false;
+    if (task.status != 2) {
+      final hasChildren = state.tasks.any((t) => t.parentId == id);
+      if (hasChildren) {
+        final choice = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('完成子任务'),
+            content: const Text('这个任务包含子任务，是否同时全部完成？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('仅完成父任务'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('全部完成'),
+              ),
+            ],
+          ),
+        );
+        if (choice == null) return;
+        cascade = choice;
+      }
+    }
+    if (!mounted) return;
+    context.read<TaskNewBloc>().add(
+      ToggleTaskStatus(id: id, cascadeChildren: cascade),
+    );
   }
 
   Future<void> _showExcludedProjectsDialog(
@@ -423,26 +568,11 @@ class _TasksPageState extends State<TasksPage> {
             child: state.projects.isEmpty
                 ? const Text('暂无项目')
                 : SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final project in state.projects)
-                          CheckboxListTile(
-                            value: draft.contains(project.id),
-                            title: Text(project.name),
-                            dense: true,
-                            controlAffinity: ListTileControlAffinity.leading,
-                            onChanged: (checked) {
-                              setDialogState(() {
-                                if (checked == true) {
-                                  draft.add(project.id);
-                                } else {
-                                  draft.remove(project.id);
-                                }
-                              });
-                            },
-                          ),
-                      ],
+                    child: buildProjectPickerContent(
+                      projects: state.projects,
+                      groups: state.groups,
+                      draft: draft,
+                      setDialogState: setDialogState,
                     ),
                   ),
           ),
@@ -494,33 +624,18 @@ class _TasksPageState extends State<TasksPage> {
             child: availableProjects.isEmpty
                 ? const Text('暂无可筛选项目')
                 : SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CheckboxListTile(
-                          value: draft.isEmpty,
-                          title: const Text('全部项目'),
-                          dense: true,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          onChanged: (_) => setDialogState(draft.clear),
-                        ),
-                        for (final project in availableProjects)
-                          CheckboxListTile(
-                            value: draft.contains(project.id),
-                            title: Text(project.name),
-                            dense: true,
-                            controlAffinity: ListTileControlAffinity.leading,
-                            onChanged: (checked) {
-                              setDialogState(() {
-                                if (checked == true) {
-                                  draft.add(project.id);
-                                } else {
-                                  draft.remove(project.id);
-                                }
-                              });
-                            },
-                          ),
-                      ],
+                    child: buildProjectPickerContent(
+                      projects: availableProjects,
+                      groups: state.groups,
+                      draft: draft,
+                      setDialogState: setDialogState,
+                      extraHeader: CheckboxListTile(
+                        value: draft.isEmpty,
+                        title: const Text('全部项目'),
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (_) => setDialogState(draft.clear),
+                      ),
                     ),
                   ),
           ),
@@ -764,14 +879,14 @@ class _TasksPageState extends State<TasksPage> {
     }
   }
 
-  Future<void> _showCreateProjectDialog(BuildContext context) async {
+  Future<void> _showCreateProjectDialog(BuildContext context, {String? preselectedGroupId}) async {
     final controller = TextEditingController();
     final taskBloc = context.read<TaskNewBloc>();
     final blocState = taskBloc.state;
     final groups = blocState is TaskNewLoaded
         ? blocState.groups
         : const <ProjectGroup>[];
-    String? selectedGroupId;
+    String? selectedGroupId = preselectedGroupId;
     final result = await showDialog<({String name, String? groupId})>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -838,7 +953,13 @@ class _TasksPageState extends State<TasksPage> {
           _knownProjectGroupIds = {..._knownProjectGroupIds, groupId};
         });
       }
-      taskBloc.add(CreateProject(name: result.name, groupId: result.groupId));
+      final isTemplate = taskBloc.state is TaskNewLoaded &&
+          (taskBloc.state as TaskNewLoaded).isTemplateMode;
+      taskBloc.add(CreateProject(
+        name: result.name,
+        groupId: result.groupId,
+        isTemplate: isTemplate,
+      ));
     }
   }
 
@@ -1101,8 +1222,19 @@ class _TasksPageState extends State<TasksPage> {
       builder: (_) => TaskCreateSheet(
         initialProjectId: initialProjectId,
         projectRepository: repo,
+        projectGroupRepository: context
+            .read<TaskNewBloc>()
+            .projectGroupRepository,
         taskRepository: taskRepo,
+        nodeTemplateRepository: context
+            .read<TaskNewBloc>()
+            .nodeTemplateRepository,
+        templateProjects: blocState is TaskNewLoaded
+            ? blocState.templateProjects
+            : const [],
         initialParentId: parentId,
+        isTemplateMode: blocState is TaskNewLoaded &&
+            blocState.isTemplateMode,
         availableParentTasks: blocState is TaskNewLoaded
             ? blocState.tasks.where((t) => t.status == 0).toList()
             : [],
@@ -1110,35 +1242,58 @@ class _TasksPageState extends State<TasksPage> {
     );
 
     if (result != null && context.mounted) {
+      final templateProjectId = result['templateProjectId'] as String?;
+      final targetProjectId = (result['projectId'] as String?) ??
+          parentProjectId ??
+          initialProjectId ??
+          'inbox';
       final resultParentId = result['parentId'] as String?;
-      context.read<TaskNewBloc>().add(
-        CreateTask(
-          projectId:
-              (result['projectId'] as String?) ??
-              parentProjectId ??
-              initialProjectId ??
-              'inbox',
-          title: result['title'] as String,
-          description: result['description'] as String? ?? '',
-          priority: result['priority'] as int? ?? 1,
-          startDate: result['startDate'] as int?,
-          dueDate: result['dueDate'] as int?,
-          parentId: resultParentId,
-          shiftedTasks:
-              (result['shiftedTasks'] as List<ScheduledTaskShift>?) ?? const [],
-        ),
-      );
-      if (resultParentId != null) {
-        final currentState = context.read<TaskNewBloc>().state;
-        if (currentState is TaskNewLoaded) {
-          final expanded = currentState.expandedNodes['main_tree'] ?? {};
-          if (!expanded.contains(resultParentId)) {
-            context.read<TaskNewBloc>().add(
-              ToggleTaskExpand(taskId: resultParentId),
-            );
-          }
-        }
+
+      if (templateProjectId != null) {
+        context.read<TaskNewBloc>().add(
+          ApplyTemplate(
+            templateProjectId: templateProjectId,
+            targetProjectId: targetProjectId,
+            startTimeMillis: result['startDate'] as int? ??
+                DateTime.now().millisecondsSinceEpoch,
+            parentId: resultParentId,
+          ),
+        );
+      } else {
+        context.read<TaskNewBloc>().add(
+          CreateTask(
+            projectId: targetProjectId,
+            title: result['title'] as String,
+            description: result['description'] as String? ?? '',
+            priority: result['priority'] as int? ?? 1,
+            startDate: result['startDate'] as int?,
+            dueDate: result['dueDate'] as int?,
+            parentId: resultParentId,
+            shiftedTasks:
+                (result['shiftedTasks'] as List<ScheduledTaskShift>?) ??
+                    const [],
+            pendingImages:
+                (result['pendingImages'] as List<PlatformFile>?) ?? const [],
+            templatePayload:
+                (result['templatePayload'] as NodeTemplatePayload?) ??
+                    NodeTemplatePayload.empty,
+            remindBeforeMinutes: result['remindBeforeMinutes'] as int? ?? 15,
+            reminderEnabled: result['reminderEnabled'] as int? ?? 1,
+          ),
+        );
       }
     }
   }
+
+  // 模板节点功能暂时隐藏
+  // Future<void> _openNodeTemplatesPage(BuildContext context) async {
+  //   final bloc = context.read<TaskNewBloc>();
+  //   await Navigator.push(
+  //     context,
+  //     MaterialPageRoute(
+  //       builder: (_) =>
+  //           NodeTemplatesPage(repository: bloc.nodeTemplateRepository),
+  //     ),
+  //   );
+  // }
 }

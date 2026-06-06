@@ -4,22 +4,30 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
+import '../../../services/local_data_service.dart';
 import '../../../services/local_storage_service.dart';
+import '../../../services/subscription_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
+import '../../widgets/upgrade_dialog.dart';
+import '../../widgets/vip_badge.dart';
 import 'about_page.dart';
 import 'app_settings_page.dart';
 import 'help_feedback_page.dart';
 import 'profile_edit_page.dart';
 import 'task_export_page.dart';
 import 'theme_settings_page.dart';
+import 'vip_page.dart';
 import '../../../data/database/app_database.dart';
+import 'admin_ops_page.dart';
 
 class ProfilePage extends StatefulWidget {
+  final AppDatabase? database;
   final TaskRepository? taskRepository;
   final ProjectRepository? projectRepository;
   final VoidCallback? onLogout;
   const ProfilePage({
     super.key,
+    this.database,
     this.taskRepository,
     this.projectRepository,
     this.onLogout,
@@ -262,12 +270,33 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         child: Column(
           children: [
+            _buildMenuItem(
+              Icons.workspace_premium,
+              SubscriptionService.instance.isVip ? 'VIP会员' : '开通VIP',
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VipPage()),
+                );
+              },
+              showTop: true,
+              trailing: SubscriptionService.instance.isVip
+                  ? const VipBadge(size: 14)
+                  : null,
+            ),
+            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _buildMenuItem(Icons.settings_rounded, '设置', () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AppSettingsPage()),
+                MaterialPageRoute(
+                  builder: (_) => AppSettingsPage(
+                    showLocalDataTools: _showLocalDataTools(context),
+                    database: widget.database,
+                    taskRepository: widget.taskRepository,
+                  ),
+                ),
               );
-            }, showTop: true),
+            }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _buildMenuItem(Icons.palette_outlined, '主题', () {
               Navigator.push(
@@ -277,10 +306,32 @@ class _ProfilePageState extends State<ProfilePage> {
             }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _buildMenuItem(Icons.ios_share_rounded, '导出', () {
+              if (!SubscriptionService.instance.canExportData()) {
+                UpgradeDialog.show(context,
+                    message: '数据导出为VIP专属功能，升级VIP解锁');
+                return;
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => TaskExportPage(
+                    taskRepository: widget.taskRepository,
+                    projectRepository: widget.projectRepository,
+                  ),
+                ),
+              );
+            },
+              trailing: SubscriptionService.instance.isVip
+                  ? null
+                  : const VipLockIcon(),
+            ),
+            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
+            _buildMenuItem(Icons.admin_panel_settings_rounded, '运维后台', () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AdminOpsPage(
+                    database: widget.database,
                     taskRepository: widget.taskRepository,
                     projectRepository: widget.projectRepository,
                   ),
@@ -325,6 +376,7 @@ class _ProfilePageState extends State<ProfilePage> {
     bool isDestructive = false,
     bool showTop = false,
     bool showBottom = false,
+    Widget? trailing,
   }) {
     return Material(
       color: Colors.transparent,
@@ -356,6 +408,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ),
+              if (trailing != null) ...[
+                trailing,
+                const SizedBox(width: 4),
+              ],
               Icon(Icons.chevron_right, size: 20, color: AppTheme.textHint),
             ],
           ),
@@ -381,5 +437,14 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (_) {}
     return '';
+  }
+
+  bool _showLocalDataTools(BuildContext context) {
+    try {
+      return context.read<AuthBloc>().state is LocalAuthenticated &&
+          LocalDataService().isDesktop;
+    } catch (_) {
+      return false;
+    }
   }
 }

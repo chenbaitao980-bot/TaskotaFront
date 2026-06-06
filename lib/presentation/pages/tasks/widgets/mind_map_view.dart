@@ -6,9 +6,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
+import '../../../../services/task_conflict_service.dart';
 import '../../../blocs/task_new/task_bloc.dart';
 import '../../../blocs/task_new/task_event.dart';
 import '../../../widgets/calendar_date_picker.dart';
+import '../../../widgets/task_conflict_dialog.dart';
 
 // ─── 布局常量 ───
 const double _kNodeWidth = 260.0;
@@ -116,6 +118,10 @@ class _MindMapViewState extends State<MindMapView> {
   final Set<String> _draggedIds = {};
   int? _handledFocusRequestToken;
 
+  // ─── 初始定位标志 ───
+  bool _initialFocusDone = false;
+  bool _offsetsLoaded = false;
+
   String get _storageKey => 'mindmap_offsets_${widget.userId}';
 
   @override
@@ -135,6 +141,10 @@ class _MindMapViewState extends State<MindMapView> {
     if (oldWidget.tasks != widget.tasks ||
         oldWidget.expandedIds != widget.expandedIds) {
       _computeLayoutCache();
+    }
+    if (oldWidget.selectedFilter != widget.selectedFilter ||
+        oldWidget.selectedProjectId != widget.selectedProjectId) {
+      _initialFocusDone = false;
     }
   }
 
@@ -197,24 +207,26 @@ class _MindMapViewState extends State<MindMapView> {
   Future<void> _loadOffsets() async {
     final prefs = await SharedPreferences.getInstance();
     final json = prefs.getString(_storageKey);
-    if (json == null || !mounted) return;
-    try {
-      final map = Map<String, dynamic>.from(jsonDecode(json) as Map);
-      for (final entry in map.entries) {
-        final list = entry.value as List;
-        final notifier = _positionNotifiers[entry.key];
-        if (notifier != null) {
-          notifier.value = Offset(
-            (list[0] as num).toDouble(),
-            (list[1] as num).toDouble(),
-          );
-          _draggedIds.add(entry.key);
+    if (!mounted) return;
+    if (json != null) {
+      try {
+        final map = Map<String, dynamic>.from(jsonDecode(json) as Map);
+        for (final entry in map.entries) {
+          final list = entry.value as List;
+          final notifier = _positionNotifiers[entry.key];
+          if (notifier != null) {
+            notifier.value = Offset(
+              (list[0] as num).toDouble(),
+              (list[1] as num).toDouble(),
+            );
+            _draggedIds.add(entry.key);
+          }
         }
+      } catch (_) {
+        // 解析失败则忽略，使用默认布局
       }
-      if (mounted) setState(() {});
-    } catch (_) {
-      // 解析失败则忽略，使用默认布局
     }
+    if (mounted) setState(() => _offsetsLoaded = true);
   }
 
   Future<void> _saveOffsets() async {
@@ -514,7 +526,7 @@ class _MindMapViewState extends State<MindMapView> {
     });
   }
 
-  void _focusNearestTask(Size viewportSize) {
+  void _focusNearestTask(Size viewportSize, {bool showSnackBar = true}) {
     final now = DateTime.now().millisecondsSinceEpoch;
     _LayoutNode? nearest;
     int? nearestDiff;
@@ -530,10 +542,22 @@ class _MindMapViewState extends State<MindMapView> {
     }
 
     if (nearest == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有带时间的任务节点')),
-      );
-      return;
+      // fallback：定位到第一个节点
+      if (_cachedPendingNodes.isNotEmpty) {
+        nearest = _cachedPendingNodes.first;
+      } else {
+        if (showSnackBar) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('没有带时间的任务节点')),
+          );
+        }
+        return;
+      }
+      if (showSnackBar) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('没有带时间的任务节点')),
+        );
+      }
     }
 
     _centerLayoutNode(nearest, viewportSize);
@@ -853,6 +877,13 @@ class _MindMapViewState extends State<MindMapView> {
       builder: (context, constraints) {
         final viewportSize =
             Size(constraints.maxWidth, constraints.maxHeight);
+        // 初始自动定位：offsets 加载完成且节点存在时定位一次
+        if (!_initialFocusDone && _offsetsLoaded && _cachedPendingNodes.isNotEmpty) {
+          _initialFocusDone = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _focusNearestTask(viewportSize, showSnackBar: false);
+          });
+        }
         final focusTaskId = widget.focusTaskId;
         final focusRequestToken = widget.focusRequestToken;
         if (focusTaskId != null &&
@@ -1745,6 +1776,73 @@ class _MindMapNodeCard extends StatelessWidget {
     );
     if (picked == null || !context.mounted) return;
 
+    final candidateStart = isStart
+        ? picked
+        : (task.startDate != null ? DateTime.fromMillisecondsSinceEpoch(task.startDate!) : null);
+    final candidateEnd = isStart
+        ? (task.dueDate != null ? DateTime.fromMillisecondsSinceEpoch(task.dueDate!) : null)
+        : picked;
+
+    if (candidateStart != null &&
+        candidateEnd != null &&
+        candidateEnd.isAfter(candidateStart) &&
+        !TaskConflictService.isRangeMultiDay(candidateStart, candidateEnd)) {
+      final bloc = context.read<TaskNewBloc>();
+      final svc = TaskConflictService(taskRepository: bloc.taskRepository);
+      final conflict = await svc.checkConflict(
+        candidateStart,
+        candidateEnd,
+        excludeTaskId: task.id,
+      );
+      if (conflict != null && context.mounted) {
+        final choice = await showTaskConflictDialog(
+          context,
+          conflict: conflict,
+          newStart: candidateStart,
+          newEnd: candidateEnd,
+        );
+        if (!context.mounted) return;
+        switch (choice) {
+          case ConflictChoice.cancel:
+          case null:
+            return;
+          case ConflictChoice.parallel:
+            break;
+          case ConflictChoice.autoDelay:
+            final delayed = await svc.calcDelayedSlot(
+              candidateStart,
+              candidateEnd,
+              conflict.conflictEnd,
+              excludeTaskId: task.id,
+            );
+            if (delayed != null && context.mounted) {
+              bloc.add(UpdateTask(
+                id: task.id,
+                startDate: delayed.start.millisecondsSinceEpoch,
+                dueDate: delayed.end.millisecondsSinceEpoch,
+              ));
+              return;
+            }
+          case ConflictChoice.autoInsert:
+            final shifts = await svc.calcInsertedShifts(
+              candidateStart,
+              candidateEnd,
+              excludeTaskId: task.id,
+            );
+            if (context.mounted) {
+              bloc.add(UpdateTask(
+                id: task.id,
+                startDate: candidateStart.millisecondsSinceEpoch,
+                dueDate: candidateEnd.millisecondsSinceEpoch,
+                shiftedTasks: shifts,
+              ));
+              return;
+            }
+        }
+      }
+    }
+
+    if (!context.mounted) return;
     final millis = picked.millisecondsSinceEpoch;
     if (isStart) {
       context.read<TaskNewBloc>().add(UpdateTask(id: task.id, startDate: millis));

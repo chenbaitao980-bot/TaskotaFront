@@ -13,6 +13,8 @@ class ChecklistSection extends StatefulWidget {
   final void Function(String id, String title) onEdit;
   final ValueChanged<(String, String)> onAdd;
   final void Function(String id, String? obsidianUri) onSetObsidianUri;
+  final void Function(List<String> orderedIds) onReorder;
+  final double maxListHeight;
 
   const ChecklistSection({
     super.key,
@@ -23,6 +25,8 @@ class ChecklistSection extends StatefulWidget {
     required this.onEdit,
     required this.onAdd,
     required this.onSetObsidianUri,
+    required this.onReorder,
+    this.maxListHeight = 320,
   });
 
   @override
@@ -58,8 +62,11 @@ class _ChecklistSectionState extends State<ChecklistSection> {
             padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
             child: Row(
               children: [
-                Icon(Icons.checklist_rounded,
-                    size: 14, color: AppTheme.textSecondary),
+                Icon(
+                  Icons.checklist_rounded,
+                  size: 14,
+                  color: AppTheme.textSecondary,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   '检查项 ${total > 0 ? '($completed/$total)' : ''}',
@@ -85,14 +92,21 @@ class _ChecklistSectionState extends State<ChecklistSection> {
                 ),
               ),
             ),
-          // 列表（限高+滚动）
+          // 列表（限高+拖动排序）
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 240),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: widget.items.map((item) => _buildItem(item)).toList(),
-              ),
+            constraints: BoxConstraints(maxHeight: widget.maxListHeight),
+            child: ReorderableListView(
+              shrinkWrap: true,
+              buildDefaultDragHandles: false,
+              onReorderItem: (oldIndex, newIndex) {
+                final ids = widget.items.map((i) => i.id).toList();
+                final moved = ids.removeAt(oldIndex);
+                ids.insert(newIndex, moved);
+                widget.onReorder(ids);
+              },
+              children: widget.items
+                  .map((item) => _buildItem(item))
+                  .toList(),
             ),
           ),
           // 添加输入框
@@ -104,10 +118,11 @@ class _ChecklistSectionState extends State<ChecklistSection> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    style: const TextStyle(fontSize: 16),
                     decoration: const InputDecoration(
                       hintText: '添加检查项...',
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: 8),
+                      contentPadding: EdgeInsets.symmetric(vertical: 12),
                       isDense: true,
                     ),
                     onSubmitted: (value) {
@@ -128,31 +143,45 @@ class _ChecklistSectionState extends State<ChecklistSection> {
 
   Widget _buildItem(ChecklistItem item) {
     final isCompleted = item.status == 1;
-    final hasObsidian = item.obsidianUri != null && item.obsidianUri!.isNotEmpty;
+    final hasObsidian =
+        item.obsidianUri != null && item.obsidianUri!.isNotEmpty;
 
     return GestureDetector(
+      key: ValueKey(item.id),
       onLongPress: () => _showContextMenu(item),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         child: Row(
           children: [
+            // 拖拽把手
+            ReorderableDragStartListener(
+              index: widget.items.indexOf(item),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Icon(
+                  Icons.drag_handle,
+                  size: 18,
+                  color: AppTheme.textHint,
+                ),
+              ),
+            ),
             // 复选框
             GestureDetector(
               onTap: () => widget.onToggle(item.id),
               child: Container(
-                width: 22,
-                height: 22,
-                margin: const EdgeInsets.all(8),
+                width: 28,
+                height: 28,
+                margin: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isCompleted ? AppTheme.success : Colors.transparent,
                   border: Border.all(
                     color: isCompleted ? AppTheme.success : AppTheme.textHint,
-                    width: 2,
+                    width: 2.4,
                   ),
                 ),
                 child: isCompleted
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    ? const Icon(Icons.check, size: 17, color: Colors.white)
                     : null,
               ),
             ),
@@ -163,12 +192,12 @@ class _ChecklistSectionState extends State<ChecklistSection> {
                 child: Text(
                   item.title,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
+                    height: 1.35,
                     color: isCompleted
                         ? AppTheme.textHint
                         : AppTheme.textPrimary,
-                    decoration:
-                        isCompleted ? TextDecoration.lineThrough : null,
+                    decoration: isCompleted ? TextDecoration.lineThrough : null,
                   ),
                 ),
               ),
@@ -243,8 +272,7 @@ class _ChecklistSectionState extends State<ChecklistSection> {
               ),
             ListTile(
               leading: Icon(Icons.delete_outline, color: AppTheme.error),
-              title:
-                  Text('删除', style: TextStyle(color: AppTheme.error)),
+              title: Text('删除', style: TextStyle(color: AppTheme.error)),
               onTap: () {
                 Navigator.pop(ctx);
                 widget.onDelete(item.id);
@@ -381,7 +409,10 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
       _documentName = ObsidianService.documentName(filePath);
       if (vaultInfo != null) {
         _vaultName = vaultInfo.vaultName;
-        _relativePath = ObsidianService.relativePath(filePath, vaultInfo.vaultRoot);
+        _relativePath = ObsidianService.relativePath(
+          filePath,
+          vaultInfo.vaultRoot,
+        );
       } else {
         _vaultName = null;
         _relativePath = null;
@@ -420,9 +451,7 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
               children: [
                 Expanded(
                   child: Text(
-                    _selectedFilePath != null
-                        ? _documentName
-                        : '未选择文件',
+                    _selectedFilePath != null ? _documentName : '未选择文件',
                     style: TextStyle(
                       fontSize: 14,
                       color: _selectedFilePath != null
@@ -464,8 +493,11 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
                 isDense: true,
                 suffixIcon: Tooltip(
                   message: '需要安装 Obsidian Advanced URI 插件',
-                  child: Icon(Icons.info_outline,
-                      size: 16, color: AppTheme.textHint),
+                  child: Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: AppTheme.textHint,
+                  ),
                 ),
               ),
             ),
@@ -477,10 +509,7 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('取消'),
         ),
-        TextButton(
-          onPressed: _confirm,
-          child: const Text('确认'),
-        ),
+        TextButton(onPressed: _confirm, child: const Text('确认')),
       ],
     );
   }
@@ -493,10 +522,7 @@ class _ObsidianLinkDialogState extends State<_ObsidianLinkDialog> {
           width: 48,
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: AppTheme.textHint,
-            ),
+            style: TextStyle(fontSize: 12, color: AppTheme.textHint),
           ),
         ),
         Expanded(

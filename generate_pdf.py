@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""智能小管家 产品宣发手册 PDF 生成脚本"""
+"""Taskora 产品宣发手册 PDF 生成脚本"""
 import os
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -131,12 +131,12 @@ class HeroBlock(_Flowable):
         # 主标题
         c.setFillColor(white)
         c.setFont(FONT_BOLD, 38)
-        c.drawCentredString(w/2, h*0.62, '智能小管家')
+        c.drawCentredString(w/2, h*0.62, 'Taskora')
 
         # 英文副标题
         c.setFont('Helvetica', 13)
         c.setFillColorRGB(1, 1, 1, 0.85)
-        c.drawCentredString(w/2, h*0.52, 'Smart Assistant · AI-Powered Task Manager')
+        c.drawCentredString(w/2, h*0.52, 'Taskora · AI-Powered Task Manager')
 
         # 标语
         c.setFont(FONT_BOLD, 14)
@@ -322,7 +322,7 @@ def on_page(canvas, doc):
     # 页脚左
     canvas.setFont(FONT_REGULAR, 8)
     canvas.setFillColor(TEXT_LIGHT)
-    canvas.drawString(20*mm, 10*mm, '智能小管家 · Smart Assistant')
+    canvas.drawString(20*mm, 10*mm, 'Taskora')
     # 页脚右
     canvas.drawRightString(w - 20*mm, 10*mm, f'第 {doc.page} 页')
     # 页脚分割线
@@ -369,7 +369,7 @@ def build_story(W, H):
 
     story.append(Spacer(1, 6*mm))
     story.append(Paragraph(
-        '智能小管家用 AI 帮你一键拆解任务、智能排期、多端同步，\n让效率管理真正融入日常。',
+        'Taskora 用 AI 帮你一键拆解任务、智能排期、多端同步，\n让效率管理真正融入日常。',
         S('slogan', font=FONT_BOLD, size=12, color=PRIMARY, align=TA_CENTER, leading=20)
     ))
     story.append(PageBreak())
@@ -379,7 +379,7 @@ def build_story(W, H):
     story.append(Spacer(1, 5*mm))
 
     story.append(Paragraph(
-        '智能小管家（Smart Assistant）是一款基于 Flutter 构建、搭载 DeepSeek AI 的跨平台任务管理应用。'
+        'Taskora 是一款基于 Flutter 构建、搭载 DeepSeek AI 的跨平台任务管理应用。'
         '它将 AI 任务拆解、可视化日历、思维导图、云端协作融为一体，帮助个人和团队从混乱走向清晰。',
         S('body', size=10, color=TEXT_MAIN, leading=18)
     ))
@@ -465,7 +465,7 @@ def build_story(W, H):
     story.append(Spacer(1, 5*mm))
 
     story.append(Paragraph(
-        '智能小管家采用现代化 Flutter 全栈架构，前后端分离、离线优先，保证数据安全与跨平台一致体验。',
+        'Taskora 采用现代化 Flutter 全栈架构，前后端分离、离线优先，保证数据安全与跨平台一致体验。',
         S('body2', size=10, color=TEXT_MUTED, leading=16)
     ))
     story.append(Spacer(1, 4*mm))
@@ -616,7 +616,7 @@ def build_story(W, H):
     story.append(cta_inner)
 
     cta_sub = Table([[
-        Paragraph('智能小管家 · 让 AI 成为你的专属效率管家', S('cta2', font=FONT_BOLD, size=12, color=white, align=TA_CENTER)),
+        Paragraph('Taskora · 让 AI 成为你的专属效率管家', S('cta2', font=FONT_BOLD, size=12, color=white, align=TA_CENTER)),
     ]], colWidths=[usable])
     cta_sub.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), PRIMARY),
@@ -640,7 +640,7 @@ def build_story(W, H):
     story.append(HRFlowable(width=usable, thickness=0.5, color=DIVIDER))
     story.append(Spacer(1, 4*mm))
     story.append(Paragraph(
-        '© 2026 智能小管家团队 · 保留所有权利\n'
+        '© 2026 Taskora 团队 · 保留所有权利\n'
         '本手册仅供产品宣发使用，技术规格以正式发布版本为准。',
         S('footer', size=8, color=TEXT_LIGHT, align=TA_CENTER, leading=14)
     ))
@@ -652,7 +652,7 @@ def build_story(W, H):
 # 主函数
 # ──────────────────────────────────────────────────────────────
 def main():
-    OUTPUT = 'E:/claude/project2/smart_assistant/智能小管家_宣发手册_v2.pdf'
+    OUTPUT = 'E:/claude/project2/smart_assistant/Taskora_宣发手册_v2.pdf'
     W, H = A4
     margin = 20*mm
 
@@ -661,8 +661,8 @@ def main():
         pagesize=A4,
         leftMargin=margin, rightMargin=margin,
         topMargin=margin, bottomMargin=18*mm,
-        title='智能小管家 产品宣发手册',
-        author='Smart Assistant Team',
+        title='Taskora 产品宣发手册',
+        author='Taskora Team',
     )
 
     story = build_story(W, H)

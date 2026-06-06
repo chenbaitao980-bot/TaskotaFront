@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../../core/theme/app_theme.dart';
@@ -11,12 +12,17 @@ import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../services/holiday_service.dart';
 import '../../../services/subtask_scheduler.dart';
+import '../../../models/node_template_payload.dart';
 import '../../../services/local_storage_service.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
 import '../../blocs/task_new/task_state.dart';
+import '../../widgets/project_picker_content.dart';
 import '../tasks/task_detail/task_detail_page.dart';
 import '../tasks/widgets/task_create_sheet.dart';
+import 'day_task_lane_layout.dart';
+import 'task_time_range_guard.dart';
+import 'package:drift/drift.dart' show Value;
 
 class CalendarPage extends StatefulWidget {
   final ValueChanged<Task>? onJumpToMindMap;
@@ -33,8 +39,8 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime? _selectedDay;
   final ScrollController _weekScrollController = ScrollController();
   bool _didAutoScrollWeek = false;
-  int _displayDayCount = 7; // 周视图显示天数，默认 7 天（周一～周日）
-  double _hourHeight = 56;
+  int _displayDayCount = (Platform.isAndroid || Platform.isIOS) ? 3 : 7;
+  double _hourHeight = 80;
   static const double _timeColumnWidth = 48;
   static const double _minHourHeight = 32;
   static const double _maxHourHeight = 120;
@@ -46,10 +52,15 @@ class _CalendarPageState extends State<CalendarPage> {
   final GlobalKey _timelineListenerKey = GlobalKey();
   double _dragOffset = 0;
   double _cachedDayWidth = 100;
+  bool _isTaskDragging = false;
+  bool _dragSkipped = false; // onPointerMove 因拖拽任务跳过时置 true，阻止 onPointerUp 翻页
+  double? _dragStartX;
   bool _isMultiDayLaneCollapsed = false;
 
+  DateTime? _lastReloadTime;
   List<Task> _allTasks = [];
   List<Project> _allProjects = [];
+  List<ProjectGroup> _allGroups = [];
   final Set<String> _selectedProjectIds = {};
   String? get _selectedProjectId =>
       _selectedProjectIds.length == 1 ? _selectedProjectIds.first : null;
@@ -102,31 +113,42 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
-  Future<void> _reloadData() async {
-    // 等待 repo 就绪（_initRepos 可能在 BlocListener 之后才执行）
+  Future<void> _reloadData({
+    List<Project>? cachedProjects,
+    List<ProjectGroup>? cachedGroups,
+  }) async {
     if (_taskRepo == null || _projectRepo == null) {
-      // 如果 repo 还没就绪，等下一帧重试
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_initialized) _reloadData();
       });
       return;
     }
+    final now = DateTime.now();
+    if (_initialized &&
+        _lastReloadTime != null &&
+        now.difference(_lastReloadTime!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastReloadTime = now;
     try {
       await _storage.init();
       final excludedProjectIds = _storage.excludedProjectIds;
       final tasks = (await _taskRepo!.getAll())
           .where((task) => !excludedProjectIds.contains(task.projectId))
           .toList();
-      final projects = await _projectRepo!.getActive();
+      final projects = cachedProjects ?? await _projectRepo!.getActive();
+      final List<ProjectGroup> groups = cachedGroups ??
+          await (context.read<TaskNewBloc>().projectGroupRepository?.getAll() ??
+              Future.value(<ProjectGroup>[]));
       if (mounted) {
         setState(() {
           _allTasks = tasks;
           _allProjects = projects;
+          _allGroups = groups;
           _initialized = true;
         });
       }
     } catch (e) {
-      // 偶发性数据库未就绪，重试一次
       if (!_initialized && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_initialized) _reloadData();
@@ -368,7 +390,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
   void _handleTimelinePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent || !_isCtrlPressed) return;
-    final delta = event.scrollDelta.dy < 0 ? -_zoomStep : _zoomStep;
+    final delta = event.scrollDelta.dy < 0 ? _zoomStep : -_zoomStep;
     _setHourHeight(_hourHeight + delta);
   }
 
@@ -442,11 +464,76 @@ class _CalendarPageState extends State<CalendarPage> {
     widget.onJumpToMindMap?.call(task);
   }
 
+  Future<void> _showTaskContextActions(Task task) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.account_tree_outlined),
+              title: const Text('跳转思维导图'),
+              onTap: () => Navigator.pop(context, 'mindmap'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('编辑'),
+              onTap: () => Navigator.pop(context, 'edit'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('删除', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'mindmap') _jumpToMindMap(task);
+    if (action == 'edit') await _openTaskDetail(task);
+    if (action == 'delete') await _deleteTask(task);
+  }
+
   Future<void> _toggleTaskStatus(Task task) async {
     if (_taskRepo == null) return;
-    await _taskRepo!.toggleStatus(task.id);
+    final shouldCascade = await _confirmCascadeComplete(task);
+    if (shouldCascade == null) return;
+    if (shouldCascade) {
+      await _taskRepo!.setStatusCascade(task.id, 2, includeDescendants: true);
+    } else {
+      await _taskRepo!.toggleStatus(task.id);
+    }
     _reloadData();
     _notifyBloc();
+  }
+
+  Future<bool?> _confirmCascadeComplete(Task task) async {
+    if (_taskRepo == null || task.status == 2) return false;
+    final children = await _taskRepo!.getSubTasks(task.id);
+    if (children.isEmpty || !mounted) return false;
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('完成子任务'),
+        content: const Text('这个任务包含子任务，是否同时全部完成？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('仅完成父任务'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('全部完成'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _deleteTask(Task task) async {
@@ -494,6 +581,20 @@ class _CalendarPageState extends State<CalendarPage> {
       startDate: newStart.millisecondsSinceEpoch,
       dueDate: newStart.add(duration).millisecondsSinceEpoch,
     );
+    await _taskRepo!.expandAncestorDates(
+      task.parentId,
+      newStart.millisecondsSinceEpoch,
+      newStart.add(duration).millisecondsSinceEpoch,
+    );
+    setState(() {
+      final idx = _allTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) {
+        _allTasks[idx] = task.copyWith(
+          startDate: Value(newStart.millisecondsSinceEpoch),
+          dueDate: Value(newStart.add(duration).millisecondsSinceEpoch),
+        );
+      }
+    });
     _reloadData();
     _notifyBloc();
   }
@@ -515,6 +616,20 @@ class _CalendarPageState extends State<CalendarPage> {
       startDate: newStart.millisecondsSinceEpoch,
       dueDate: d.millisecondsSinceEpoch,
     );
+    await _taskRepo!.expandAncestorDates(
+      task.parentId,
+      newStart.millisecondsSinceEpoch,
+      d.millisecondsSinceEpoch,
+    );
+    setState(() {
+      final idx = _allTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) {
+        _allTasks[idx] = task.copyWith(
+          startDate: Value(newStart.millisecondsSinceEpoch),
+          dueDate: Value(d.millisecondsSinceEpoch),
+        );
+      }
+    });
     _reloadData();
     _notifyBloc();
   }
@@ -533,6 +648,20 @@ class _CalendarPageState extends State<CalendarPage> {
       startDate: s.millisecondsSinceEpoch,
       dueDate: newEnd.millisecondsSinceEpoch,
     );
+    await _taskRepo!.expandAncestorDates(
+      task.parentId,
+      s.millisecondsSinceEpoch,
+      newEnd.millisecondsSinceEpoch,
+    );
+    setState(() {
+      final idx = _allTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) {
+        _allTasks[idx] = task.copyWith(
+          startDate: Value(s.millisecondsSinceEpoch),
+          dueDate: Value(newEnd.millisecondsSinceEpoch),
+        );
+      }
+    });
     _reloadData();
     _notifyBloc();
   }
@@ -552,7 +681,9 @@ class _CalendarPageState extends State<CalendarPage> {
       backgroundColor: Colors.transparent,
       builder: (_) => TaskCreateSheet(
         projectRepository: _projectRepo!,
+        projectGroupRepository: bloc.projectGroupRepository,
         taskRepository: _taskRepo,
+        nodeTemplateRepository: bloc.nodeTemplateRepository,
         availableParentTasks: parentTasks,
         initialStartDateMillis: startDate.millisecondsSinceEpoch,
         initialDueDateMillis: startDate
@@ -572,6 +703,13 @@ class _CalendarPageState extends State<CalendarPage> {
           parentId: result['parentId'] as String?,
           shiftedTasks:
               (result['shiftedTasks'] as List<ScheduledTaskShift>?) ?? const [],
+          pendingImages:
+              (result['pendingImages'] as List<PlatformFile>?) ?? const [],
+          templatePayload:
+              (result['templatePayload'] as NodeTemplatePayload?) ??
+              NodeTemplatePayload.empty,
+          remindBeforeMinutes: result['remindBeforeMinutes'] as int? ?? 15,
+          reminderEnabled: result['reminderEnabled'] as int? ?? 1,
         ),
       );
     }
@@ -588,12 +726,43 @@ class _CalendarPageState extends State<CalendarPage> {
 
   // ── Build ──
 
+  void _showParentRangeMessage() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('父任务时间必须覆盖所有子任务时间段')));
+  }
+
+  bool _parentRangeCoversDescendants(
+    Task task,
+    DateTime newStart,
+    DateTime newEnd,
+  ) {
+    if (!_hasChildren(task)) return true;
+    final childRange = descendantTaskTimeRange(parent: task, tasks: _allTasks);
+    if (childRange == null) return true;
+    // 归一化到日期边界，避免毫秒级精度错配
+    final normStart = DateTime(newStart.year, newStart.month, newStart.day);
+    final normEnd = DateTime(newEnd.year, newEnd.month, newEnd.day);
+    final normChildStart = DateTime(
+      childRange.start.year, childRange.start.month, childRange.start.day,
+    );
+    final normChildEnd = DateTime(
+      childRange.end.year, childRange.end.month, childRange.end.day,
+    );
+    return !normStart.isAfter(normChildStart) &&
+        !normEnd.isBefore(normChildEnd);
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<TaskNewBloc, TaskNewState>(
       listener: (context, state) {
         if (state is TaskNewLoaded) {
-          _reloadData();
+          _reloadData(
+            cachedProjects: state.projects,
+            cachedGroups: state.groups,
+          );
         }
       },
       child: Scaffold(
@@ -622,9 +791,9 @@ class _CalendarPageState extends State<CalendarPage> {
       actions: [
         // 项目筛选
         _buildProjectFilter(),
-        const SizedBox(width: 4),
+        const SizedBox(width: 2),
         _buildHolidayCountryDropdown(),
-        const SizedBox(width: 4),
+        const SizedBox(width: 2),
         SegmentedButton<CalendarFormat>(
           segments: const [
             ButtonSegment(value: CalendarFormat.week, label: Text('周')),
@@ -642,9 +811,9 @@ class _CalendarPageState extends State<CalendarPage> {
             textStyle: WidgetStateProperty.all(const TextStyle(fontSize: 13)),
           ),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 2),
         if (_calendarFormat == CalendarFormat.week) _buildDayCountDropdown(),
-        const SizedBox(width: 4),
+        const SizedBox(width: 2),
         IconButton(
           icon: const Icon(Icons.zoom_out, size: 22),
           tooltip: '缩小时间线',
@@ -655,7 +824,7 @@ class _CalendarPageState extends State<CalendarPage> {
           tooltip: '放大时间线',
           onPressed: () => _setHourHeight(_hourHeight + _zoomStep),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 4),
         IconButton(
           icon: const Icon(Icons.today),
           onPressed: () {
@@ -727,80 +896,65 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _buildProjectFilter() {
-    final hasProjects = _allProjects.isNotEmpty;
-    return PopupMenuButton<String?>(
+    return IconButton(
       tooltip: '筛选项目',
-      icon: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            _selectedProjectIds.isEmpty
-                ? Icons.filter_list
-                : Icons.filter_list_rounded,
-            size: 20,
-            color: _selectedProjectIds.isNotEmpty
-                ? AppTheme.primaryColor
-                : AppTheme.textSecondary,
-          ),
-        ],
+      icon: Icon(
+        _selectedProjectIds.isEmpty
+            ? Icons.filter_list
+            : Icons.filter_list_rounded,
+        size: 20,
+        color: _selectedProjectIds.isNotEmpty
+            ? AppTheme.primaryColor
+            : AppTheme.textSecondary,
       ),
-      onSelected: (value) {
-        setState(() {
-          if (value == '__all__') {
-            _selectedProjectIds.clear();
-          } else if (value != null && _selectedProjectIds.contains(value)) {
-            _selectedProjectIds.remove(value);
-          } else if (value != null) {
-            _selectedProjectIds.add(value);
-          }
-        });
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem<String?>(
-          value: '__all__',
-          child: Row(
-            children: [
-              Icon(
-                _selectedProjectIds.isEmpty
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                size: 18,
-                color: _selectedProjectIds.isEmpty
-                    ? AppTheme.primaryColor
-                    : AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 8),
-              const Text('全部项目'),
-            ],
-          ),
-        ),
-        if (hasProjects) const PopupMenuDivider(),
-        for (final project in _allProjects)
-          PopupMenuItem<String?>(
-            value: project.id,
-            child: Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: Color(
-                      int.tryParse(project.color.replaceFirst('#', '0xFF')) ??
-                          0xFF4772FA,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
+      onPressed: _allProjects.isEmpty ? null : _showProjectFilterDialog,
+    );
+  }
+
+  Future<void> _showProjectFilterDialog() async {
+    final draft = Set<String>.from(_selectedProjectIds);
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('筛选项目'),
+          content: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: buildProjectPickerContent(
+                projects: _allProjects,
+                groups: _allGroups,
+                draft: draft,
+                setDialogState: setDialogState,
+                extraHeader: CheckboxListTile(
+                  value: draft.isEmpty,
+                  title: const Text('全部项目'),
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (_) => setDialogState(draft.clear),
                 ),
-                Text(project.name),
-                const Spacer(),
-                if (_selectedProjectIds.contains(project.id))
-                  Icon(Icons.check, size: 18, color: AppTheme.primaryColor),
-              ],
+              ),
             ),
           ),
-      ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, draft),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
     );
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedProjectIds
+        ..clear()
+        ..addAll(result);
+    });
   }
 
   Widget _buildDayCountDropdown() {
@@ -1020,93 +1174,94 @@ class _CalendarPageState extends State<CalendarPage> {
                     final isCompleted = task.status == 2;
                     final parentLabel = _parentLabel(task);
                     return GestureDetector(
-                      onSecondaryTap: () => _jumpToMindMap(task),
+                      onSecondaryTap: () => _showTaskContextActions(task),
                       child: Card(
                         color: isCompleted
                             ? Colors.grey.shade100
                             : Theme.of(context).cardColor,
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         child: ListTile(
-                        leading: Checkbox(
-                          value: isCompleted,
-                          onChanged: (checked) => _toggleTaskStatus(task),
-                        ),
-                        title: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (parentLabel != null)
+                          leading: Checkbox(
+                            value: isCompleted,
+                            onChanged: (checked) => _toggleTaskStatus(task),
+                          ),
+                          title: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (parentLabel != null)
+                                Text(
+                                  parentLabel,
+                                  style: TextStyle(
+                                    color: isCompleted
+                                        ? AppTheme.textHint
+                                        : AppTheme.textSecondary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                               Text(
-                                parentLabel,
+                                task.title,
                                 style: TextStyle(
                                   color: isCompleted
-                                      ? AppTheme.textHint
-                                      : AppTheme.textSecondary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
+                                      ? AppTheme.textSecondary
+                                      : AppTheme.textPrimary,
+                                  decoration: isCompleted
+                                      ? TextDecoration.lineThrough
+                                      : TextDecoration.none,
                                 ),
                               ),
-                            Text(
-                              task.title,
-                              style: TextStyle(
-                                color: isCompleted
-                                    ? AppTheme.textSecondary
-                                    : AppTheme.textPrimary,
-                                decoration: isCompleted
-                                    ? TextDecoration.lineThrough
-                                    : TextDecoration.none,
-                              ),
-                            ),
-                          ],
-                        ),
-                        subtitle: task.startDate != null && task.dueDate != null
-                            ? Text(
-                                '${_timeLabel(DateTime.fromMillisecondsSinceEpoch(task.startDate!))} - '
-                                '${_timeLabel(DateTime.fromMillisecondsSinceEpoch(task.dueDate!))}  '
-                                '${_priorityLabel(task.priority)}',
-                                style: TextStyle(
-                                  color: isCompleted
-                                      ? AppTheme.textHint
-                                      : AppTheme.textSecondary,
+                            ],
+                          ),
+                          subtitle:
+                              task.startDate != null && task.dueDate != null
+                              ? Text(
+                                  '${_timeLabel(DateTime.fromMillisecondsSinceEpoch(task.startDate!))} - '
+                                  '${_timeLabel(DateTime.fromMillisecondsSinceEpoch(task.dueDate!))}  '
+                                  '${_priorityLabel(task.priority)}',
+                                  style: TextStyle(
+                                    color: isCompleted
+                                        ? AppTheme.textHint
+                                        : AppTheme.textSecondary,
+                                  ),
+                                )
+                              : null,
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (action) {
+                              if (action == 'edit') _openTaskDetail(task);
+                              if (action == 'delete') _deleteTask(task);
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('详情'),
+                                  ],
                                 ),
-                              )
-                            : null,
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (action) {
-                            if (action == 'edit') _openTaskDetail(task);
-                            if (action == 'delete') _deleteTask(task);
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.edit, size: 18),
-                                  SizedBox(width: 8),
-                                  Text('详情'),
-                                ],
                               ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.delete,
-                                    size: 18,
-                                    color: Colors.red,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    '删除',
-                                    style: TextStyle(color: Colors.red),
-                                  ),
-                                ],
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.delete,
+                                      size: 18,
+                                      color: Colors.red,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      '删除',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
                     );
                   },
                 ),
@@ -1126,12 +1281,12 @@ class _CalendarPageState extends State<CalendarPage> {
       children: [
         // 月份导航行
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                icon: const Icon(Icons.chevron_left, size: 20),
+                icon: const Icon(Icons.chevron_left, size: 18),
                 onPressed: () {
                   final nextFocusedDay = _focusedDay.subtract(
                     Duration(days: _displayDayCount),
@@ -1146,12 +1301,12 @@ class _CalendarPageState extends State<CalendarPage> {
               Text(
                 '${_focusedDay.year}年${_focusedDay.month}月',
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.chevron_right, size: 20),
+                icon: const Icon(Icons.chevron_right, size: 18),
                 onPressed: () {
                   final nextFocusedDay = _focusedDay.add(
                     Duration(days: _displayDayCount),
@@ -1194,22 +1349,22 @@ class _CalendarPageState extends State<CalendarPage> {
                           });
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          padding: const EdgeInsets.symmetric(vertical: 1),
                           child: Column(
                             children: [
                               Text(
                                 weekdayNames[day.weekday - 1],
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11,
                                   color: isToday
                                       ? Theme.of(context).colorScheme.primary
                                       : AppTheme.textSecondary,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 1),
                               Container(
-                                width: 32,
-                                height: 32,
+                                width: 24,
+                                height: 24,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: isSelected
@@ -1223,7 +1378,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                 child: Text(
                                   '${day.day}',
                                   style: TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 13,
                                     fontWeight: isToday || isSelected
                                         ? FontWeight.bold
                                         : FontWeight.normal,
@@ -1235,9 +1390,8 @@ class _CalendarPageState extends State<CalendarPage> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 3),
                               SizedBox(
-                                height: 16,
+                                height: 14,
                                 child: holiday == null
                                     ? (hasTasks
                                           ? Center(
@@ -1295,7 +1449,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                   ),
                                 )
                               else
-                                const SizedBox(height: 7),
+                                const SizedBox(height: 1),
                             ],
                           ),
                         ),
@@ -1365,16 +1519,50 @@ class _CalendarPageState extends State<CalendarPage> {
                   (constraints.maxWidth - _timeColumnWidth).clamp(320, 2400) /
                   _displayDayCount;
               _cachedDayWidth = dayWidth;
-              return GestureDetector(
-                onHorizontalDragUpdate: _editingTaskId == null
-                    ? _onCalendarHorizontalDragUpdate
-                    : null,
-                onHorizontalDragEnd: _editingTaskId == null
-                    ? _onCalendarHorizontalDragEnd
-                    : null,
-                onHorizontalDragCancel: _editingTaskId == null
-                    ? _onCalendarHorizontalDragCancel
-                    : null,
+              // Listener 绕过手势竞技场；内层任务块设 _isTaskDragging=true 时跳过翻周
+              return Listener(
+                onPointerDown: (e) {
+                  _dragStartX = e.position.dx;
+                  _dragSkipped = false;
+                },
+                onPointerMove: (e) {
+                  if (_isTaskDragging || _editingTaskId != null) {
+                    _dragSkipped = true;
+                    return;
+                  }
+                  if (_dragStartX == null) return;
+                  _dragOffset = e.position.dx - _dragStartX!;
+                  setState(() {});
+                },
+                onPointerUp: (e) {
+                  if (_dragSkipped || _editingTaskId != null) {
+                    _dragOffset = 0;
+                    _dragStartX = null;
+                    _dragSkipped = false;
+                    return;
+                  }
+                  if (_dragStartX == null) return;
+                  final dx = e.position.dx - _dragStartX!;
+                  _dragStartX = null;
+                  if (dx.abs() < 2) {
+                    _dragOffset = 0;
+                    setState(() {});
+                    return;
+                  }
+                  final daysToShift = -(dx / _cachedDayWidth).round();
+                  if (daysToShift != 0) {
+                    _focusedDay = _focusedDay.add(Duration(days: daysToShift));
+                    _didAutoScrollWeek = false;
+                  }
+                  _dragOffset = 0;
+                  setState(() {});
+                },
+                onPointerCancel: (e) {
+                  _dragOffset = 0;
+                  _dragStartX = null;
+                  _dragSkipped = false;
+                  setState(() {});
+                },
                 child: Transform.translate(
                   offset: Offset(_dragOffset, 0),
                   child: Column(
@@ -1389,9 +1577,12 @@ class _CalendarPageState extends State<CalendarPage> {
                             onPointerMove: _onPointerMove,
                             onPointerUp: _onPointerUp,
                             onPointerCancel: _onPointerCancel,
-                            child: SingleChildScrollView(
+                            child: NotificationListener<ScrollNotification>(
+                              onNotification: (_) =>
+                                  _isTaskDragging || _editingTaskId != null,
+                              child: SingleChildScrollView(
                               controller: _weekScrollController,
-                              physics: _editingTaskId != null
+                              physics: _editingTaskId != null || _isTaskDragging
                                   ? const NeverScrollableScrollPhysics()
                                   : null,
                               child: SizedBox(
@@ -1433,7 +1624,8 @@ class _CalendarPageState extends State<CalendarPage> {
                                   ],
                                 ),
                               ),
-                            ),
+                            ), // close SingleChildScrollView
+                            ), // close NotificationListener
                           ),
                         ),
                       ),
@@ -1446,30 +1638,6 @@ class _CalendarPageState extends State<CalendarPage> {
         ),
       ],
     );
-  }
-
-  void _onCalendarHorizontalDragUpdate(DragUpdateDetails details) {
-    _dragOffset += details.delta.dx;
-    setState(() {});
-  }
-
-  void _onCalendarHorizontalDragEnd(DragEndDetails details) {
-    if (_dragOffset.abs() < 2) {
-      _dragOffset = 0;
-      return;
-    }
-    final daysToShift = -(_dragOffset / _cachedDayWidth).round();
-    if (daysToShift != 0) {
-      _focusedDay = _focusedDay.add(Duration(days: daysToShift));
-      _didAutoScrollWeek = false;
-    }
-    _dragOffset = 0;
-    setState(() {});
-  }
-
-  void _onCalendarHorizontalDragCancel() {
-    _dragOffset = 0;
-    setState(() {});
   }
 
   Widget _buildTimeColumn(double totalHeight) {
@@ -1521,8 +1689,8 @@ class _CalendarPageState extends State<CalendarPage> {
         return (a.startDate ?? 0).compareTo(b.startDate ?? 0);
       });
 
-    const laneHeight = 30.0;
-    const maxVisibleLanes = 6;
+    const laneHeight = 24.0;
+    const maxVisibleLanes = 4;
     final visibleLanes = sorted.length.clamp(1, maxVisibleLanes);
     final contentHeight = sorted.length * laneHeight;
     final visibleHeight = visibleLanes * laneHeight;
@@ -1655,14 +1823,18 @@ class _CalendarPageState extends State<CalendarPage> {
       top: row * laneHeight + 4,
       width: dayWidth * spanDays - 8,
       height: laneHeight - 8,
-      child: _EditableMultiDayBar(
+      child: Listener(
+        onPointerDown: (_) => setState(() => _isTaskDragging = true),
+        onPointerUp: (_) => setState(() => _isTaskDragging = false),
+        onPointerCancel: (_) => setState(() => _isTaskDragging = false),
+        child: _EditableMultiDayBar(
         task: task,
         color: color,
         isCompleted: isCompleted,
         dayWidth: dayWidth,
         laneHeight: laneHeight,
         onTap: () => _openTaskDetail(task),
-        onSecondaryTap: () => _jumpToMindMap(task),
+        onSecondaryTap: () => _showTaskContextActions(task),
         onToggle: () => _toggleTaskStatus(task),
         onMoveDay: (deltaDays) {
           final newStart = s.add(Duration(days: deltaDays));
@@ -1670,18 +1842,21 @@ class _CalendarPageState extends State<CalendarPage> {
           _moveTaskMultiDay(task, newStart, newEnd);
         },
         onResizeStartDay: (deltaDays) {
-          final newStart = s.add(Duration(days: deltaDays));
-          if (newStart.isBefore(d)) {
-            _moveTaskMultiDay(task, newStart, d);
+          var newStart = s.add(Duration(days: deltaDays));
+          if (!newStart.isBefore(d)) {
+            newStart = DateTime(d.year, d.month, d.day, d.hour - 1, d.minute);
           }
+          _moveTaskMultiDay(task, newStart, d);
         },
         onResizeEndDay: (deltaDays) {
-          final newEnd = d.add(Duration(days: deltaDays));
-          if (newEnd.isAfter(s)) {
-            _moveTaskMultiDay(task, s, newEnd);
+          var newEnd = d.add(Duration(days: deltaDays));
+          if (!newEnd.isAfter(s)) {
+            newEnd = DateTime(s.year, s.month, s.day, s.hour + 1, s.minute);
           }
+          _moveTaskMultiDay(task, s, newEnd);
         },
       ),
+      ), // close Listener
     );
   }
 
@@ -1691,11 +1866,24 @@ class _CalendarPageState extends State<CalendarPage> {
     DateTime newEnd,
   ) async {
     if (_taskRepo == null) return;
+    if (!_parentRangeCoversDescendants(task, newStart, newEnd)) {
+      _showParentRangeMessage();
+      return;
+    }
     await _taskRepo!.update(
       task.id,
       startDate: newStart.millisecondsSinceEpoch,
       dueDate: newEnd.millisecondsSinceEpoch,
     );
+    setState(() {
+      final idx = _allTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) {
+        _allTasks[idx] = task.copyWith(
+          startDate: Value(newStart.millisecondsSinceEpoch),
+          dueDate: Value(newEnd.millisecondsSinceEpoch),
+        );
+      }
+    });
     _reloadData();
     _notifyBloc();
   }
@@ -1741,40 +1929,27 @@ class _CalendarPageState extends State<CalendarPage> {
     if (dayTasksWithRange.isEmpty) return [];
 
     // 按开始时间排序
-    dayTasksWithRange.sort((a, b) => a.segmentStart.compareTo(b.segmentStart));
+    final overlapLaneAssignments = assignDayTaskLanes([
+      for (final tr in dayTasksWithRange)
+        DayTaskLaneInput(
+          item: tr,
+          segmentStart: tr.segmentStart,
+          segmentEnd: tr.segmentEnd,
+        ),
+    ]);
 
-    // 贪心 lane 分配：laneEnds[idx] = 该 lane 上最后任务的 segmentEnd
-    final laneEnds = <DateTime>[];
-    final laneAssignments = <int>[]; // 每个任务分配到哪个 lane
-    for (final tr in dayTasksWithRange) {
-      int assigned = -1;
-      for (int i = 0; i < laneEnds.length; i++) {
-        if (!tr.segmentStart.isBefore(laneEnds[i])) {
-          // 该 lane 空闲
-          laneEnds[i] = tr.segmentEnd;
-          assigned = i;
-          break;
-        }
-      }
-      if (assigned == -1) {
-        // 新建一个 lane
-        laneEnds.add(tr.segmentEnd);
-        assigned = laneEnds.length - 1;
-      }
-      laneAssignments.add(assigned);
-    }
-
-    final totalLanes = laneEnds.length;
     const double horizontalMargin = 3.0;
-    final perLaneWidth = (dayWidth - horizontalMargin * 2) / totalLanes;
-
     final blocks = <Widget>[];
-    for (int i = 0; i < dayTasksWithRange.length; i++) {
-      final tr = dayTasksWithRange[i];
-      final lane = laneAssignments[i];
+    for (final assignment in overlapLaneAssignments) {
+      final tr = assignment.item;
+      final perLaneWidth =
+          (dayWidth - horizontalMargin * 2) / assignment.laneCount;
       blocks.add(
         Positioned(
-          left: dayIndex * dayWidth + horizontalMargin + lane * perLaneWidth,
+          left:
+              dayIndex * dayWidth +
+              horizontalMargin +
+              assignment.laneIndex * perLaneWidth,
           top: tr.top + 2,
           width: perLaneWidth - 2, // lane 间留 2px 间隙
           height: (tr.height - 4).clamp(28.0, _hourHeight * 24),
@@ -1798,7 +1973,11 @@ class _CalendarPageState extends State<CalendarPage> {
     DateTime segmentStart,
     double dayWidth,
   ) {
-    return _ResizableTaskBlock(
+    return Listener(
+      onPointerDown: (_) => setState(() => _isTaskDragging = true),
+      onPointerUp: (_) => setState(() => _isTaskDragging = false),
+      onPointerCancel: (_) => setState(() => _isTaskDragging = false),
+      child: _ResizableTaskBlock(
       task: task,
       start: start,
       end: end,
@@ -1818,7 +1997,7 @@ class _CalendarPageState extends State<CalendarPage> {
         }
       },
       onToggle: () => _toggleTaskStatus(task),
-      onSecondaryTap: () => _jumpToMindMap(task),
+      onSecondaryTap: () => _showTaskContextActions(task),
       onDelete: () => _deleteTask(task),
       onMove: (target) => _moveTask(task, target),
       onResizeStart: (target) => _resizeTaskStart(task, target),
@@ -1826,7 +2005,8 @@ class _CalendarPageState extends State<CalendarPage> {
       onEditModeChanged: (editing) {
         setState(() => _editingTaskId = editing ? task.id : null);
       },
-    );
+      ), // close _ResizableTaskBlock
+    ); // close Listener
   }
 
   // ── Drop Column ──
@@ -1982,7 +2162,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
         clipBehavior: Clip.none,
         fit: StackFit.expand,
         children: [
-          // 主体：用 GestureDetector(pan) 进入手势 arena，避免被父 scroll 抢走
+          // 主体：移动端用 EagerPan 立即赢得竞技场，防止 ScrollView 抢走手势
           Positioned(
             left: 0,
             right: 0,
@@ -1990,44 +2170,131 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
             bottom: -effectiveBottom,
             child: Transform.translate(
               offset: move,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: w.onOpenDetail,
-                onSecondaryTap: w.onSecondaryTap,
-                onLongPress: _isMobile && !w.isEditMode
-                    ? () => w.onEditModeChanged(true)
-                    : null,
-                onPanStart: (details) {
-                  setState(() {
-                    _isDragging = true;
-                    _moveDelta = Offset.zero;
-                  });
-                },
-                onPanUpdate: (details) {
-                  setState(() {
-                    _moveDelta = (_moveDelta ?? Offset.zero) + details.delta;
-                  });
-                },
-                onPanEnd: (details) {
-                  final delta = _moveDelta;
-                  setState(() {
-                    _isDragging = false;
-                    _moveDelta = null;
-                  });
-                  if (delta == null || delta.distance < 3) return;
-                  final target = _targetFromDelta(delta);
-                  if (target != w.start) {
-                    w.onMove(target);
-                  }
-                },
-                onPanCancel: () {
-                  setState(() {
-                    _isDragging = false;
-                    _moveDelta = null;
-                  });
-                },
-                child: _buildBlockContent(color, textColor),
-              ),
+              child: _isMobile
+                  ? RawGestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      gestures: <Type, GestureRecognizerFactory>{
+                        _EagerPanGestureRecognizer:
+                            GestureRecognizerFactoryWithHandlers<
+                              _EagerPanGestureRecognizer
+                            >(
+                              () => _EagerPanGestureRecognizer(),
+                              (_EagerPanGestureRecognizer instance) {
+                                instance
+                                  ..onStart = (details) {
+                                    setState(() {
+                                      _isDragging = true;
+                                      _moveDelta = Offset.zero;
+                                    });
+                                  }
+                                  ..onUpdate = (details) {
+                                    setState(() {
+                                      _moveDelta =
+                                          (_moveDelta ?? Offset.zero) +
+                                          details.delta;
+                                    });
+                                  }
+                                  ..onEnd = (details) {
+                                    final delta = _moveDelta;
+                                    setState(() {
+                                      _isDragging = false;
+                                      _moveDelta = null;
+                                    });
+                                    if (delta == null || delta.distance < 3) {
+                                      // 移动距离极小，视为点击
+                                      w.onOpenDetail();
+                                      return;
+                                    }
+                                    final target = _targetFromDelta(delta);
+                                    if (target != w.start) {
+                                      w.onMove(target);
+                                    }
+                                  }
+                                  ..onCancel = () {
+                                    setState(() {
+                                      _isDragging = false;
+                                      _moveDelta = null;
+                                    });
+                                  };
+                              },
+                            ),
+                        LongPressGestureRecognizer:
+                            GestureRecognizerFactoryWithHandlers<
+                              LongPressGestureRecognizer
+                            >(
+                              () => LongPressGestureRecognizer(),
+                              (LongPressGestureRecognizer instance) {
+                                instance.onLongPress = !w.isEditMode
+                                    ? () => w.onEditModeChanged(true)
+                                    : null;
+                              },
+                            ),
+                      },
+                      child: _buildBlockContent(color, textColor),
+                    )
+                  : GestureDetector(
+                      onSecondaryTap: w.onSecondaryTap,
+                      child: RawGestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        gestures: <Type, GestureRecognizerFactory>{
+                          _EagerPanGestureRecognizer:
+                              GestureRecognizerFactoryWithHandlers<
+                                _EagerPanGestureRecognizer
+                              >(
+                                () => _EagerPanGestureRecognizer(),
+                                (_EagerPanGestureRecognizer instance) {
+                                  instance
+                                    ..onStart = (details) {
+                                      setState(() {
+                                        _isDragging = true;
+                                        _moveDelta = Offset.zero;
+                                      });
+                                    }
+                                    ..onUpdate = (details) {
+                                      setState(() {
+                                        _moveDelta =
+                                            (_moveDelta ?? Offset.zero) +
+                                            details.delta;
+                                      });
+                                    }
+                                    ..onEnd = (details) {
+                                      final delta = _moveDelta;
+                                      setState(() {
+                                        _isDragging = false;
+                                        _moveDelta = null;
+                                      });
+                                      if (delta == null || delta.distance < 3) {
+                                        w.onOpenDetail();
+                                        return;
+                                      }
+                                      final target = _targetFromDelta(delta);
+                                      if (target != w.start) {
+                                        w.onMove(target);
+                                      }
+                                    }
+                                    ..onCancel = () {
+                                      setState(() {
+                                        _isDragging = false;
+                                        _moveDelta = null;
+                                      });
+                                    };
+                                },
+                              ),
+                          LongPressGestureRecognizer:
+                              GestureRecognizerFactoryWithHandlers<
+                                LongPressGestureRecognizer
+                              >(
+                                () => LongPressGestureRecognizer(),
+                                (LongPressGestureRecognizer instance) {
+                                  instance.onLongPress = !w.isEditMode
+                                      ? () => w.onEditModeChanged(true)
+                                      : null;
+                                },
+                              ),
+                        },
+                        child: _buildBlockContent(color, textColor),
+                      ),
+                    ),
             ),
           ),
           // resize hot zones（在 Stack 顶层）
@@ -2299,7 +2566,7 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
   double? _startDayDelta;
   double? _endDayDelta;
   double? _moveDeltaX;
-  final double _handleWidth = 18.0;
+  final double _handleWidth = 32.0;
 
   @override
   Widget build(BuildContext context) {
@@ -2312,7 +2579,8 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
         clipBehavior: Clip.none,
         fit: StackFit.expand,
         children: [
-          // 主体（横向拖动按整天移动；GestureDetector + pan 抢到 arena）
+          // 主体（横向拖动按整天移动；使用 onHorizontalDrag 而非 onPan，
+          // 与翻页手势同一 Recognizer 类型，内层深度优先赢得竞技场）
           Positioned(
             left: (_startDayDelta ?? 0) + (_moveDeltaX ?? 0),
             right:
@@ -2322,22 +2590,22 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
               behavior: HitTestBehavior.opaque,
               onTap: w.onTap,
               onSecondaryTap: w.onSecondaryTap,
-              onPanStart: (_) {
+              onHorizontalDragStart: (_) {
                 setState(() => _moveDeltaX = 0);
               },
-              onPanUpdate: (details) {
+              onHorizontalDragUpdate: (details) {
                 setState(() {
                   _moveDeltaX = (_moveDeltaX ?? 0) + details.delta.dx;
                 });
               },
-              onPanEnd: (_) {
+              onHorizontalDragEnd: (_) {
                 final dx = _moveDeltaX;
                 setState(() => _moveDeltaX = null);
                 if (dx == null || dx.abs() < 3) return;
                 final days = (dx / w.dayWidth).round();
                 if (days != 0) w.onMoveDay(days);
               },
-              onPanCancel: () {
+              onHorizontalDragCancel: () {
                 setState(() => _moveDeltaX = null);
               },
               child: _buildBar(color, isCompleted),
@@ -2352,12 +2620,12 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
               width: _handleWidth,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanUpdate: (details) {
+                onHorizontalDragUpdate: (details) {
                   setState(() {
                     _startDayDelta = (_startDayDelta ?? 0) + details.delta.dx;
                   });
                 },
-                onPanEnd: (_) {
+                onHorizontalDragEnd: (_) {
                   if (_startDayDelta == null) return;
                   final days = (_startDayDelta! / w.dayWidth).round();
                   if (days != 0) w.onResizeStartDay(days);
@@ -2384,12 +2652,12 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
               width: _handleWidth,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanUpdate: (details) {
+                onHorizontalDragUpdate: (details) {
                   setState(() {
                     _endDayDelta = (_endDayDelta ?? 0) + details.delta.dx;
                   });
                 },
-                onPanEnd: (_) {
+                onHorizontalDragEnd: (_) {
                   if (_endDayDelta == null) return;
                   final days = (_endDayDelta! / w.dayWidth).round();
                   if (days != 0) w.onResizeEndDay(days);
@@ -2463,5 +2731,15 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
         ),
       ),
     );
+  }
+}
+
+/// 移动端专用：立即赢得手势竞技场的 PanGestureRecognizer。
+/// 防止 SingleChildScrollView 的 VerticalDragRecognizer 抢走任务块的拖拽手势。
+class _EagerPanGestureRecognizer extends PanGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
   }
 }

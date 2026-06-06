@@ -14,8 +14,8 @@ void main() {
       ],
     );
 
-    expect(snapshot.taskProgress['task'], 50);
-    expect(snapshot.projectProgress['project'], 50);
+    expect(snapshot.taskProgress['task'], 40);
+    expect(snapshot.projectProgress['project'], 40);
   });
 
   test('completed leaf task overrides incomplete checklist progress', () {
@@ -57,7 +57,7 @@ void main() {
     );
 
     expect(snapshot.taskProgress['parent'], 40);
-    expect(snapshot.projectProgress['project'], 38);
+    expect(snapshot.projectProgress['project'], 40);
   });
 
   test('project progress counts each work unit once', () {
@@ -69,9 +69,9 @@ void main() {
       checklistItems: const [],
     );
 
-    expect(snapshot.taskProgress['parent'], 50);
+    expect(snapshot.taskProgress['parent'], 100);
     expect(snapshot.taskProgress['child'], 100);
-    expect(snapshot.projectProgress['project'], 50);
+    expect(snapshot.projectProgress['project'], 100);
   });
 
   test('project progress does not overweight checklist item count', () {
@@ -91,24 +91,46 @@ void main() {
     expect(snapshot.taskProgress['parent'], 100);
     expect(snapshot.taskProgress['child'], 100);
     expect(snapshot.taskProgress['other'], 0);
-    expect(snapshot.projectProgress['project'], 67);
+    expect(snapshot.projectProgress['project'], 20);
   });
 
-  test('completed parent overrides descendant progress for project total', () {
+  test(
+    'completed parent does not override descendant progress for project total',
+    () {
+      final snapshot = TaskProgressCalculator.calculate(
+        tasks: [
+          _task('parent', status: 2),
+          _task('child', parentId: 'parent', status: 2),
+        ],
+        checklistItems: [
+          _item('child-item-1', 'child', status: 1),
+          _item('child-item-2', 'child'),
+        ],
+      );
+
+      expect(snapshot.taskProgress['parent'], 100);
+      expect(snapshot.taskProgress['child'], 100);
+      expect(snapshot.projectProgress['project'], 100);
+    },
+  );
+
+  test('project progress weights leaf tasks and checklist items directly', () {
     final snapshot = TaskProgressCalculator.calculate(
       tasks: [
-        _task('parent', status: 2),
-        _task('child', parentId: 'parent', status: 2),
+        _task('small-root'),
+        _task('small-leaf', parentId: 'small-root', status: 2),
+        _task('large-root'),
+        _task('large-leaf-a', parentId: 'large-root'),
+        _task('large-leaf-b', parentId: 'large-root'),
+        _task('large-leaf-c', parentId: 'large-root'),
       ],
       checklistItems: [
-        _item('child-item-1', 'child', status: 1),
-        _item('child-item-2', 'child'),
+        _item('large-item-a', 'large-root', status: 1),
+        _item('large-item-b', 'large-root'),
       ],
     );
 
-    expect(snapshot.taskProgress['parent'], 100);
-    expect(snapshot.taskProgress['child'], 100);
-    expect(snapshot.projectProgress['project'], 100);
+    expect(snapshot.projectProgress['project'], 25);
   });
 }
 

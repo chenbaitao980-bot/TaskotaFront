@@ -1,13 +1,14 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
-import '../data/database/app_database.dart' as db
+import '../data/database/app_database.dart'
+    as db
     show AppDatabase, TaskAttachment, TaskAttachmentsCompanion;
+import 'local_data_service.dart';
 
 /// 公开数据模型（仅展示层使用），内部保持 Drift TaskAttachment 行
 class TaskAttachment {
@@ -34,16 +35,18 @@ class TaskAttachment {
   /// 兼容旧调用：filePath = localPath（保留 getter）
   String? get filePath => localPath;
 
+  bool get isImage => TaskAttachmentService.isImageFile(fileName, mimeType);
+
   factory TaskAttachment.fromRow(db.TaskAttachment row) => TaskAttachment(
-        id: row.id,
-        taskId: row.taskId,
-        fileName: row.fileName,
-        localPath: row.localPath,
-        storagePath: row.storagePath,
-        sizeBytes: row.sizeBytes,
-        mimeType: row.mimeType,
-        addedAt: row.addedAt,
-      );
+    id: row.id,
+    taskId: row.taskId,
+    fileName: row.fileName,
+    localPath: row.localPath,
+    storagePath: row.storagePath,
+    sizeBytes: row.sizeBytes,
+    mimeType: row.mimeType,
+    addedAt: row.addedAt,
+  );
 }
 
 class TaskAttachmentService {
@@ -60,14 +63,19 @@ class TaskAttachmentService {
   }
 
   SupabaseClient get _supa => Supabase.instance.client;
-  String? get _userId => _supa.auth.currentUser?.id;
+  String? get _userId {
+    try {
+      return _supa.auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
 
   String? _basePath;
 
   Future<String> get _baseDir async {
     if (_basePath != null) return _basePath!;
-    final appDir = await getApplicationDocumentsDirectory();
-    _basePath = p.join(appDir.path, 'task_attachments');
+    _basePath = (await LocalDataService().attachmentsDirectory()).path;
     final dir = Directory(_basePath!);
     if (!dir.existsSync()) dir.createSync(recursive: true);
     return _basePath!;
@@ -89,8 +97,21 @@ class TaskAttachmentService {
     return result.files.first;
   }
 
+  Future<PlatformFile?> pickImageFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    return result.files.first;
+  }
+
   /// 保存：写本地 → 上传 Storage → 写 db → push 到云
-  Future<TaskAttachment> saveAttachment(String taskId, PlatformFile file) async {
+  Future<TaskAttachment> saveAttachment(
+    String taskId,
+    PlatformFile file,
+  ) async {
     if (_db == null) throw StateError('AttachmentService not bound to db');
     final userId = _userId;
     final id = _uuid.v4();
@@ -109,7 +130,9 @@ class TaskAttachmentService {
         : '_local/$taskId/${id}_${file.name}';
     if (userId != null && file.path != null) {
       try {
-        await _supa.storage.from(_bucket).upload(
+        await _supa.storage
+            .from(_bucket)
+            .upload(
               storagePath,
               File(file.path!),
               fileOptions: const FileOptions(upsert: true),
@@ -166,12 +189,94 @@ class TaskAttachmentService {
     );
   }
 
+  Future<TaskAttachment> saveImageBytes(
+    String taskId, {
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    if (_db == null) throw StateError('AttachmentService not bound to db');
+    final mimeType = _guessMime(fileName);
+    if (!isImageFile(fileName, mimeType)) {
+      throw ArgumentError('Only image files are supported');
+    }
+    final userId = _userId;
+    final id = _uuid.v4();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final safeFileName = p.basename(fileName);
+
+    final taskDir = await _taskDir(taskId);
+    final destPath = p.join(taskDir, '${id}_$safeFileName');
+    await File(destPath).writeAsBytes(bytes);
+
+    final storagePath = userId != null
+        ? '$userId/$taskId/${id}_$safeFileName'
+        : '_local/$taskId/${id}_$safeFileName';
+    if (userId != null) {
+      try {
+        await _supa.storage
+            .from(_bucket)
+            .upload(
+              storagePath,
+              File(destPath),
+              fileOptions: const FileOptions(upsert: true),
+            );
+        print('[Attach] uploaded $storagePath');
+      } catch (e) {
+        print('[Attach] upload failed $storagePath: $e');
+      }
+    }
+
+    final row = db.TaskAttachmentsCompanion(
+      id: Value(id),
+      taskId: Value(taskId),
+      fileName: Value(safeFileName),
+      localPath: Value(destPath),
+      storagePath: Value(storagePath),
+      sizeBytes: Value(bytes.length),
+      mimeType: Value(mimeType),
+      addedAt: Value(now),
+      updatedAt: Value(now),
+    );
+    await _db!.into(_db!.taskAttachments).insertOnConflictUpdate(row);
+
+    if (userId != null) {
+      try {
+        await _supa.from('task_attachments').upsert({
+          'id': id,
+          'user_id': userId,
+          'task_id': taskId,
+          'file_name': safeFileName,
+          'storage_path': storagePath,
+          'size_bytes': bytes.length,
+          'mime_type': mimeType,
+          'added_at': now,
+          'updated_at': now,
+        });
+        print('[Attach] pushed metadata $id');
+      } catch (e) {
+        print('[Attach] push metadata failed $id: $e');
+      }
+    }
+
+    return TaskAttachment(
+      id: id,
+      taskId: taskId,
+      fileName: safeFileName,
+      localPath: destPath,
+      storagePath: storagePath,
+      sizeBytes: bytes.length,
+      mimeType: mimeType,
+      addedAt: now,
+    );
+  }
+
   Future<List<TaskAttachment>> getAttachments(String taskId) async {
     if (_db == null) return [];
-    final rows = await (_db!.select(_db!.taskAttachments)
-          ..where((t) => t.taskId.equals(taskId))
-          ..orderBy([(t) => OrderingTerm(expression: t.addedAt)]))
-        .get();
+    final rows =
+        await (_db!.select(_db!.taskAttachments)
+              ..where((t) => t.taskId.equals(taskId))
+              ..orderBy([(t) => OrderingTerm(expression: t.addedAt)]))
+            .get();
     return rows.map(TaskAttachment.fromRow).toList();
   }
 
@@ -205,16 +310,20 @@ class TaskAttachmentService {
     // 兼容旧签名：传入 localPath 字符串
     String? attId;
     if (filePathOrId is String) {
-      final rows = await (_db!.select(_db!.taskAttachments)
-            ..where((t) => t.taskId.equals(taskId) &
-                (t.id.equals(filePathOrId) | t.localPath.equals(filePathOrId))))
-          .get();
+      final rows =
+          await (_db!.select(_db!.taskAttachments)..where(
+                (t) =>
+                    t.taskId.equals(taskId) &
+                    (t.id.equals(filePathOrId) |
+                        t.localPath.equals(filePathOrId)),
+              ))
+              .get();
       attId = rows.isNotEmpty ? rows.first.id : null;
     }
     if (attId == null) return;
-    final row = await (_db!.select(_db!.taskAttachments)
-          ..where((t) => t.id.equals(attId!)))
-        .getSingleOrNull();
+    final row = await (_db!.select(
+      _db!.taskAttachments,
+    )..where((t) => t.id.equals(attId!))).getSingleOrNull();
     if (row == null) return;
 
     // 1) 本地文件
@@ -223,7 +332,9 @@ class TaskAttachmentService {
       if (f.existsSync()) f.deleteSync();
     }
     // 2) 本地 db
-    await (_db!.delete(_db!.taskAttachments)..where((t) => t.id.equals(attId!))).go();
+    await (_db!.delete(
+      _db!.taskAttachments,
+    )..where((t) => t.id.equals(attId!))).go();
     // 3) Storage
     if (_userId != null) {
       try {
@@ -252,18 +363,39 @@ class TaskAttachmentService {
   String _guessMime(String name) {
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     switch (ext) {
-      case 'pdf': return 'application/pdf';
-      case 'png': return 'image/png';
-      case 'jpg': case 'jpeg': return 'image/jpeg';
-      case 'gif': return 'image/gif';
-      case 'md': return 'text/markdown';
-      case 'txt': return 'text/plain';
-      case 'json': return 'application/json';
-      case 'zip': return 'application/zip';
-      case 'doc': case 'docx': return 'application/msword';
-      case 'xls': case 'xlsx': return 'application/vnd.ms-excel';
-      default: return 'application/octet-stream';
+      case 'pdf':
+        return 'application/pdf';
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'md':
+        return 'text/markdown';
+      case 'txt':
+        return 'text/plain';
+      case 'json':
+        return 'application/json';
+      case 'zip':
+        return 'application/zip';
+      case 'doc':
+      case 'docx':
+        return 'application/msword';
+      case 'xls':
+      case 'xlsx':
+        return 'application/vnd.ms-excel';
+      default:
+        return 'application/octet-stream';
     }
   }
-}
 
+  static bool isImageFile(String name, String? mimeType) {
+    if (mimeType != null && mimeType.startsWith('image/')) return true;
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    return const {'png', 'jpg', 'jpeg', 'gif', 'webp'}.contains(ext);
+  }
+}

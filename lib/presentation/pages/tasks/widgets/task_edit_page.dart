@@ -4,18 +4,24 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/project_repository.dart';
+import '../../../../data/repositories/task_repository.dart';
+import '../../../../services/task_conflict_service.dart';
+import '../../../../services/subtask_scheduler.dart';
 import '../../../widgets/calendar_date_picker.dart';
+import '../../../widgets/task_conflict_dialog.dart';
 import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class TaskEditPage extends StatefulWidget {
   final Task task;
   final ProjectRepository projectRepository;
+  final TaskRepository? taskRepository;
   final ValueChanged<Map<String, dynamic>>? onAutoSave;
 
   const TaskEditPage({
     super.key,
     required this.task,
     required this.projectRepository,
+    this.taskRepository,
     this.onAutoSave,
   });
 
@@ -36,6 +42,7 @@ class _TaskEditPageState extends State<TaskEditPage> {
   bool _allowPop = false;
   bool _isClosing = false;
   Timer? _autoSaveTimer;
+  List<ScheduledTaskShift> _shiftedTasks = const [];
 
   @override
   void initState() {
@@ -215,14 +222,84 @@ class _TaskEditPageState extends State<TaskEditPage> {
     );
     if (picked == null) return;
     if (!mounted) return;
-    setState(() {
-      if (isStart) {
-        _startDate = picked;
-      } else {
-        _dueDate = picked;
-      }
-    });
+
+    final candidateStart = isStart ? picked : _startDate;
+    final candidateEnd = isStart ? _dueDate : picked;
+
+    if (candidateStart != null &&
+        candidateEnd != null &&
+        candidateEnd.isAfter(candidateStart) &&
+        widget.taskRepository != null &&
+        !TaskConflictService.isRangeMultiDay(candidateStart, candidateEnd)) {
+      final resolved = await _resolveConflict(candidateStart, candidateEnd);
+      if (resolved == null) return; // cancelled
+      setState(() {
+        _startDate = resolved.start;
+        _dueDate = resolved.end;
+        _shiftedTasks = resolved.shiftedTasks;
+      });
+    } else {
+      setState(() {
+        if (isStart) {
+          _startDate = picked;
+        } else {
+          _dueDate = picked;
+        }
+      });
+    }
     _markChanged();
+  }
+
+  Future<_ResolvedTime?> _resolveConflict(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final svc = TaskConflictService(taskRepository: widget.taskRepository!);
+    final conflict = await svc.checkConflict(
+      start,
+      end,
+      excludeTaskId: widget.task.id,
+    );
+    if (conflict == null) {
+      return _ResolvedTime(start: start, end: end);
+    }
+    if (!mounted) return null;
+    final choice = await showTaskConflictDialog(
+      context,
+      conflict: conflict,
+      newStart: start,
+      newEnd: end,
+    );
+    if (!mounted) return null;
+    switch (choice) {
+      case ConflictChoice.cancel:
+      case null:
+        return null;
+      case ConflictChoice.parallel:
+        return _ResolvedTime(start: start, end: end);
+      case ConflictChoice.autoDelay:
+        final delayed = await svc.calcDelayedSlot(
+          start,
+          end,
+          conflict.conflictEnd,
+          excludeTaskId: widget.task.id,
+        );
+        if (delayed != null) {
+          return _ResolvedTime(start: delayed.start, end: delayed.end);
+        }
+        return _ResolvedTime(start: start, end: end);
+      case ConflictChoice.autoInsert:
+        final shifts = await svc.calcInsertedShifts(
+          start,
+          end,
+          excludeTaskId: widget.task.id,
+        );
+        return _ResolvedTime(
+          start: start,
+          end: end,
+          shiftedTasks: shifts,
+        );
+    }
   }
 
   Future<void> _closePage() async {
@@ -283,8 +360,20 @@ class _TaskEditPageState extends State<TaskEditPage> {
       'priority': _priority,
       'startDate': _startDate!.millisecondsSinceEpoch,
       'dueDate': _dueDate!.millisecondsSinceEpoch,
+      'shiftedTasks': _shiftedTasks,
     };
   }
+}
+
+class _ResolvedTime {
+  final DateTime start;
+  final DateTime end;
+  final List<ScheduledTaskShift> shiftedTasks;
+  const _ResolvedTime({
+    required this.start,
+    required this.end,
+    this.shiftedTasks = const [],
+  });
 }
 
 class _DateField extends StatelessWidget {

@@ -1,3 +1,6 @@
+# Hookify local rules
+.claude/*.local.md
+
 # Miscellaneous
 *.class
 *.log

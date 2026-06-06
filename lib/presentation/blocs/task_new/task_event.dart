@@ -1,4 +1,6 @@
 import 'package:equatable/equatable.dart';
+import 'package:file_picker/file_picker.dart';
+import '../../../models/node_template_payload.dart';
 import '../../../services/subtask_scheduler.dart';
 
 // --- 项目事件 ---
@@ -8,9 +10,15 @@ class CreateProject extends TaskEvent {
   final String name;
   final String color;
   final String? groupId;
-  CreateProject({required this.name, this.color = '#4772FA', this.groupId});
+  final bool isTemplate;
+  CreateProject({
+    required this.name,
+    this.color = '#4772FA',
+    this.groupId,
+    this.isTemplate = false,
+  });
   @override
-  List<Object?> get props => [name, color, groupId];
+  List<Object?> get props => [name, color, groupId, isTemplate];
 }
 
 class UpdateProject extends TaskEvent {
@@ -67,7 +75,9 @@ class DeleteProject extends TaskEvent {
 class LoadTasks extends TaskEvent {
   final String? projectId;
   final Set<String> projectIds;
+  final bool hasProjectSelectionOverride;
   final String? filter; // 'all', 'today', 'important'
+  final String? statusFilter; // 'all', 'pending', 'completed'
   final int?
   dateFrom; // millisecondsSinceEpoch, filter tasks overlapping [dateFrom, dateTo]
   final int? dateTo;
@@ -78,17 +88,21 @@ class LoadTasks extends TaskEvent {
     this.projectId,
     Set<String>? projectIds,
     this.filter,
+    this.statusFilter,
     this.dateFrom,
     this.dateTo,
     this.clearDateRange = false,
     this.focusTaskId,
     this.focusRequestToken,
-  }) : projectIds = projectIds ?? (projectId == null ? const {} : {projectId});
+  }) : projectIds = projectIds ?? (projectId == null ? const {} : {projectId}),
+       hasProjectSelectionOverride = projectIds != null || projectId != null;
   @override
   List<Object?> get props => [
     projectId,
     projectIds,
+    hasProjectSelectionOverride,
     filter,
+    statusFilter,
     dateFrom,
     dateTo,
     clearDateRange,
@@ -106,6 +120,10 @@ class CreateTask extends TaskEvent {
   final int? dueDate;
   final String? parentId;
   final List<ScheduledTaskShift> shiftedTasks;
+  final List<PlatformFile> pendingImages;
+  final NodeTemplatePayload templatePayload;
+  final int remindBeforeMinutes;
+  final int reminderEnabled;
   CreateTask({
     required this.projectId,
     required this.title,
@@ -115,6 +133,10 @@ class CreateTask extends TaskEvent {
     this.dueDate,
     this.parentId,
     this.shiftedTasks = const [],
+    this.pendingImages = const [],
+    this.templatePayload = NodeTemplatePayload.empty,
+    this.remindBeforeMinutes = 15,
+    this.reminderEnabled = 1,
   });
   @override
   List<Object?> get props => [
@@ -126,6 +148,10 @@ class CreateTask extends TaskEvent {
     dueDate,
     parentId,
     shiftedTasks,
+    pendingImages,
+    templatePayload,
+    remindBeforeMinutes,
+    reminderEnabled,
   ];
 }
 
@@ -139,6 +165,7 @@ class UpdateTask extends TaskEvent {
   final int? dueDate;
   final int? remindBeforeMinutes;
   final int? reminderEnabled;
+  final List<ScheduledTaskShift> shiftedTasks;
   UpdateTask({
     required this.id,
     this.projectId,
@@ -149,6 +176,7 @@ class UpdateTask extends TaskEvent {
     this.dueDate,
     this.remindBeforeMinutes,
     this.reminderEnabled,
+    this.shiftedTasks = const [],
   });
   @override
   List<Object?> get props => [
@@ -161,6 +189,7 @@ class UpdateTask extends TaskEvent {
     dueDate,
     remindBeforeMinutes,
     reminderEnabled,
+    shiftedTasks,
   ];
 }
 
@@ -173,9 +202,10 @@ class DeleteTask extends TaskEvent {
 
 class ToggleTaskStatus extends TaskEvent {
   final String id;
-  ToggleTaskStatus({required this.id});
+  final bool cascadeChildren;
+  ToggleTaskStatus({required this.id, this.cascadeChildren = false});
   @override
-  List<Object> get props => [id];
+  List<Object> get props => [id, cascadeChildren];
 }
 
 // --- 检查项事件 ---
@@ -216,6 +246,14 @@ class DeleteChecklistItem extends TaskEvent {
   DeleteChecklistItem({required this.id, required this.taskId});
   @override
   List<Object> get props => [id];
+}
+
+class ReorderChecklistItems extends TaskEvent {
+  final String taskId;
+  final List<String> orderedIds;
+  ReorderChecklistItems({required this.taskId, required this.orderedIds});
+  @override
+  List<Object> get props => [taskId, orderedIds];
 }
 
 class SetChecklistItemObsidianUri extends TaskEvent {
@@ -322,6 +360,33 @@ class ToggleViewMode extends TaskEvent {}
 
 /// 从云端拉取任务并合并到本地
 class SyncFromCloud extends TaskEvent {}
+
+class MergeSubTasksToChecklist extends TaskEvent {
+  final String taskId;
+  MergeSubTasksToChecklist({required this.taskId});
+  @override
+  List<Object> get props => [taskId];
+}
+
+class ApplyTemplate extends TaskEvent {
+  final String templateProjectId;
+  final String targetProjectId;
+  final int startTimeMillis;
+  final String? parentId;
+  ApplyTemplate({
+    required this.templateProjectId,
+    required this.targetProjectId,
+    required this.startTimeMillis,
+    this.parentId,
+  });
+  @override
+  List<Object?> get props => [
+    templateProjectId,
+    targetProjectId,
+    startTimeMillis,
+    parentId,
+  ];
+}
 
 class TaskEvent extends Equatable {
   @override

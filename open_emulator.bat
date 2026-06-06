@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ============================================
-echo  Smart Assistant - Build and Run on Emulator
+echo  Taskora - Build and Run on Emulator
 echo ============================================
 echo.
 

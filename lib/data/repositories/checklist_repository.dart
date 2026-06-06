@@ -123,6 +123,21 @@ class ChecklistRepository {
     await _push(id);
   }
 
+  Future<void> reorderItems(String taskId, List<String> orderedIds) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (var i = 0; i < orderedIds.length; i++) {
+      await (_db.update(_db.checklistItems)
+            ..where((c) => c.id.equals(orderedIds[i])))
+          .write(ChecklistItemsCompanion(
+            sortOrder: Value(i),
+            updatedAt: Value(now),
+          ));
+    }
+    for (final id in orderedIds) {
+      await _push(id);
+    }
+  }
+
   Future<int> getCompletedCount(String taskId) async {
     final result = await (_db.select(
       _db.checklistItems,

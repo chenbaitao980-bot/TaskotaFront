@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/database/app_database.dart';
+import '../../../models/node_template_payload.dart';
 import '../../../models/entities/task_breakdown.dart';
 import '../../../services/local_storage_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
+import '../../blocs/task_new/task_bloc.dart';
 import '../../widgets/calendar_date_picker.dart';
 import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
@@ -37,10 +40,15 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   late String _priority;
   late bool _focusRequired;
   late bool _isParent;
+  bool _durationModeIsHours = true; // true=小时, false=天
+  double _durationValue = 1.0; // 小时模式默认1h
   String? _parentTaskId;
   String? _parentTaskName;
   bool _isEditing = false;
   final LocalStorageService _storage = LocalStorageService();
+  Future<List<NodeTemplate>>? _templatesFuture;
+  NodeTemplatePayload _selectedTemplatePayload = NodeTemplatePayload.empty;
+  String? _selectedTemplateId;
 
   @override
   void initState() {
@@ -63,6 +71,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       _focusRequired = false;
       _isParent = false;
     }
+    _syncDurationFromDates();
     // 初始化父任务信息
     if (_isEditing && widget.existingTask!.parentTaskId != null) {
       _parentTaskId = widget.existingTask!.parentTaskId;
@@ -71,9 +80,21 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
     _storage.init().then((_) {
       if (_parentTaskId != null) {
-        final p = _storage.getTasks().where((t) => t.id == _parentTaskId).firstOrNull;
+        final p = _storage
+            .getTasks()
+            .where((t) => t.id == _parentTaskId)
+            .firstOrNull;
         if (mounted) setState(() => _parentTaskName = p?.title);
       }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isEditing) return;
+      setState(() {
+        _templatesFuture = context
+            .read<TaskNewBloc>()
+            .nodeTemplateRepository
+            .getAll();
+      });
     });
   }
 
@@ -100,7 +121,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   itemBuilder: (context, index) {
                     final t = allTasks[index];
                     return ListTile(
-                      title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      title: Text(
+                        t.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       subtitle: Text(t.status == 'completed' ? '已完成' : '待办'),
                       selected: t.id == _parentTaskId,
                       onTap: () => Navigator.pop(context, t),
@@ -157,6 +182,30 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     return start.add(const Duration(hours: 1));
   }
 
+  void _syncDurationFromDates() {
+    final diff = _endDateTime.difference(_startDateTime);
+    final totalHours = diff.inMinutes / 60.0;
+    if (_durationModeIsHours) {
+      _durationValue = (totalHours).clamp(0.5, 12.0);
+      _durationValue = (_durationValue * 2).roundToDouble() / 2;
+    } else {
+      final days = (totalHours / 24.0).clamp(1.0, 15.0);
+      _durationValue = days.roundToDouble();
+    }
+  }
+
+  void _applyDurationToEnd() {
+    if (_durationModeIsHours) {
+      _endDateTime = _startDateTime.add(
+        Duration(minutes: (_durationValue * 60).round()),
+      );
+    } else {
+      _endDateTime = _startDateTime.add(
+        Duration(days: _durationValue.round()),
+      );
+    }
+  }
+
   Future<void> _pickDateTime(bool isStart) async {
     final picked = await showCalendarDatePicker(
       context: context,
@@ -168,13 +217,92 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       setState(() {
         if (isStart) {
           _startDateTime = picked;
-          if (_endDateTime.isBefore(_startDateTime)) {
-            _endDateTime = _startDateTime.add(const Duration(hours: 1));
-          }
+          _applyDurationToEnd();
         } else {
           _endDateTime = picked;
+          _syncDurationFromDates();
         }
       });
+    }
+  }
+
+  Widget _buildTemplatePicker() {
+    final future = _templatesFuture;
+    if (future == null) return const SizedBox.shrink();
+    return FutureBuilder<List<NodeTemplate>>(
+      future: future,
+      builder: (context, snapshot) {
+        final templates = snapshot.data ?? const <NodeTemplate>[];
+        if (templates.isEmpty) return const SizedBox.shrink();
+        return DropdownButtonFormField<String?>(
+          value: _selectedTemplateId,
+          decoration: const InputDecoration(
+            labelText: '复用模板',
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            const DropdownMenuItem<String?>(value: null, child: Text('不使用模板')),
+            ...templates.map(
+              (template) => DropdownMenuItem<String?>(
+                value: template.id,
+                child: Text(template.name),
+              ),
+            ),
+          ],
+          onChanged: (value) {
+            final template = templates
+                .where((item) => item.id == value)
+                .firstOrNull;
+            setState(() {
+              _selectedTemplateId = value;
+              _selectedTemplatePayload = template == null
+                  ? NodeTemplatePayload.empty
+                  : context
+                        .read<TaskNewBloc>()
+                        .nodeTemplateRepository
+                        .payloadOf(template);
+              if (template != null) {
+                _titleController.text = template.title;
+                _descriptionController.text = template.description;
+                _priority = _priorityFromInt(template.priority);
+              }
+            });
+          },
+        );
+      },
+    );
+  }
+
+  String _priorityFromInt(int priority) {
+    if (priority >= 5) return 'P0';
+    if (priority >= 3) return 'P1';
+    if (priority >= 1) return 'P2';
+    return 'P3';
+  }
+
+  Future<void> _createTemplateLocalSubtasks(String parentId) async {
+    for (final subtask in _selectedTemplatePayload.subtasks) {
+      await _createTemplateLocalSubtask(subtask, parentId);
+    }
+  }
+
+  Future<void> _createTemplateLocalSubtask(
+    NodeTemplateSubtask template,
+    String parentId,
+  ) async {
+    final created = await _storage.createTask(
+      userId: _getUserId(),
+      title: template.title,
+      description: template.description.isEmpty ? null : template.description,
+      level: 'subtask',
+      startDate: null,
+      endDate: null,
+      priority: 'P2',
+      parentTaskId: parentId,
+      parentScheduleId: widget.parentScheduleId,
+    );
+    for (final child in template.children) {
+      await _createTemplateLocalSubtask(child, created.id);
     }
   }
 
@@ -236,7 +364,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       );
       await _storage.updateTask(updated);
     } else {
-      await _storage.createTask(
+      final created = await _storage.createTask(
         userId: _getUserId(),
         title: title,
         description: _descriptionController.text.trim().isEmpty
@@ -253,6 +381,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         parentTaskId: _parentTaskId,
         parentScheduleId: widget.parentScheduleId,
       );
+      await _createTemplateLocalSubtasks(created.id);
     }
 
     if (mounted) Navigator.pop(context, true);
@@ -307,6 +436,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
             ),
             const SizedBox(height: 16),
+            if (!_isEditing) _buildTemplatePicker(),
+            if (!_isEditing) const SizedBox(height: 16),
 
             // Parent Task
             Text('所属父任务', style: Theme.of(context).textTheme.titleLarge),
@@ -348,10 +479,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                             _parentTaskName = null;
                           });
                         },
-                        child: Icon(Icons.close, size: 18, color: AppTheme.textHint),
+                        child: Icon(
+                          Icons.close,
+                          size: 18,
+                          color: AppTheme.textHint,
+                        ),
                       ),
                     const SizedBox(width: 4),
-                    Icon(Icons.chevron_right, size: 20, color: AppTheme.textHint),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: AppTheme.textHint,
+                    ),
                   ],
                 ),
                 onTap: _selectParentTask,
@@ -379,6 +518,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                     _startDateTime,
                     () => _pickDateTime(true),
                   ),
+                  Divider(
+                    height: 0.5,
+                    indent: 52,
+                    color: AppTheme.borderSubtle,
+                  ),
+                  _buildDurationSlider(),
                   Divider(
                     height: 0.5,
                     indent: 52,
@@ -468,6 +613,105 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
+  Widget _buildDurationSlider() {
+    final min = _durationModeIsHours ? 0.5 : 1.0;
+    final max = _durationModeIsHours ? 12.0 : 15.0;
+    final divisions = _durationModeIsHours ? 23 : 14;
+    final label = _durationModeIsHours
+        ? (_durationValue % 1 == 0
+            ? '${_durationValue.toInt()} 小时'
+            : '${_durationValue} 小时')
+        : '${_durationValue.toInt()} 天';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const SizedBox(width: 4),
+              _durationModeChip('小时', true),
+              const SizedBox(width: 8),
+              _durationModeChip('天', false),
+              const Spacer(),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
+          ),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: AppTheme.primaryColor,
+              inactiveTrackColor: AppTheme.primaryColor.withValues(alpha: 0.15),
+              thumbColor: AppTheme.primaryColor,
+              overlayColor: AppTheme.primaryColor.withValues(alpha: 0.12),
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            ),
+            child: Slider(
+              value: _durationValue,
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: (v) {
+                setState(() {
+                  _durationValue = v;
+                  _applyDurationToEnd();
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _durationModeChip(String text, bool isHours) {
+    final selected = _durationModeIsHours == isHours;
+    return GestureDetector(
+      onTap: () {
+        if (selected) return;
+        setState(() {
+          final oldHours = _durationModeIsHours
+              ? _durationValue
+              : _durationValue * 24;
+          _durationModeIsHours = isHours;
+          if (_durationModeIsHours) {
+            _durationValue = oldHours.clamp(0.5, 12.0);
+            _durationValue = (_durationValue * 2).roundToDouble() / 2;
+          } else {
+            _durationValue = (oldHours / 24.0).clamp(1.0, 15.0);
+            _durationValue = _durationValue.roundToDouble();
+          }
+          _applyDurationToEnd();
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primaryColor
+              : AppTheme.bgInput,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: selected ? Colors.white : AppTheme.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _dateTimeTile(
     IconData icon,
     String label,
@@ -484,11 +728,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         _dateTimeLabel(dateTime),
         style: TextStyle(color: AppTheme.textSecondary),
       ),
-      trailing: Icon(
-        Icons.chevron_right,
-        size: 20,
-        color: AppTheme.textHint,
-      ),
+      trailing: Icon(Icons.chevron_right, size: 20, color: AppTheme.textHint),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
     );
@@ -498,9 +738,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     final weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     final wd = weekdays[dt.weekday - 1];
     final now = DateTime.now();
-    final isToday = dt.year == now.year &&
-        dt.month == now.month &&
-        dt.day == now.day;
+    final isToday =
+        dt.year == now.year && dt.month == now.month && dt.day == now.day;
     return '${dt.month}月${dt.day}日 $wd${isToday ? '（今天）' : ''}  '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }

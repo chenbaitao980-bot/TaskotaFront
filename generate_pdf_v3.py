@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""智能小管家 精美产品功能宣传册 v3"""
+"""Taskora 精美产品功能宣传册 v3"""
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import A4
@@ -138,10 +138,10 @@ class CoverPage(Flowable):
         # 主标题
         c.setFillColor(white)
         c.setFont('HEI', 40)
-        c.drawString(MARGIN + 52, h*0.74, '智能小管家')
+        c.drawString(MARGIN + 52, h*0.74, 'Taskora')
         c.setFont('Helvetica-Bold', 13)
         c.setFillColorRGB(1,1,1,0.7)
-        c.drawString(MARGIN + 52, h*0.685, 'Smart Assistant')
+        c.drawString(MARGIN + 52, h*0.685, 'AI-Powered Task Manager')
 
         # 标语
         c.setFillColor(white)
@@ -496,7 +496,7 @@ def on_page(canvas, doc):
     # 品牌名
     canvas.setFont('HEI', 8)
     canvas.setFillColor(C_GRAY)
-    canvas.drawString(MARGIN, H - 10*mm, '智能小管家')
+    canvas.drawString(MARGIN, H - 10*mm, 'Taskora')
     # 页码
     canvas.drawRightString(W - MARGIN, H - 10*mm, f'{doc.page}')
     # 底部
@@ -552,7 +552,7 @@ def build():
 
     # 解决方案横幅
     sol = Table([[
-        Paragraph('智能小管家', ps('sp', font='HEI', size=15, color=C_ORANGE, align=TA_CENTER)),
+        Paragraph('Taskora', ps('sp', font='HEI', size=15, color=C_ORANGE, align=TA_CENTER)),
         Paragraph('一款让 AI 帮你管理一切的效率工具\n任务拆解 · 日历规划 · 思维导图 · 多端同步',
                   ps('sd', size=10, color=C_DEEP, leading=18)),
     ]], colWidths=[38*mm, USABLE - 40*mm])
@@ -789,7 +789,7 @@ def build():
     story.append(HRFlowable(width=USABLE, thickness=0.5, color=C_BORDER))
     story.append(Spacer(1, 3*mm))
     story.append(Paragraph(
-        '© 2026 智能小管家团队  ·  保留所有权利  ·  本手册仅供产品宣发使用',
+        '© 2026 Taskora 团队  ·  保留所有权利  ·  本手册仅供产品宣发使用',
         ps('copy', font='KAI', size=8, color=C_GRAY, align=TA_CENTER)
     ))
 
@@ -799,14 +799,14 @@ def build():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 主入口
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OUTPUT = 'E:/claude/project2/smart_assistant/智能小管家_产品手册_v3.pdf'
+OUTPUT = 'E:/claude/project2/smart_assistant/Taskora_产品手册_v3.pdf'
 
 doc = SimpleDocTemplate(
     OUTPUT, pagesize=A4,
     leftMargin=MARGIN, rightMargin=MARGIN,
     topMargin=16*mm, bottomMargin=18*mm,
-    title='智能小管家 产品功能手册',
-    author='Smart Assistant Team',
+    title='Taskora 产品功能手册',
+    author='Taskora Team',
 )
 doc.build(build(), onFirstPage=on_first_page, onLaterPages=on_page)
 print('完成:', OUTPUT)

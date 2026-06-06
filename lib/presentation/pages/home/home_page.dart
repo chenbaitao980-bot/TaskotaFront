@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
@@ -16,13 +20,20 @@ import '../../../services/permission_service.dart';
 import '../../../services/attachment_sync_service.dart';
 import '../../../services/checklist_sync_service.dart';
 import '../../../services/project_sync_service.dart';
+import '../../../services/task_attachment_service.dart';
 import '../../../services/task_sync_service.dart';
+import '../../../services/node_template_sync_service.dart';
+import '../../../services/subscription_service.dart';
+import '../../widgets/battery_optimization_guide.dart';
+import '../../../services/supabase_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/schedule/schedule_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
 import '../../blocs/task_new/task_state.dart';
+import '../../widgets/upgrade_dialog.dart';
 import '../../widgets/calendar_date_picker.dart';
+import '../../widgets/project_picker_content.dart';
 import '../../widgets/create_schedule_dialog.dart';
 import '../calendar/calendar_page.dart';
 import '../profile/profile_page.dart';
@@ -35,12 +46,14 @@ import '../tasks/tasks_page.dart';
 import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class HomePage extends StatefulWidget {
+  final AppDatabase? database;
   final ProjectRepository? projectRepository;
   final TaskRepository? taskRepository;
   final ChecklistRepository? checklistRepository;
 
   const HomePage({
     super.key,
+    this.database,
     this.projectRepository,
     this.taskRepository,
     this.checklistRepository,
@@ -57,8 +70,11 @@ class _HomePageState extends State<HomePage> {
   StreamSubscription<sb.AuthState>? _authSub;
   StreamSubscription<void>? _projectChangesSub;
   StreamSubscription<void>? _taskChangesSub;
+  StreamSubscription<void>? _nodeTemplateChangesSub;
   Timer? _projectChangesDebounce;
   bool _projectSyncStarted = false;
+  DateTime? _lastRescheduleTime;
+  AppLifecycleListener? _lifecycleListener;
 
   @override
   void initState() {
@@ -67,6 +83,23 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PermissionService.showNotificationGuideIfNeeded(context);
     });
+    // 每次 App 回到前台时触发全量对账（打开就刷新）
+    _lifecycleListener = AppLifecycleListener(
+      onResume: _onAppResume,
+    );
+  }
+
+  void _onAppResume() {
+    final client = sb.Supabase.instance.client;
+    if (client.auth.currentUser == null) return;
+    // 回到前台后纯拉取云端数据，不推送本地（推送在首次登录和修改时已做）
+    Future.microtask(() async {
+      await ProjectSyncService.instance.forcePullAll();
+      await TaskSyncService.instance.syncAll();
+      if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+      // 重新调度所有提醒（国产ROM杀进程后AlarmManager可能被清除）
+      await _rescheduleTaskReminders();
+    });
   }
 
   @override
@@ -74,7 +107,9 @@ class _HomePageState extends State<HomePage> {
     _authSub?.cancel();
     _projectChangesSub?.cancel();
     _taskChangesSub?.cancel();
+    _nodeTemplateChangesSub?.cancel();
     _projectChangesDebounce?.cancel();
+    _lifecycleListener?.dispose();
     super.dispose();
   }
 
@@ -85,6 +120,7 @@ class _HomePageState extends State<HomePage> {
         projectRepository: widget.projectRepository,
         taskRepository: widget.taskRepository,
         checklistRepository: widget.checklistRepository,
+        isVisible: _currentIndex == 0,
         onCreateSchedule: _createSchedule,
         onRefresh: _loadStats,
         onOpenTaskStatus: _openTaskStatus,
@@ -94,6 +130,7 @@ class _HomePageState extends State<HomePage> {
       const TasksPage(),
       CalendarPage(onJumpToMindMap: _jumpToMindMap),
       ProfilePage(
+        database: widget.database,
         taskRepository: widget.taskRepository,
         projectRepository: widget.projectRepository,
       ),
@@ -107,30 +144,62 @@ class _HomePageState extends State<HomePage> {
     // 所有业务数据同步统一在登录后启动（见 _setupProjectSyncOnAuth）
     _setupProjectSyncOnAuth();
     _loadStats();
-    if (mounted) setState(() {});
+    await NotificationService().requestMobilePermissions();
+    await _rescheduleTaskReminders();
+    if (mounted) {
+      setState(() {});
+      BatteryOptimizationGuide.showGuideIfNeeded(context);
+    }
+  }
+
+  Future<void> _rescheduleTaskReminders() async {
+    final now = DateTime.now();
+    if (_lastRescheduleTime != null &&
+        now.difference(_lastRescheduleTime!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastRescheduleTime = now;
+    final notificationService = NotificationService();
+    await notificationService.rescheduleScheduleReminders(
+      _storage.getSchedules(),
+    );
+    await notificationService.rescheduleBreakdownTaskReminders(
+      _storage.getTasks(),
+    );
+
+    final taskRepository = widget.taskRepository;
+    if (taskRepository == null) return;
+    final tasks = await taskRepository.getAll();
+    await notificationService.rescheduleTaskReminders(tasks);
   }
 
   /// 监听 Supabase 登录状态：登录后才启动项目/分组同步
   void _setupProjectSyncOnAuth() {
     final client = sb.Supabase.instance.client;
     // 全量对账（projects/tasks/checklist/attachments），完成后刷新 UI
-    Future<void> runSyncAll() async {
-      await ProjectSyncService.instance.syncAll();
+    Future<void> runSyncAll({bool forcePush = false}) async {
+      await ProjectSyncService.instance.syncAll(forcePush: forcePush);
       await TaskSyncService.instance.syncAll();
       await ChecklistSyncService.instance.syncAll();
+      await NodeTemplateSyncService.instance.syncAll();
       await AttachmentSyncService.instance.pullAll();
       if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+      await _rescheduleTaskReminders();
     }
 
     void startIfReady() {
       if (client.auth.currentUser == null) return;
+      final isFirstSync = !_projectSyncStarted;
       if (!_projectSyncStarted) {
         _projectSyncStarted = true;
         print('[Sync] 检测到登录用户 ${client.auth.currentUser?.id}，启动同步');
         ProjectSyncService.instance.subscribe();
         TaskSyncService.instance.subscribe();
         ChecklistSyncService.instance.subscribe();
+        NodeTemplateSyncService.instance.subscribe();
         AttachmentSyncService.instance.subscribe();
+        SubscriptionService.instance.refresh();
+        SubscriptionService.instance.startRealtime();
         // 远端变更（Realtime/拉取）后 debounce 触发 LoadTasks，让 sidebar 实时刷新
         _projectChangesSub ??= ProjectSyncService.instance.changes.listen((_) {
           _projectChangesDebounce?.cancel();
@@ -150,9 +219,14 @@ class _HomePageState extends State<HomePage> {
             },
           );
         });
+        _nodeTemplateChangesSub ??= NodeTemplateSyncService.instance.changes
+            .listen((_) {
+              if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+            });
       }
-      // 每次登录/会话恢复都跑一次全量对账
-      runSyncAll();
+      // 桌面端每次登录都 forcePush（本地数据权威），移动端首次登录 forcePush
+      final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+      runSyncAll(forcePush: isFirstSync || isDesktop);
     }
 
     startIfReady();
@@ -184,8 +258,10 @@ class _HomePageState extends State<HomePage> {
   // Schedule CRUD
 
   Future<void> _createSchedule() async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => const CreateScheduleDialog(),
     );
 
@@ -251,8 +327,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _editSchedule(dynamic schedule) async {
-    final result = await showDialog<Object?>(
+    final result = await showModalBottomSheet<Object?>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => CreateScheduleDialog(
         initialTitle: schedule.title as String,
         initialDate: schedule.startTime as DateTime,
@@ -301,7 +379,7 @@ class _HomePageState extends State<HomePage> {
           repeatInterval: updated.repeatInterval,
         );
       } else {
-        await NotificationService().cancelNotification(updated.id.hashCode);
+        await NotificationService().cancelReminderForSchedule(updated.id);
       }
       // 同步更新到 Supabase 云端
       try {
@@ -422,16 +500,10 @@ class _HomePageState extends State<HomePage> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
+            if (_currentIndex == index) return;
             setState(() {
               _currentIndex = index;
             });
-            if (index == 1 || index == 2) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted && context.mounted) {
-                  context.read<TaskNewBloc>().add(LoadTasks());
-                }
-              });
-            }
           },
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -514,6 +586,7 @@ class _HomeContent extends StatefulWidget {
   final ProjectRepository? projectRepository;
   final TaskRepository? taskRepository;
   final ChecklistRepository? checklistRepository;
+  final bool isVisible;
   final VoidCallback onCreateSchedule;
   final VoidCallback onRefresh;
   final void Function(String status, String title) onOpenTaskStatus;
@@ -525,6 +598,7 @@ class _HomeContent extends StatefulWidget {
     this.projectRepository,
     this.taskRepository,
     this.checklistRepository,
+    this.isVisible = true,
     required this.onCreateSchedule,
     required this.onRefresh,
     required this.onOpenTaskStatus,
@@ -538,7 +612,9 @@ class _HomeContent extends StatefulWidget {
 
 class _HomeContentState extends State<_HomeContent> {
   static const double _dayWidth = 72.0;
-  static const double _hourWidth = 120.0;
+  double _hourWidth = 120.0;
+  static const double _hourWidthMin = 60.0;
+  static const double _hourWidthMax = 300.0;
   static const int _daysBefore = 180;
   static const int _daysAfter = 180;
 
@@ -546,6 +622,9 @@ class _HomeContentState extends State<_HomeContent> {
   bool _modeSwitchGuard = false;
   // 节点类型多选过滤：'parent' | 'child' | 'multiday'，空集合 = 全部显示
   Set<String> _nodeTypeFilters = {};
+  String _completionFilter = 'all';
+  bool _homeFilterStateRestored = false;
+  int _attachmentRefreshToken = 0;
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
   String _statsPeriod = 'day'; // 完成率统计周期: 'day'|'week'|'month'|'year'
@@ -559,8 +638,8 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   Timer? _timelineScrollDebounce;
-  double _viewportWidth = 0;
-
+  Timer? _hourWidthSyncDebounce;
+  double? _scaleStartHourWidth;
   // Combined timeline data
   List<_TimelineTask> _timelineTasks = [];
   List<_TimelineTask> _filteredTasks = [];
@@ -568,8 +647,18 @@ class _HomeContentState extends State<_HomeContent> {
   final Map<String, List<ChecklistItem>> _checklistCache = {};
   final Map<String, List<Task>> _subtaskCache = {};
   final Map<String, Task?> _dbTaskCache = {};
+  DateTime? _lastLoadTime; // BlocListener 节流
   String? _selectedTaskId;
   _TimelineTask? _selectedTask;
+  String? _draggingTimelineTaskId;
+  double _timelineDragRawDx = 0;
+  double _timelineDragDx = 0;
+  int _timelineDragHourShift = 0;
+  Timer? _descriptionSaveDebounce;
+
+  static const double _timelineDragHitWidth = 56;
+  static const double _timelineDragHitHeight = 36;
+  static const Duration _timelineDragDelay = Duration(milliseconds: 300);
 
   @override
   void initState() {
@@ -588,6 +677,8 @@ class _HomeContentState extends State<_HomeContent> {
   @override
   void dispose() {
     _timelineScrollDebounce?.cancel();
+    _hourWidthSyncDebounce?.cancel();
+    _descriptionSaveDebounce?.cancel();
     _timelineController.dispose();
     super.dispose();
   }
@@ -686,6 +777,46 @@ class _HomeContentState extends State<_HomeContent> {
     });
 
     _timelineTasks = deduped;
+
+    // 恢复持久化的首页项目筛选
+    if (_filterProjectIds.isEmpty) {
+      final saved = widget.storage.getHomeFilterState();
+      if (saved != null) {
+        _filterProjectIds.addAll(
+          (saved['projectIds'] as List<dynamic>? ?? []).cast<String>(),
+        );
+        _nodeTypeFilters.addAll(
+          (saved['nodeTypes'] as List<dynamic>? ?? []).cast<String>(),
+        );
+        _completionFilter = saved['completion'] as String? ?? 'all';
+      }
+    }
+    if (!_homeFilterStateRestored) {
+      _homeFilterStateRestored = true;
+      final cloudPrefs = await SupabaseService().fetchPreferences();
+      final cloudHome = cloudPrefs?['homeFilters'];
+      final cloudState = cloudHome is Map<String, dynamic>
+          ? cloudHome
+          : (cloudHome is Map ? Map<String, dynamic>.from(cloudHome) : null);
+      if (cloudState != null) {
+        _filterProjectIds
+          ..clear()
+          ..addAll(
+            (cloudState['projectIds'] as List<dynamic>? ?? []).cast<String>(),
+          );
+        _nodeTypeFilters
+          ..clear()
+          ..addAll(
+            (cloudState['nodeTypes'] as List<dynamic>? ?? []).cast<String>(),
+          );
+        _completionFilter = cloudState['completion'] as String? ?? 'all';
+      }
+      final cloudHourWidth = cloudPrefs?['timelineHourWidth'];
+      if (cloudHourWidth is num) {
+        _hourWidth = cloudHourWidth.toDouble().clamp(_hourWidthMin, _hourWidthMax);
+      }
+    }
+
     _applyProjectFilter();
     _loading = false;
 
@@ -713,7 +844,7 @@ class _HomeContentState extends State<_HomeContent> {
 
     // Auto-scroll to nearest task after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToNearestTask();
+      _scrollToNow(animated: false);
     });
   }
 
@@ -734,8 +865,10 @@ class _HomeContentState extends State<_HomeContent> {
     return _filteredTasks.where((t) {
       if (_nodeTypeFilters.contains('parent') && _isParentNode(t)) return true;
       if (_nodeTypeFilters.contains('child') && _isChildNode(t)) return true;
-      if (_nodeTypeFilters.contains('multiday') && _isMultiDayNode(t)) return true;
-      if (_nodeTypeFilters.contains('singleday') && !_isMultiDayNode(t)) return true;
+      if (_nodeTypeFilters.contains('multiday') && _isMultiDayNode(t))
+        return true;
+      if (_nodeTypeFilters.contains('singleday') && !_isMultiDayNode(t))
+        return true;
       return false;
     }).toList();
   }
@@ -751,6 +884,50 @@ class _HomeContentState extends State<_HomeContent> {
           )
           .toList();
     }
+    if (_completionFilter == 'pending') {
+      _filteredTasks = _filteredTasks.where((t) => !t.isCompleted).toList();
+    } else if (_completionFilter == 'completed') {
+      _filteredTasks = _filteredTasks.where((t) => t.isCompleted).toList();
+    }
+    if (_selectedTaskId != null &&
+        !_filteredTasks.any((task) => task.id == _selectedTaskId)) {
+      _selectedTask = _nearestTask(_filteredTasks);
+      _selectedTaskId = _selectedTask?.id;
+    }
+    if (_selectedTaskId == null && _selectedTask == null) {
+      _selectedTask = _nearestTask(_filteredTasks);
+      _selectedTaskId = _selectedTask?.id;
+    }
+  }
+
+  Future<void> _persistHomeFilterState() async {
+    final data = {
+      'projectIds': _filterProjectIds.toList()..sort(),
+      'nodeTypes': _nodeTypeFilters.toList()..sort(),
+      'completion': _completionFilter,
+    };
+    await widget.storage.saveHomeFilterState(data);
+    await SupabaseService().syncPreferences({'homeFilters': data});
+  }
+
+  void _syncHourWidth() {
+    _hourWidthSyncDebounce?.cancel();
+    _hourWidthSyncDebounce = Timer(const Duration(milliseconds: 800), () {
+      SupabaseService().syncPreferences({'timelineHourWidth': _hourWidth});
+    });
+  }
+
+  _TimelineTask? _nearestTask(List<_TimelineTask> tasks) {
+    if (tasks.isEmpty) return null;
+    final now = DateTime.now();
+    final sorted = List<_TimelineTask>.from(tasks)
+      ..sort(
+        (a, b) => a.date
+            .difference(now)
+            .abs()
+            .compareTo(b.date.difference(now).abs()),
+      );
+    return sorted.first;
   }
 
   void _scrollToTask(_TimelineTask task) {
@@ -761,7 +938,7 @@ class _HomeContentState extends State<_HomeContent> {
 
     if (_timelineMode == 'hour') {
       if (!_isSameDayDate(task.date, today)) {
-        // Task not today — jump to midday default
+        // Task not today - jump to midday default
         target = 12 * _hourWidth;
       } else {
         target = task.date.hour * _hourWidth;
@@ -782,59 +959,30 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  void _scrollToNearestTask() {
-    if (!_timelineController.hasClients || _displayTasks.isEmpty) return;
+  void _scrollToNow({bool animated = true}) {
+    if (!_timelineController.hasClients) return;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-
-    if (_timelineMode == 'hour') {
-      // Scroll to current hour
-      final target = now.hour * _hourWidth;
-      final midScreen = MediaQuery.of(context).size.width / 2;
-      _timelineController.jumpTo(max(0.0, target - midScreen + _hourWidth / 2));
-
-      // Select nearest task for today if any
-      final todayTasks = _displayTasks
-          .where((t) => _isSameDayDate(t.date, today) && !t.isCompleted)
-          .toList();
-      if (todayTasks.isNotEmpty) {
-        _selectTask(todayTasks.first);
-      }
-      return;
-    }
-
-    final baseDate = today.subtract(Duration(days: _daysBefore));
-
-    // Find nearest task (closest to now, preferring future tasks)
-    _TimelineTask? nearest;
-    Duration minDiff = const Duration(days: 365 * 10);
-    for (final task in _displayTasks) {
-      if (task.isCompleted) continue;
-      final diff = task.date.difference(now).abs();
-      if (diff < minDiff) {
-        minDiff = diff;
-        nearest = task;
-      }
-    }
-    if (nearest == null && _displayTasks.isNotEmpty) {
-      nearest = _displayTasks.first;
-    }
-    if (nearest == null) {
-      // No tasks — scroll to today
-      final todayOffset = now.difference(baseDate).inDays * _dayWidth;
-      final midScreen = MediaQuery.of(context).size.width / 2;
-      final target = todayOffset - midScreen + _dayWidth / 2;
-      _timelineController.jumpTo(max(0, target));
-      return;
-    }
-
-    final dayOffset = nearest.date.difference(baseDate).inDays * _dayWidth;
     final midScreen = MediaQuery.of(context).size.width / 2;
-    final target = dayOffset - midScreen + _dayWidth / 2;
-    _timelineController.jumpTo(max(0, target));
-
-    // Auto-select the nearest task
-    _selectTask(nearest);
+    double target;
+    if (_timelineMode == 'hour') {
+      target = _hourTimelineOffset(now) - midScreen + _hourWidth / 2;
+    } else {
+      final baseDate = today.subtract(Duration(days: _daysBefore));
+      final todayOffset = now.difference(baseDate).inDays * _dayWidth;
+      target = todayOffset - midScreen + _dayWidth / 2;
+    }
+    final maxScroll = _timelineController.position.maxScrollExtent;
+    final offset = target.clamp(0.0, maxScroll).toDouble();
+    if (animated) {
+      _timelineController.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      _timelineController.jumpTo(offset);
+    }
   }
 
   void _selectTask(_TimelineTask task) {
@@ -926,7 +1074,7 @@ class _HomeContentState extends State<_HomeContent> {
         .where((t) => t.taskId == parentId)
         .firstOrNull;
 
-    // Also try to load from subtask cache — parent might not be in timeline
+    // Also try to load from subtask cache - parent might not be in timeline
     final parentTitle = parentTask?.title ?? '';
     final hasParent = parentTask != null;
 
@@ -979,7 +1127,18 @@ class _HomeContentState extends State<_HomeContent> {
   Widget build(BuildContext context) {
     return BlocListener<TaskNewBloc, TaskNewState>(
       listener: (context, state) {
-        if (state is TaskNewLoaded && !_loading && mounted) {
+        if (state is TaskNewError && state.isQuotaExceeded && mounted) {
+          UpgradeDialog.show(context, message: state.message);
+          context.read<TaskNewBloc>().add(LoadTasks());
+          return;
+        }
+        if (state is TaskNewLoaded && !_loading && mounted && widget.isVisible) {
+          final now = DateTime.now();
+          if (_lastLoadTime != null &&
+              now.difference(_lastLoadTime!) < const Duration(seconds: 2)) {
+            return;
+          }
+          _lastLoadTime = now;
           _loadData();
         }
       },
@@ -1095,8 +1254,8 @@ class _HomeContentState extends State<_HomeContent> {
         .toList();
     final completedCount = inPeriod.where((t) => t.isCompleted).length;
 
-    final overdueCount = _filteredTasks
-        .where((t) => t.date.isBefore(today) && !t.isCompleted)
+    final totalOverdue = _filteredTasks
+        .where((t) => t.date.isBefore(now) && !t.isCompleted)
         .length;
 
     return GestureDetector(
@@ -1121,8 +1280,8 @@ class _HomeContentState extends State<_HomeContent> {
             _compactDivider(),
             _buildCompactStat(
               '逾期',
-              '$overdueCount',
-              overdueCount > 0 ? AppTheme.error : AppTheme.textPrimary,
+              '$totalOverdue',
+              totalOverdue > 0 ? AppTheme.error : AppTheme.textPrimary,
             ),
             const SizedBox(width: 6),
             Icon(Icons.chevron_right, size: 14, color: AppTheme.textHint),
@@ -1194,9 +1353,13 @@ class _HomeContentState extends State<_HomeContent> {
     final todayCount = _filteredTasks
         .where((t) => _isSameDayDate(t.date, today))
         .length;
-    final overdueCount = _filteredTasks
+    final overdueByDay = _filteredTasks
         .where((t) => t.date.isBefore(today) && !t.isCompleted)
         .length;
+    final overdueByHour = _filteredTasks
+        .where((t) => _isSameDayDate(t.date, today) && t.date.isBefore(now) && !t.isCompleted)
+        .length;
+    final totalOverdue = overdueByDay + overdueByHour;
 
     showModalBottomSheet(
       context: context,
@@ -1237,20 +1400,58 @@ class _HomeContentState extends State<_HomeContent> {
                         value: '$completedCount/${inPeriod.length}',
                         valueColor: AppTheme.primaryColor,
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
                       GestureDetector(
-                        onTap: overdueCount > 0
+                        onTap: overdueByDay > 0
+                            ? () {
+                                Navigator.pop(ctx);
+                                _showOverdueSheet(mode: 'day');
+                              }
+                            : null,
+                        child: _buildStatItem(
+                          label: '逾期(天)',
+                          value: '$overdueByDay',
+                          valueColor: overdueByDay > 0
+                              ? AppTheme.error
+                              : AppTheme.textPrimary,
+                          showChevron: overdueByDay > 0,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: overdueByHour > 0
+                            ? () {
+                                Navigator.pop(ctx);
+                                _showOverdueSheet(mode: 'hour');
+                              }
+                            : null,
+                        child: _buildStatItem(
+                          label: '逾期(小时)',
+                          value: '$overdueByHour',
+                          valueColor: overdueByHour > 0
+                              ? AppTheme.warning
+                              : AppTheme.textPrimary,
+                          showChevron: overdueByHour > 0,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: totalOverdue > 0
                             ? () {
                                 Navigator.pop(ctx);
                                 _showOverdueSheet();
                               }
                             : null,
                         child: _buildStatItem(
-                          label: '逾期',
-                          value: '$overdueCount',
-                          valueColor: overdueCount > 0
+                          label: '总逾期',
+                          value: '$totalOverdue',
+                          valueColor: totalOverdue > 0
                               ? AppTheme.error
                               : AppTheme.textPrimary,
-                          showChevron: overdueCount > 0,
+                          showChevron: totalOverdue > 0,
                         ),
                       ),
                     ],
@@ -1321,14 +1522,34 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  void _showOverdueSheet() {
+  void _showOverdueSheet({String mode = 'total'}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final overdue =
-        _filteredTasks
+
+    List<_TimelineTask> overdue;
+    String title;
+    switch (mode) {
+      case 'day':
+        overdue = _filteredTasks
             .where((t) => t.date.isBefore(today) && !t.isCompleted)
-            .toList()
-          ..sort((a, b) => a.date.compareTo(b.date));
+            .toList();
+        title = '逾期任务-天';
+        break;
+      case 'hour':
+        overdue = _filteredTasks
+            .where((t) => _isSameDayDate(t.date, today) && t.date.isBefore(now) && !t.isCompleted)
+            .toList();
+        title = '逾期任务-小时';
+        break;
+      case 'total':
+      default:
+        overdue = _filteredTasks
+            .where((t) => t.date.isBefore(now) && !t.isCompleted)
+            .toList();
+        title = '逾期任务';
+        break;
+    }
+    overdue.sort((a, b) => a.date.compareTo(b.date));
     if (overdue.isEmpty) return;
 
     showModalBottomSheet(
@@ -1348,7 +1569,7 @@ class _HomeContentState extends State<_HomeContent> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    '逾期任务 (${overdue.length})',
+                    '$title (${overdue.length})',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1406,6 +1627,12 @@ class _HomeContentState extends State<_HomeContent> {
   Widget _buildProjectFilter() {
     final projects = _projectCache.values.toList();
     if (projects.isEmpty) return const SizedBox.shrink();
+    final selectedLabel = _filterProjectIds.isEmpty
+        ? '全部项目'
+        : _filterProjectIds.length == 1
+        ? projects.where((p) => p.id == _filterProjectId).firstOrNull?.name ??
+              '1 个项目'
+        : '${_filterProjectIds.length} 个项目';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1419,44 +1646,18 @@ class _HomeContentState extends State<_HomeContent> {
           Icon(Icons.folder_outlined, size: 16, color: AppTheme.textSecondary),
           const SizedBox(width: 8),
           Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: _filterProjectId,
-                isDense: true,
-                hint: const Text('全部项目', style: TextStyle(fontSize: 13)),
-                items: [
-                  const DropdownMenuItem(
-                    value: null,
-                    child: Text('全部项目', style: TextStyle(fontSize: 13)),
-                  ),
-                  ...projects.map(
-                    (p) => DropdownMenuItem(
-                      value: p.id,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: Color(
-                                int.parse(p.color.replaceFirst('#', '0xFF')),
-                              ),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(p.name, style: const TextStyle(fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (id) {
-                  setState(() {
-                    _filterProjectId = id;
-                    _applyProjectFilter();
-                  });
-                },
+            child: TextButton(
+              onPressed: () => _showProjectFilterDialog(projects),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                alignment: Alignment.centerLeft,
+              ),
+              child: Text(
+                selectedLabel,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
               ),
             ),
           ),
@@ -1470,13 +1671,14 @@ class _HomeContentState extends State<_HomeContent> {
                   : AppTheme.textHint,
             ),
           ),
-          if (_filterProjectId != null)
+          if (_filterProjectIds.isNotEmpty)
             GestureDetector(
               onTap: () {
                 setState(() {
                   _filterProjectId = null;
                   _applyProjectFilter();
                 });
+                _persistHomeFilterState();
               },
               child: Icon(Icons.close, size: 16, color: AppTheme.textHint),
             ),
@@ -1487,6 +1689,10 @@ class _HomeContentState extends State<_HomeContent> {
 
   // ──────────────────────────────────────────────
   Future<void> _showProjectFilterDialog(List<Project> projects) async {
+    final taskState = context.read<TaskNewBloc>().state;
+    final groups = taskState is TaskNewLoaded
+        ? taskState.groups
+        : <ProjectGroup>[];
     final draft = Set<String>.from(_filterProjectIds);
     final result = await showDialog<Set<String>>(
       context: context,
@@ -1496,33 +1702,18 @@ class _HomeContentState extends State<_HomeContent> {
           content: SizedBox(
             width: 360,
             child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CheckboxListTile(
-                    value: draft.isEmpty,
-                    title: const Text('全部项目'),
-                    dense: true,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    onChanged: (_) => setDialogState(draft.clear),
-                  ),
-                  for (final project in projects)
-                    CheckboxListTile(
-                      value: draft.contains(project.id),
-                      title: Text(project.name),
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (checked) {
-                        setDialogState(() {
-                          if (checked == true) {
-                            draft.add(project.id);
-                          } else {
-                            draft.remove(project.id);
-                          }
-                        });
-                      },
-                    ),
-                ],
+              child: buildProjectPickerContent(
+                projects: projects,
+                groups: groups,
+                draft: draft,
+                setDialogState: setDialogState,
+                extraHeader: CheckboxListTile(
+                  value: draft.isEmpty,
+                  title: const Text('全部项目'),
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (_) => setDialogState(draft.clear),
+                ),
               ),
             ),
           ),
@@ -1546,6 +1737,7 @@ class _HomeContentState extends State<_HomeContent> {
         ..addAll(result);
       _applyProjectFilter();
     });
+    _persistHomeFilterState();
   }
 
   // Timeline
@@ -1570,49 +1762,14 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  /// 仅看当前视野内列的最大任务数。1 个任务保持 base 高度
+  /// 任务按同一时间轴坐标分配 lane，长任务画为跨列条。
   double _timelineHeight() {
-    final offset = _timelineController.hasClients
-        ? _timelineController.offset
-        : 0.0;
-    final viewport = _viewportWidth > 0
-        ? _viewportWidth
-        : MediaQuery.of(context).size.width;
-    int maxInCol = 0;
-    if (_timelineMode == 'hour') {
-      final firstHour = (offset / _hourWidth).floor().clamp(0, 23);
-      final lastHour = ((offset + viewport) / _hourWidth).ceil().clamp(0, 24);
-      for (int h = firstHour; h < lastHour; h++) {
-        final n = _displayTasks
-            .where(
-              (t) => _isSameDayDate(t.date, DateTime.now()) && t.date.hour == h,
-            )
-            .length;
-        if (n > maxInCol) maxInCol = n;
-      }
-    } else {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final base = today.subtract(Duration(days: _daysBefore));
-      final firstCol = (offset / _dayWidth).floor().clamp(
-        0,
-        _daysBefore + _daysAfter - 1,
-      );
-      final lastCol = ((offset + viewport) / _dayWidth).ceil().clamp(
-        0,
-        _daysBefore + _daysAfter,
-      );
-      for (int d = firstCol; d < lastCol; d++) {
-        final day = base.add(Duration(days: d));
-        final n = _displayTasks
-            .where((t) => _isSameDayDate(t.date, day))
-            .length;
-        if (n > maxInCol) maxInCol = n;
-      }
-    }
-    // 0 或 1 任务保持基础 80px；从 2 个开始按 26px/任务递增；封顶 6 行
-    if (maxInCol <= 1) return 80.0;
-    final h = 80.0 + (maxInCol.clamp(2, 6) - 1) * 26.0;
+    final laneCount = _timelineRenderItems().fold<int>(
+      0,
+      (maxLane, item) => max(maxLane, item.lane + 1),
+    );
+    if (laneCount <= 1) return 80.0;
+    final h = 80.0 + (laneCount.clamp(2, 8) - 1) * 26.0;
     return h.clamp(80.0, 80.0 + 5 * 26.0);
   }
 
@@ -1629,14 +1786,15 @@ class _HomeContentState extends State<_HomeContent> {
     if (_timelineMode == 'hour') {
       itemCount = 24;
       itemExtent = _hourWidth;
-      itemBuilder = (context, index) => _buildHourColumn(index);
+      itemBuilder = (context, index) =>
+          _buildHourColumn(index, showTasks: false);
     } else {
       itemCount = totalDays;
       itemExtent = _dayWidth;
       itemBuilder = (context, index) {
         final dayDate = baseDate.add(Duration(days: index));
         final isToday = _isSameDayDate(dayDate, today);
-        return _buildDayColumn(dayDate, isToday, index);
+        return _buildDayColumn(dayDate, isToday, index, showTasks: false);
       };
     }
 
@@ -1676,22 +1834,52 @@ class _HomeContentState extends State<_HomeContent> {
                 ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (ctx, box) {
-                      if (_viewportWidth != box.maxWidth) {
-                        _viewportWidth = box.maxWidth;
-                      }
-                      return SizedBox(
-                        height: _timelineHeight(),
-                        child: ListView.builder(
-                          controller: _timelineController,
-                          scrollDirection: Axis.horizontal,
-                          itemCount: itemCount,
-                          itemExtent: itemExtent,
-                          itemBuilder: itemBuilder,
-                        ),
-                      );
-                    },
+                  child: GestureDetector(
+                    onScaleStart: _timelineMode == 'hour'
+                        ? (_) => _scaleStartHourWidth = _hourWidth
+                        : null,
+                    onScaleUpdate: _timelineMode == 'hour'
+                        ? (details) {
+                            if (details.pointerCount < 2) return;
+                            setState(() {
+                              _hourWidth =
+                                  ((_scaleStartHourWidth ?? _hourWidth) *
+                                          details.scale)
+                                      .clamp(_hourWidthMin, _hourWidthMax);
+                            });
+                            _syncHourWidth();
+                          }
+                        : null,
+                    child: LayoutBuilder(
+                      builder: (ctx, _) {
+                        final timelineHeight = _timelineHeight();
+                        final timelineWidth = itemCount * itemExtent;
+                        return SizedBox(
+                          height: timelineHeight,
+                          child: SingleChildScrollView(
+                            controller: _timelineController,
+                            scrollDirection: Axis.horizontal,
+                            child: SizedBox(
+                              width: timelineWidth,
+                              height: timelineHeight,
+                              child: Stack(
+                                children: [
+                                  for (var i = 0; i < itemCount; i++)
+                                    Positioned(
+                                      left: i * itemExtent,
+                                      top: 0,
+                                      width: itemExtent,
+                                      height: timelineHeight,
+                                      child: itemBuilder(ctx, i),
+                                    ),
+                                  ..._buildTimelineTaskOverlays(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -1745,13 +1933,52 @@ class _HomeContentState extends State<_HomeContent> {
               ),
             ),
           const Spacer(),
-          // 节点类型多选过滤
           _buildNodeTypeFilterChip(),
+          const SizedBox(width: 4),
+          _buildCompletionFilterChip(),
+          const SizedBox(width: 4),
+          _buildZoomButton(Icons.my_location_rounded, () => _scrollToNow()),
           const SizedBox(width: 4),
           _buildModeChip('小时', 'hour'),
           const SizedBox(width: 4),
           _buildModeChip('天', 'day'),
+          if (_timelineMode == 'hour') ...[
+            const SizedBox(width: 6),
+            _buildZoomButton(Icons.remove, () {
+              setState(() {
+                _hourWidth = (_hourWidth - 20).clamp(
+                  _hourWidthMin,
+                  _hourWidthMax,
+                );
+              });
+              _syncHourWidth();
+            }),
+            _buildZoomButton(Icons.add, () {
+              setState(() {
+                _hourWidth = (_hourWidth + 20).clamp(
+                  _hourWidthMin,
+                  _hourWidthMax,
+                );
+              });
+              _syncHourWidth();
+            }),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildZoomButton(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: AppTheme.bgInput,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Icon(icon, size: 14, color: AppTheme.textSecondary),
       ),
     );
   }
@@ -1783,6 +2010,7 @@ class _HomeContentState extends State<_HomeContent> {
             }
           }
         });
+        _persistHomeFilterState();
       },
       itemBuilder: (_) {
         Widget itemRow(String key, String text) {
@@ -1804,10 +2032,26 @@ class _HomeContentState extends State<_HomeContent> {
 
         return [
           PopupMenuItem(value: 'all', height: 36, child: itemRow('all', '全部')),
-          PopupMenuItem(value: 'parent', height: 36, child: itemRow('parent', '父节点')),
-          PopupMenuItem(value: 'child', height: 36, child: itemRow('child', '子节点')),
-          PopupMenuItem(value: 'multiday', height: 36, child: itemRow('multiday', '跨天任务')),
-          PopupMenuItem(value: 'singleday', height: 36, child: itemRow('singleday', '非跨天任务')),
+          PopupMenuItem(
+            value: 'parent',
+            height: 36,
+            child: itemRow('parent', '父节点'),
+          ),
+          PopupMenuItem(
+            value: 'child',
+            height: 36,
+            child: itemRow('child', '子节点'),
+          ),
+          PopupMenuItem(
+            value: 'multiday',
+            height: 36,
+            child: itemRow('multiday', '跨天任务'),
+          ),
+          PopupMenuItem(
+            value: 'singleday',
+            height: 36,
+            child: itemRow('singleday', '非跨天任务'),
+          ),
         ];
       },
       child: Container(
@@ -1830,7 +2074,81 @@ class _HomeContentState extends State<_HomeContent> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: hasFilter ? FontWeight.w600 : FontWeight.w400,
-                color: hasFilter ? AppTheme.primaryColor : AppTheme.textSecondary,
+                color: hasFilter
+                    ? AppTheme.primaryColor
+                    : AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 14,
+              color: hasFilter ? AppTheme.primaryColor : AppTheme.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompletionFilterChip() {
+    final labels = {'all': '全部', 'pending': '未完成', 'completed': '已完成'};
+    final hasFilter = _completionFilter != 'all';
+    return PopupMenuButton<String>(
+      tooltip: '完成状态筛选',
+      offset: const Offset(0, 28),
+      onSelected: (value) {
+        setState(() {
+          _completionFilter = value;
+          _applyProjectFilter();
+        });
+        _persistHomeFilterState();
+      },
+      itemBuilder: (_) => [
+        for (final entry in labels.entries)
+          PopupMenuItem(
+            value: entry.key,
+            height: 36,
+            child: Row(
+              children: [
+                Icon(
+                  _completionFilter == entry.key
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 16,
+                  color: _completionFilter == entry.key
+                      ? AppTheme.primaryColor
+                      : AppTheme.textHint,
+                ),
+                const SizedBox(width: 8),
+                Text(entry.value, style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: hasFilter
+              ? AppTheme.primaryColor.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: hasFilter ? AppTheme.primaryColor : AppTheme.borderSubtle,
+            width: hasFilter ? 1.5 : 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              labels[_completionFilter] ?? '全部',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: hasFilter ? FontWeight.w600 : FontWeight.w400,
+                color: hasFilter
+                    ? AppTheme.primaryColor
+                    : AppTheme.textSecondary,
               ),
             ),
             const SizedBox(width: 2),
@@ -1853,7 +2171,7 @@ class _HomeContentState extends State<_HomeContent> {
         _modeSwitchGuard = true;
         setState(() => _timelineMode = mode);
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToNearestTask();
+          _scrollToNow();
           _modeSwitchGuard = false;
         });
       },
@@ -1885,13 +2203,362 @@ class _HomeContentState extends State<_HomeContent> {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  Widget _buildDayColumn(DateTime dayDate, bool isToday, int dayIndex) {
+  List<_TimelineRenderItem> _timelineRenderItems() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final baseDate = today.subtract(Duration(days: _daysBefore));
+    final totalDays = _daysBefore + _daysAfter;
+    final rawItems = <_TimelineRenderItem>[];
+
+    for (final task in _displayTasks) {
+      final item = _timelinePositionForTask(task, today, baseDate, totalDays);
+      if (item != null) rawItems.add(item);
+    }
+
+    rawItems.sort((a, b) {
+      final leftCmp = a.left.compareTo(b.left);
+      if (leftCmp != 0) return leftCmp;
+      return a.task.title.compareTo(b.task.title);
+    });
+
+    final laneEnds = <double>[];
+    final result = <_TimelineRenderItem>[];
+    for (final item in rawItems) {
+      var lane = 0;
+      while (lane < laneEnds.length && laneEnds[lane] > item.left) {
+        lane++;
+      }
+      if (lane == laneEnds.length) {
+        laneEnds.add(item.left + item.width + 6);
+      } else {
+        laneEnds[lane] = item.left + item.width + 6;
+      }
+      result.add(item.withLane(lane));
+    }
+    return result;
+  }
+
+  _TimelineRenderItem? _timelinePositionForTask(
+    _TimelineTask task,
+    DateTime today,
+    DateTime baseDate,
+    int totalDays,
+  ) {
+    if (_timelineMode == 'hour') {
+      if (!_isSameDayDate(task.date, today)) return null;
+      final totalWidth = 24 * _hourWidth;
+      final startOffset = _hourTimelineOffset(task.date).clamp(0.0, totalWidth);
+      final end = task.endDate;
+      if (end != null && _isSameDayDate(end, today) && end.isAfter(task.date)) {
+        final endOffset = _hourTimelineOffset(
+          end,
+        ).clamp(startOffset, totalWidth);
+        final startSlotEnd = (task.date.hour + 1) * _hourWidth;
+        if (endOffset > startSlotEnd + 1) {
+          final left = startOffset.clamp(4.0, totalWidth - 36.0);
+          return _TimelineRenderItem(
+            task: task,
+            left: left,
+            width: max(36.0, endOffset - left - 4),
+            isBar: true,
+          );
+        }
+      }
+
+      final dotLeft = (task.date.hour * _hourWidth + _hourWidth / 2 - 20).clamp(
+        0.0,
+        totalWidth - 40.0,
+      );
+      return _TimelineRenderItem(
+        task: task,
+        left: dotLeft,
+        width: 40,
+        isBar: false,
+      );
+    }
+
+    final rangeEnd = baseDate.add(Duration(days: totalDays));
+    final startDay = DateTime(task.date.year, task.date.month, task.date.day);
+    final end = task.endDate;
+    if (end != null && _isMultiDayNode(task)) {
+      final endDay = DateTime(end.year, end.month, end.day);
+      if (endDay.isBefore(baseDate) || !startDay.isBefore(rangeEnd)) {
+        return null;
+      }
+      final startIndex = max(0, startDay.difference(baseDate).inDays);
+      final endIndex = min(totalDays - 1, endDay.difference(baseDate).inDays);
+      if (endIndex < startIndex) return null;
+      return _TimelineRenderItem(
+        task: task,
+        left: startIndex * _dayWidth + 6,
+        width: max(36.0, (endIndex - startIndex + 1) * _dayWidth - 12),
+        isBar: true,
+      );
+    }
+
+    final dayIndex = startDay.difference(baseDate).inDays;
+    if (dayIndex < 0 || dayIndex >= totalDays) return null;
+    return _TimelineRenderItem(
+      task: task,
+      left: dayIndex * _dayWidth + (_dayWidth - 40) / 2,
+      width: 40,
+      isBar: false,
+    );
+  }
+
+  double _hourTimelineOffset(DateTime date) {
+    return (date.hour + date.minute / 60 + date.second / 3600) * _hourWidth;
+  }
+
+  List<Widget> _buildTimelineTaskOverlays() {
+    return _timelineRenderItems().map(_buildTimelineTaskOverlay).toList();
+  }
+
+  Widget _buildTimelineTaskOverlay(_TimelineRenderItem item) {
+    final task = item.task;
+    final isSelected = task.id == _selectedTaskId;
+    final canDrag = _canDragHourTimelineTask(task);
+    final isDragging = task.id == _draggingTimelineTaskId;
+    final top = 32.0 + item.lane * 26.0;
+    final visualWidth = item.isBar ? item.width : 40.0;
+    final visualHeight = item.isBar ? 24.0 : 30.0;
+    final hitWidth = item.isBar
+        ? max(item.width, _timelineDragHitWidth)
+        : _timelineDragHitWidth;
+    final hitHeight = max(visualHeight, _timelineDragHitHeight);
+    final left = item.left - (hitWidth - visualWidth) / 2;
+    final hitTop = max(0.0, top - (hitHeight - visualHeight) / 2);
+    final visual = item.isBar
+        ? SizedBox(
+            width: item.width,
+            height: visualHeight,
+            child: _buildTimelineArrowBar(task, isSelected, isDragging),
+          )
+        : SizedBox(
+            width: visualWidth,
+            height: visualHeight,
+            child: _buildTimelinePoint(task, isSelected, isDragging),
+          );
+
+    return Positioned(
+      left: left,
+      top: hitTop,
+      width: hitWidth,
+      height: hitHeight,
+      child: Transform.translate(
+        offset: Offset(isDragging ? _timelineDragDx : 0, 0),
+        child: _buildTimelineDragSurface(
+          task: task,
+          canDrag: canDrag,
+          child: Center(child: visual),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimelinePoint(
+    _TimelineTask task,
+    bool isSelected,
+    bool isDragging,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedContainer(
+          duration: isDragging
+              ? Duration.zero
+              : const Duration(milliseconds: 200),
+          width: isSelected ? 14 : 10,
+          height: isSelected ? 14 : 10,
+          decoration: BoxDecoration(
+            color: task.isCompleted
+                ? AppTheme.textHint.withValues(alpha: 0.4)
+                : _priorityColor(task.priority),
+            shape: BoxShape.circle,
+            border: isSelected
+                ? Border.all(color: AppTheme.primaryColor, width: 2)
+                : null,
+            boxShadow: isSelected || isDragging
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primaryColor.withValues(
+                        alpha: isDragging ? 0.55 : 0.4,
+                      ),
+                      blurRadius: isDragging ? 8 : 4,
+                    ),
+                  ]
+                : null,
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          width: 40,
+          child: Text(
+            isDragging && _timelineDragHourShift != 0
+                ? '${_timelineDragHourShift > 0 ? '+' : ''}$_timelineDragHourShift h'
+                : task.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 8, color: AppTheme.textHint),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimelineArrowBar(
+    _TimelineTask task,
+    bool isSelected,
+    bool isDragging,
+  ) {
+    final baseColor = task.isCompleted
+        ? AppTheme.textHint.withValues(alpha: 0.55)
+        : _priorityColor(task.priority);
+    return CustomPaint(
+      painter: _TimelineArrowPainter(
+        color: baseColor,
+        borderColor: isSelected ? AppTheme.primaryColor : baseColor,
+        selected: isSelected || isDragging,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 8, right: 18),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            isDragging && _timelineDragHourShift != 0
+                ? '${_timelineDragHourShift > 0 ? '+' : ''}$_timelineDragHourShift h'
+                : task.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: baseColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimelineDragSurface({
+    required _TimelineTask task,
+    required bool canDrag,
+    required Widget child,
+  }) {
+    final tapSurface = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _selectTask(task),
+      onSecondaryTap: () => _showDeleteContextMenu(context, task),
+      child: child,
+    );
+
+    if (!canDrag) return tapSurface;
+
+    return LongPressDraggable<String>(
+      data: task.id,
+      axis: Axis.horizontal,
+      delay: _timelineDragDelay,
+      hapticFeedbackOnStart: false,
+      hitTestBehavior: HitTestBehavior.opaque,
+      allowedButtonsFilter: (buttons) => buttons == kPrimaryButton,
+      maxSimultaneousDrags: 1,
+      feedback: const SizedBox.shrink(),
+      childWhenDragging: tapSurface,
+      onDragStarted: () => _startTimelineHourDrag(task),
+      onDragUpdate: (details) =>
+          _updateTimelineHourDrag(task, details.delta.dx),
+      onDragEnd: (_) => _endTimelineHourDrag(task),
+      onDraggableCanceled: (_, _) => _endTimelineHourDrag(task),
+      child: tapSurface,
+    );
+  }
+
+  bool _canDragHourTimelineTask(_TimelineTask task) {
+    return _timelineMode == 'hour' &&
+        task.source == 'db' &&
+        task.parentId != null &&
+        task.endDate != null &&
+        !_isMultiDayNode(task);
+  }
+
+  int _clampedHourShift(_TimelineTask task, double rawDx) {
+    var shift = (rawDx / _hourWidth).round();
+    bool staysInOriginalDay(int hourShift) {
+      final newStart = task.date.add(Duration(hours: hourShift));
+      final newEnd = task.endDate!.add(Duration(hours: hourShift));
+      return _isSameDayDate(newStart, task.date) &&
+          _isSameDayDate(newEnd, task.date);
+    }
+
+    while (shift > 0 && !staysInOriginalDay(shift)) {
+      shift--;
+    }
+    while (shift < 0 && !staysInOriginalDay(shift)) {
+      shift++;
+    }
+    return shift;
+  }
+
+  void _startTimelineHourDrag(_TimelineTask task) {
+    if (!_canDragHourTimelineTask(task)) return;
+    setState(() {
+      _draggingTimelineTaskId = task.id;
+      _timelineDragRawDx = 0;
+      _timelineDragDx = 0;
+      _timelineDragHourShift = 0;
+    });
+  }
+
+  void _updateTimelineHourDrag(_TimelineTask task, double deltaDx) {
+    if (_draggingTimelineTaskId != task.id || !_canDragHourTimelineTask(task)) {
+      return;
+    }
+    _timelineDragRawDx += deltaDx;
+    final shift = _clampedHourShift(task, _timelineDragRawDx);
+    setState(() {
+      _timelineDragDx = shift * _hourWidth;
+      _timelineDragHourShift = shift;
+    });
+  }
+
+  void _endTimelineHourDrag(_TimelineTask task) {
+    if (_draggingTimelineTaskId != task.id) return;
+    final shift = _timelineDragHourShift;
+    setState(() {
+      _draggingTimelineTaskId = null;
+      _timelineDragRawDx = 0;
+      _timelineDragDx = 0;
+      _timelineDragHourShift = 0;
+    });
+    if (shift == 0 || !_canDragHourTimelineTask(task)) return;
+
+    final newStart = task.date.add(Duration(hours: shift));
+    final newEnd = task.endDate!.add(Duration(hours: shift));
+    context.read<TaskNewBloc>().add(
+      UpdateTask(
+        id: task.taskId,
+        startDate: newStart.millisecondsSinceEpoch,
+        dueDate: newEnd.millisecondsSinceEpoch,
+      ),
+    );
+  }
+
+  Widget _buildDayColumn(
+    DateTime dayDate,
+    bool isToday,
+    int dayIndex, {
+    bool showTasks = true,
+  }) {
     // Find tasks for this day
-    final dayTasks = _displayTasks.where((t) {
-      return t.date.year == dayDate.year &&
-          t.date.month == dayDate.month &&
-          t.date.day == dayDate.day;
-    }).toList();
+    final dayTasks = showTasks
+        ? _displayTasks.where((t) {
+            return t.date.year == dayDate.year &&
+                t.date.month == dayDate.month &&
+                t.date.day == dayDate.day;
+          }).toList()
+        : const <_TimelineTask>[];
 
     final now = DateTime.now();
     final isPastDay = dayDate.isBefore(DateTime(now.year, now.month, now.day));
@@ -1941,7 +2608,7 @@ class _HomeContentState extends State<_HomeContent> {
             Expanded(
               child: Align(
                 alignment: Alignment.topCenter,
-                child: dayTasks.isEmpty
+                child: !showTasks || dayTasks.isEmpty
                     ? const SizedBox.shrink()
                     : _buildTaskDots(dayTasks),
               ),
@@ -1963,15 +2630,17 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  Widget _buildHourColumn(int hour) {
+  Widget _buildHourColumn(int hour, {bool showTasks = true}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final hourDateTime = DateTime(today.year, today.month, today.day, hour);
 
     // Find tasks for this hour
-    final hourTasks = _displayTasks.where((t) {
-      return _isSameDayDate(t.date, today) && t.date.hour == hour;
-    }).toList();
+    final hourTasks = showTasks
+        ? _displayTasks.where((t) {
+            return _isSameDayDate(t.date, today) && t.date.hour == hour;
+          }).toList()
+        : const <_TimelineTask>[];
 
     final isCurrentHour = now.hour == hour && _isSameDayDate(now, today);
     final isPastHour = hourDateTime.isBefore(now) && !isCurrentHour;
@@ -2021,7 +2690,7 @@ class _HomeContentState extends State<_HomeContent> {
             Expanded(
               child: Align(
                 alignment: Alignment.topCenter,
-                child: hourTasks.isEmpty
+                child: !showTasks || hourTasks.isEmpty
                     ? const SizedBox.shrink()
                     : _buildTaskDots(hourTasks),
               ),
@@ -2047,48 +2716,48 @@ class _HomeContentState extends State<_HomeContent> {
     // 单列内允许上下滚动（任务多时）
     return _containWheelScroll(
       SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: tasks.map((task) {
-          final isSelected = task.id == _selectedTaskId;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Column(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: tasks.map((task) {
+            final isSelected = task.id == _selectedTaskId;
+            final canDrag = _canDragHourTimelineTask(task);
+            final isDragging = task.id == _draggingTimelineTaskId;
+            final point = Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                GestureDetector(
-                  onTap: () => _selectTask(task),
-                  onSecondaryTap: () => _showDeleteContextMenu(context, task),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: isSelected ? 14 : 10,
-                    height: isSelected ? 14 : 10,
-                    decoration: BoxDecoration(
-                      color: task.isCompleted
-                          ? AppTheme.textHint.withValues(alpha: 0.4)
-                          : _priorityColor(task.priority),
-                      shape: BoxShape.circle,
-                      border: isSelected
-                          ? Border.all(color: AppTheme.primaryColor, width: 2)
-                          : null,
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: AppTheme.primaryColor.withValues(
-                                  alpha: 0.4,
-                                ),
-                                blurRadius: 4,
+                AnimatedContainer(
+                  duration: isDragging
+                      ? Duration.zero
+                      : const Duration(milliseconds: 200),
+                  width: isSelected ? 14 : 10,
+                  height: isSelected ? 14 : 10,
+                  decoration: BoxDecoration(
+                    color: task.isCompleted
+                        ? AppTheme.textHint.withValues(alpha: 0.4)
+                        : _priorityColor(task.priority),
+                    shape: BoxShape.circle,
+                    border: isSelected
+                        ? Border.all(color: AppTheme.primaryColor, width: 2)
+                        : null,
+                    boxShadow: isSelected || isDragging
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withValues(
+                                alpha: isDragging ? 0.55 : 0.4,
                               ),
-                            ]
-                          : null,
-                    ),
+                              blurRadius: isDragging ? 8 : 4,
+                            ),
+                          ]
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 2),
                 SizedBox(
                   width: 40,
                   child: Text(
-                    task.title,
+                    isDragging && _timelineDragHourShift != 0
+                        ? '${_timelineDragHourShift > 0 ? '+' : ''}$_timelineDragHourShift h'
+                        : task.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -2096,22 +2765,46 @@ class _HomeContentState extends State<_HomeContent> {
                   ),
                 ),
               ],
-            ),
-          );
-        }).toList(),
-      ),
+            );
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Transform.translate(
+                offset: Offset(isDragging ? _timelineDragDx : 0, 0),
+                child: SizedBox(
+                  width: _timelineDragHitWidth,
+                  height: _timelineDragHitHeight,
+                  child: _buildTimelineDragSurface(
+                    task: task,
+                    canDrag: canDrag,
+                    child: Center(child: point),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
 
   Widget _containWheelScroll(Widget child) {
-    return Listener(
-      onPointerSignal: (event) {
-        if (event is PointerScrollEvent) {
-          GestureBinding.instance.pointerSignalResolver.register(event, (_) {});
-        }
-      },
-      child: child,
+    var active = false;
+    return StatefulBuilder(
+      builder: (context, setLocalState) => MouseRegion(
+        onExit: (_) => setLocalState(() => active = false),
+        child: Listener(
+          onPointerDown: (_) => setLocalState(() => active = true),
+          onPointerSignal: (event) {
+            if (active && event is PointerScrollEvent) {
+              GestureBinding.instance.pointerSignalResolver.register(
+                event,
+                (_) {},
+              );
+            }
+          },
+          child: child,
+        ),
+      ),
     );
   }
 
@@ -2338,11 +3031,27 @@ class _HomeContentState extends State<_HomeContent> {
                   const SizedBox(height: 10),
                   _buildProjectBadge(task.projectId!, task),
                 ],
-                // Description（固定高度可滚动；超过 1000 字截断+"展开全文"）
+                // Description（固定高度可滚动；超过 1000 字截断，显示"展开全文"）
                 if (task.description != null &&
                     task.description!.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   _buildDescriptionBox(task),
+                ],
+                if (task.source == 'db') ...[
+                  const SizedBox(height: 12),
+                  DropTarget(
+                    onDragDone: (detail) =>
+                        _handleDroppedHomeImages(detail, task.taskId),
+                    child: AttachmentImageStrip(
+                      key: ValueKey(
+                        'home-images-${task.taskId}-$_attachmentRefreshToken',
+                      ),
+                      taskId: task.taskId,
+                      maxHeight: 160,
+                      showDeleteButton: true,
+                      showCopyButton: true,
+                    ),
+                  ),
                 ],
                 // Resource row: subtask tree + attachment + checklist (DB only)
                 _buildResourceRow(task),
@@ -2355,56 +3064,183 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   Widget _buildDescriptionBox(_TimelineTask task) {
-    final full = task.description ?? '';
-    const maxChars = 1000;
-    final isTruncated = full.length > maxChars;
-    final shown = isTruncated ? full.substring(0, maxChars) : full;
-
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 240),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.bgInput,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Scrollbar(
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                shown,
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 14,
-                  height: 1.5,
-                ),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+            () => _pasteHomeDescriptionImage(task),
+      },
+      child: DropTarget(
+        onDragDone: (detail) =>
+            _handleDroppedHomeDescriptionImages(detail, task.taskId),
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxHeight: 240),
+          decoration: BoxDecoration(
+            color: AppTheme.bgInput,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Scrollbar(
+            thumbVisibility: true,
+            child: TextFormField(
+              key: ValueKey('home_description_${task.id}'),
+              initialValue: task.description ?? '',
+              minLines: 4,
+              maxLines: 8,
+              onChanged: (value) => _queueDescriptionSave(task, value),
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 14,
+                height: 1.5,
               ),
-              if (isTruncated) ...[
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () => _navigateToEdit(task),
-                  child: Text(
-                    '展开全文（共 ${full.length} 字）',
-                    style: TextStyle(
-                      color: AppTheme.primaryColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      decoration: TextDecoration.underline,
-                      decorationColor: AppTheme.primaryColor.withValues(
-                        alpha: 0.4,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.all(12),
+              ),
+            ),
           ),
         ),
       ),
     );
+  }
+
+  void _queueDescriptionSave(_TimelineTask task, String value) {
+    _descriptionSaveDebounce?.cancel();
+    _descriptionSaveDebounce = Timer(
+      const Duration(milliseconds: 600),
+      () => _saveDescription(task, value),
+    );
+  }
+
+  Future<void> _pasteHomeDescriptionImage(_TimelineTask task) async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) return;
+    final reader = await clipboard.read();
+    if (!reader.canProvide(Formats.png)) {
+      if (mounted) showAppSnackBar(context, '剪贴板中没有可粘贴的图片');
+      return;
+    }
+
+    final imageBytes = await _readClipboardPng(reader);
+    if (imageBytes == null || imageBytes.isEmpty) {
+      if (mounted) showAppSnackBar(context, '读取剪贴板图片失败');
+      return;
+    }
+
+    await TaskAttachmentService().saveImageBytes(
+      task.taskId,
+      fileName: 'pasted_${DateTime.now().millisecondsSinceEpoch}.png',
+      bytes: imageBytes,
+    );
+    if (!mounted) return;
+    setState(() => _attachmentRefreshToken++);
+    showAppSnackBar(context, '图片已添加');
+  }
+
+  Future<Uint8List?> _readClipboardPng(ClipboardReader reader) {
+    final completer = Completer<Uint8List?>();
+    reader.getFile(
+      Formats.png,
+      (file) async {
+        try {
+          completer.complete(await file.readAll());
+        } catch (_) {
+          completer.complete(null);
+        }
+      },
+      onError: (_) {
+        if (!completer.isCompleted) completer.complete(null);
+      },
+    );
+    return completer.future;
+  }
+
+  Future<void> _handleDroppedHomeDescriptionImages(
+    DropDoneDetails detail,
+    String taskId,
+  ) async {
+    var saved = 0;
+    for (final file in detail.files) {
+      final name = file.name.isNotEmpty ? file.name : file.path.split('/').last;
+      if (!TaskAttachmentService.isImageFile(name, null)) continue;
+      final bytes = await file.readAsBytes();
+      await TaskAttachmentService().saveImageBytes(
+        taskId,
+        fileName: name,
+        bytes: bytes,
+      );
+      saved++;
+    }
+    if (!mounted) return;
+    if (saved == 0) {
+      showAppSnackBar(context, '只支持拖入图片文件');
+      return;
+    }
+    setState(() => _attachmentRefreshToken++);
+    showAppSnackBar(context, '已添加 $saved 张图片');
+  }
+
+  Future<void> _saveDescription(_TimelineTask task, String value) async {
+    final normalized = value.trimRight();
+    if ((task.description ?? '') == normalized) return;
+
+    if (task.source == 'db') {
+      final repo = widget.taskRepository;
+      if (repo == null) return;
+      await repo.update(task.taskId, description: normalized);
+    } else {
+      final storageTask = widget.storage
+          .getTasks()
+          .where((t) => t.id == task.taskId)
+          .firstOrNull;
+      if (storageTask == null) return;
+      await widget.storage.updateTask(
+        storageTask.copyWith(description: normalized),
+      );
+    }
+
+    final updated = _TimelineTask(
+      id: task.id,
+      title: task.title,
+      description: normalized,
+      date: task.date,
+      endDate: task.endDate,
+      isCompleted: task.isCompleted,
+      priority: task.priority,
+      source: task.source,
+      projectId: task.projectId,
+      taskId: task.taskId,
+      parentId: task.parentId,
+    );
+    final idx = _timelineTasks.indexWhere((t) => t.id == task.id);
+    if (idx >= 0) _timelineTasks[idx] = updated;
+    _applyProjectFilter();
+    if (_selectedTaskId == task.id) _selectedTask = updated;
+  }
+
+  Future<void> _handleDroppedHomeImages(
+    DropDoneDetails detail,
+    String taskId,
+  ) async {
+    var saved = 0;
+    for (final file in detail.files) {
+      final name = file.name.isNotEmpty ? file.name : file.path.split('/').last;
+      if (!TaskAttachmentService.isImageFile(name, null)) continue;
+      final bytes = await file.readAsBytes();
+      await TaskAttachmentService().saveImageBytes(
+        taskId,
+        fileName: name,
+        bytes: bytes,
+      );
+      saved++;
+    }
+    if (!mounted) return;
+    if (saved == 0) {
+      showAppSnackBar(context, '只支持图片文件');
+      return;
+    }
+    setState(() => _attachmentRefreshToken++);
   }
 
   Widget _buildProjectBadge(String projectId, _TimelineTask task) {
@@ -2620,9 +3456,7 @@ class _HomeContentState extends State<_HomeContent> {
     return _containWheelScroll(
       ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 240),
-        child: SingleChildScrollView(
-          child: AttachmentSection(task: dbTask),
-        ),
+        child: SingleChildScrollView(child: AttachmentSection(task: dbTask)),
       ),
     );
   }
@@ -2644,8 +3478,17 @@ class _HomeContentState extends State<_HomeContent> {
         onEdit: (id, title) => _homeEditChecklist(id, title, taskId),
         onAdd: _homeAddChecklist,
         onSetObsidianUri: (id, uri) => _homeSetObsidianUri(id, uri, taskId),
+        onReorder: (orderedIds) => _homeReorderChecklist(orderedIds, taskId),
       ),
     );
+  }
+
+  Future<void> _homeReorderChecklist(
+    List<String> orderedIds,
+    String taskId,
+  ) async {
+    await widget.checklistRepository?.reorderItems(taskId, orderedIds);
+    await _loadChecklists(taskId);
   }
 
   Widget _buildSubtaskTree(String taskId) {
@@ -2672,7 +3515,7 @@ class _HomeContentState extends State<_HomeContent> {
             ),
             const SizedBox(width: 4),
             Text(
-              '子任务 (${subtasks.length})',
+              '子任务(${subtasks.length})',
               style: TextStyle(
                 color: AppTheme.textSecondary,
                 fontSize: 12,
@@ -2691,7 +3534,7 @@ class _HomeContentState extends State<_HomeContent> {
             child: Row(
               children: [
                 const SizedBox(width: 16),
-                // 完成切换（只更新数据库，不触发任何setState/导航）
+                // 完成切换（只更新数据库，不触发任何 setState/导航）
                 GestureDetector(
                   onTap: () {
                     widget.taskRepository?.toggleStatus(st.id);
@@ -2742,7 +3585,7 @@ class _HomeContentState extends State<_HomeContent> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                // 标题 — 点击导航到该子任务
+                // 标题 - 点击导航到该子任务
                 GestureDetector(
                   onTap: () {
                     if (tlTask != null) {
@@ -2915,10 +3758,47 @@ class _HomeContentState extends State<_HomeContent> {
     if (mounted) setState(() {});
   }
 
+  Future<bool?> _confirmCascadeComplete(_TimelineTask task) async {
+    if (task.isCompleted || widget.taskRepository == null) return false;
+    final children = await widget.taskRepository!.getSubTasks(task.taskId);
+    if (children.isEmpty || !mounted) return false;
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('完成子任务'),
+        content: const Text('这个任务包含子任务，是否同时全部完成？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('仅完成父任务'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('全部完成'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _toggleTaskCompletion(_TimelineTask task) async {
     if (task.source != 'db' || widget.taskRepository == null) return;
+    final cascade = await _confirmCascadeComplete(task);
+    if (cascade == null) return;
     // 直接操作数据库，不触发 BLoC 避免级联 reload
-    await widget.taskRepository!.toggleStatus(task.taskId);
+    if (cascade) {
+      await widget.taskRepository!.setStatusCascade(
+        task.taskId,
+        2,
+        includeDescendants: true,
+      );
+    } else {
+      await widget.taskRepository!.toggleStatus(task.taskId);
+    }
     // 更新本地缓存
     final idx = _timelineTasks.indexOf(task);
     if (idx >= 0) {
@@ -3051,7 +3931,7 @@ class _HomeContentState extends State<_HomeContent> {
       final important = t.priority == 'P0' || t.priority == 'P1';
       (urgent ? (important ? q1 : q3) : (important ? q2 : q4)).add(t);
     }
-    // No hard cap — tasks overflow into columns within each quadrant
+    // No hard cap - tasks overflow into columns within each quadrant
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3277,4 +4157,75 @@ class _TimelineTask {
     required this.taskId,
     this.parentId,
   });
+}
+
+class _TimelineRenderItem {
+  final _TimelineTask task;
+  final double left;
+  final double width;
+  final bool isBar;
+  final int lane;
+
+  const _TimelineRenderItem({
+    required this.task,
+    required this.left,
+    required this.width,
+    required this.isBar,
+    this.lane = 0,
+  });
+
+  _TimelineRenderItem withLane(int value) {
+    return _TimelineRenderItem(
+      task: task,
+      left: left,
+      width: width,
+      isBar: isBar,
+      lane: value,
+    );
+  }
+}
+
+class _TimelineArrowPainter extends CustomPainter {
+  final Color color;
+  final Color borderColor;
+  final bool selected;
+
+  const _TimelineArrowPainter({
+    required this.color,
+    required this.borderColor,
+    required this.selected,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final arrowWidth = min(18.0, size.width / 3);
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width - arrowWidth, 0)
+      ..lineTo(size.width, size.height / 2)
+      ..lineTo(size.width - arrowWidth, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.12)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = borderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = selected ? 2 : 1.4,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _TimelineArrowPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.borderColor != borderColor ||
+        oldDelegate.selected != selected;
+  }
 }

@@ -1,0 +1,266 @@
+$ C:\Users\Administrator\AppData\Local\Android\Sdk\platform-tools\adb.exe -s 127.0.0.1:16384 logcat -d -s flutter:I *:S 2>&1 || C:\Users\Administrator\AppData\Local\Android\Sdk\platform-tools\adb.exe -s 127.0.0.1:16384 logcat -d | findstr /i "Notif flutter"
+[exit 0]
+--------- beginning of main
+06-03 12:25:52.032  2858  2891 I flutter : [IMPORTANT:flutter/shell/platform/android/android_context_vk_impeller.cc(62)] Using the Impeller rendering backend (Vulkan).
+06-03 12:25:52.063  2858  2891 I flutter : [IMPORTANT:flutter/shell/platform/android/android_context_gl_impeller.cc(104)] Using the Impeller rendering backend (OpenGLES).
+06-03 12:25:52.443  2858  2858 I flutter : 📋 调试日志路径: /data/user/0/com.example.smart_assistant/app_flutter/task_debug.log
+06-03 12:25:52.443  2858  2858 I flutter : [App] ===== 应用启动 =====
+06-03 12:25:52.829  2858  2858 I flutter : [Notif] init tz.local=Asia/Shanghai
+06-03 12:26:04.766  2858  2858 I flutter : [Sync] 开始拉取, user=b0c02db2-567c-4f1d-96cb-809d35af94bc
+06-03 12:26:04.766  2858  2858 I flutter : [Sync] 开始拉取, user=b0c02db2-567c-4f1d-96cb-809d35af94bc
+06-03 12:26:05.560  2858  2858 I flutter : [Sync] 拉取到 8 条任务
+06-03 12:26:05.560  2858  2858 I flutter : [Sync] 检测到登录用户 b0c02db2-567c-4f1d-96cb-809d35af94bc，启动同步
+06-03 12:26:05.561  2858  2858 I flutter : [Sync] Realtime subscription started
+06-03 12:26:05.561  2858  2858 I flutter : [ChecklistSync] Realtime 订阅已启动
+06-03 12:26:05.574  2858  2858 I flutter : [Notif] rescheduleTaskReminders: 0 tasks, 0 scheduled
+06-03 12:26:05.829  2858  2858 I flutter : [LoadTasks] filter=templates, projectIds={d413a081-b3f9-4f61-8e30-4213c25fce83}
+06-03 12:26:05.829  2858  2858 I flutter : [LoadTasks] allTasks鎬绘暟=0, allChildren=0
+06-03 12:26:05.829  2858  2858 I flutter : [LoadTasks] 杩囨护鍚巘asks=0, filteredChildren=0
+06-03 12:26:05.868  2858  2858 I flutter : [LoadTasks] filter=templates, projectIds={d413a081-b3f9-4f61-8e30-4213c25fce83}
+06-03 12:26:05.868  2858  2858 I flutter : [LoadTasks] allTasks鎬绘暟=0, allChildren=0
+06-03 12:26:05.868  2858  2858 I flutter : [LoadTasks] 杩囨护鍚巘asks=0, filteredChildren=0
+06-03 12:26:05.874  2858  2858 I flutter : [Sync] 拉取到 8 条任务
+06-03 12:26:05.874  2858  2858 I flutter : [Sync] 检测到登录用户 b0c02db2-567c-4f1d-96cb-809d35af94bc，启动同步
+06-03 12:26:05.874  2858  2858 I flutter : [ProjectSync] channel status=RealtimeSubscribeStatus.closed 
+06-03 12:26:05.875  2858  2858 I flutter : [Sync] Realtime subscription started
+06-03 12:26:05.875  2858  2858 I flutter : [ChecklistSync] Realtime 订阅已启动
+06-03 12:26:05.875  2858  2858 I flutter : [AttachSync] channel status=RealtimeSubscribeStatus.closed 
+06-03 12:26:05.896  2858  2858 I flutter : [Notif] rescheduleTaskReminders: 0 tasks, 0 scheduled
+06-03 12:26:06.236  2858  2858 I flutter : [ProjectSync] 级联软删项目 57951a96 下的任务
+06-03 12:26:06.239  2858  2858 I flutter : [ProjectSync] 级联软删项目 d7e42f3d 下的任务
+06-03 12:26:06.240  2858  2858 I flutter : [ProjectSync] ❌ 全量对账失败: RangeError (end): Invalid value: Not in inclusive range 0..5: 8
+06-03 12:26:06.240  2858  2858 I flutter : #0      RangeError.checkValidRange (dart:core/errors.dart:392)
+06-03 12:26:06.240  2858  2858 I flutter : #1      _StringBase.substring (dart:core-patch/string_patch.dart:437)
+06-03 12:26:06.240  2858  2858 I flutter : #2      ProjectSyncService._upsertProjectFromRow (package:smart_assistant/services/project_sync_service.dart:298)
+06-03 12:26:06.240  2858  2858 I flutter : <asynchronous suspension>
+06-03 12:26:06.240  2858  2858 I flutter : #3      ProjectSyncService.syncAll (package:smart_assistant/services/project_sync_service.dart:96)
+06-03 12:26:06.240  2858  2858 I flutter : <asynchronous suspension>
+06-03 12:26:06.240  2858  2858 I flutter : #4      _HomePageState._setupProjectSyncOnAuth.runSyncAll (package:smart_assistant/presentation/pages/home/home_page.dart:163)
+06-03 12:26:06.240  2858  2858 I flutter : <asynchronous suspension>
+06-03 12:26:06.240  2858  2858 I flutter : [SyncAll] ===== 鍚堝苟鍓嶆湰鍦板瓙浠诲姟 (0) =====
+06-03 12:26:06.555  2858  2858 I flutter : [ProjectSync] 级联软删项目 57951a96 下的任务
+06-03 12:26:06.557  2858  2858 I flutter : [ProjectSync] 级联软删项目 d7e42f3d 下的任务
+06-03 12:26:06.557  2858  2858 I flutter : [ProjectSync] ❌ 全量对账失败: RangeError (end): Invalid value: Not in inclusive range 0..5: 8
+06-03 12:26:06.557  2858  2858 I flutter : #0      RangeError.checkValidRange (dart:core/errors.dart:392)
+06-03 12:26:06.557  2858  2858 I flutter : #1      _StringBase.substring (dart:core-patch/string_patch.dart:437)
+06-03 12:26:06.557  2858  2858 I flutter : #2      ProjectSyncService._upsertProjectFromRow (package:smart_assistant/services/project_sync_service.dart:298)
+06-03 12:26:06.557  2858  2858 I flutter : <asynchronous suspension>
+06-03 12:26:06.557  2858  2858 I flutter : #3      ProjectSyncService.syncAll (package:smart_assistant/services/project_sync_service.dart:96)
+06-03 12:26:06.557  2858  2858 I flutter : <asynchronous suspension>
+06-03 12:26:06.557  2858  2858 I flutter : #4      _HomePageState._setupProjectSyncOnAuth.runSyncAll (package:smart_assistant/presentation/pages/home/home_page.dart:163)
+06-03 12:26:06.557  2858  2858 I flutter : <asynchronous suspension>
+06-03 12:26:06.557  2858  2858 I flutter : [SyncAll] ===== 鍚堝苟鍓嶆湰鍦板瓙浠诲姟 (0) =====
+06-03 12:26:06.598  2858  2858 I flutter : [ProjectSync] channel status=RealtimeSubscribeStatus.subscribed 
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll] 浜戠鎬绘暟=269, 鏈塸arent_id=225
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=6ed3ba89, title=测试2, parent_id=6215bd02, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=7166c0dc, title=首页切换项目后不应该还展示其他项目的任务，应该跳转到离最近日期最近的项目，如果没有就不显示, parent_id=be14791f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=39a195f7, title=做B, parent_id=08ab278e, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=d5d6d802, title=测试23, parent_id=6215bd02, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=51c50f9a, title=修改软件名称为Taskora, parent_id=be14791f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=b5b747a6, title=1212, parent_id=42c53d4d, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=eaa3c27a, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=c4f53d01, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=4b137c32, title=测试1, parent_id=9fc60b54, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=17af1e20, title=测试2, parent_id=9fc60b54, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=d83a1273, title=测试121, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=03ffef46, title=测试1212, parent_id=17af1e20, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=b90bba97, title=AI拆分子任务优化, parent_id=be14791f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=af81bab5, title=做A, parent_id=08ab278e, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=a031f76b, title=测试1, parent_id=2d6f0174, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=f9f4b07a, title=做C, parent_id=08ab278e, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=30d7b3ed, title=测试12, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=e44c7646, title=监控留存指标, parent_id=381dab57, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=17811453, title=测试12, parent_id=690aff2c, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=588dc604, title=测试2, parent_id=2d6f0174, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=63994768, title=测试3, parent_id=588dc604, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=3799877f, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=e160b189, title=做A, parent_id=e7f7eacb, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=3e923d93, title=测试12, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=c0d1a8da, title=测温12, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=6a8c4971, title=做B, parent_id=e7f7eacb, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=682e5067, title=注册Google Play开发者账号, parent_id=e5774ee9, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=00965d33, title=bug同一列情况下明明只有一行有并行节点其他节点也会受到显示的影响, parent_id=be14791f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=16d81e6f, title=做C, parent_id=e7f7eacb, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=f833438a, title=确定产品形态, parent_id=86b570a2, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=fa6134dc, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=f47fe663, title=下, parent_id=be14791f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=116603d0, title=允许首页和日历模块也先选择项目分类再选择项目和思维导图模块一样, parent_id=be14791f, deleted=0
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=7be9a514, title=移动端的项目数据没有同步, parent_id=be14791f, deleted=0
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=e7ec8f16, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=14606f78, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=690aff2c, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=6599b3fc, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=2646b839, title=测试12, parent_id=c0d1a8da, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=cd8f443d, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=c07bd015, title=测试, parent_id=2e0a0376, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=c151ad46, title=确定暂不做事项, parent_id=86b570a2, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=5c9a5ccd, title=项目的进度计算逻辑修正, parent_id=be14791f, deleted=0
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=ee63af28, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=761d1c7d, title=跨周期任务不参与冲突检测，新建任务的时候 支持先选项目分组再选项目，并且支持直接新建项目分组和项目, parent_id=be14791f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=cbeca8a2, title=测试, parent_id=a1b6029c, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=6654f309, title=制作Windows桌面安装包, parent_id=1e2fafad, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=1dcb84b4, title=建立最小官网页, parent_id=1e2fafad, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=3596dc7d, title=发布免费版, parent_id=93b3cb00, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=d18177e6, title=创建Google Payments Profile, parent_id=e5774ee9, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=677aeeaa, title=确定收款账户, parent_id=86b570a2, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=42c53d4d, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=41019529, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=05d8d9ba, title=测试12, parent_id=0c14e357, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=0f6dbd2a, title=打包Flutter Web/PWA, parent_id=1e2fafad, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=6270da0c, title=测试13, parent_id=0c14e357, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=56bbba0d, title=测试12, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=c2768c66, title=测试1212, parent_id=3799877f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=8c2278cc, title=测试12, parent_id=42c53d4d, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=f396a047, title=收集用户反馈, parent_id=381dab57, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=051dd644, title=添加完新任务后筛选项目失效BUG修复，切换模块也会失效。并且思维导图模块的父任务应该当前筛选和过滤掉的项目来展示, parent_id=be14791f, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=a8de9184, title=测试121, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=87fe2054, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=26878996, title=首页时间轴支持缩放和放大, parent_id=be14791f, deleted=0
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=c8a9070f, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=7ab56f43, title=首页筛选增加已完成未完成和全部筛选, parent_id=be14791f, deleted=0
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=466b3e30, title=编写映射转换模块, parent_id=9527167c, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=abfda074, title=确定映射规则, parent_id=634bbf1b, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=34d1ff75, title=模板功能开发, parent_id=2693e3f2, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=a690695b, title=测试1212, parent_id=37f64ea0, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=276e25ee, title=设计免费付费边界, parent_id=33dcd5e2, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=4d76a4c3, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=4dff4538, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=e40b2214, title=测试12, parent_id=07839eca, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=07839eca, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=cb8c5161, title=测试1212, parent_id=4dff4538, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=f33ec94b, title=测试插入, parent_id=b09bb8dc, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=f080703b, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=678164b7, title=移动端1212, parent_id=9828adc8, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=5a5db91f, title=确定收费方式, parent_id=86b570a2, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=a488e37a, title=测试, parent_id=44a1a691, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=7a5f54fa, title=测试1212, parent_id=f080703b, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=2cc9d876, title=测, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=98448458, title=打包Flutter Android, parent_id=93b3cb00, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=52b43c2b, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=2685f553, title=2112, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=2fd201d0, title=测试12, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=dac2b9b2, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=82b61439, title=测试121212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.703  2858  2858 I flutter : [SyncAll]   cloud child: id=0980f1bd, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=c42c3662, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=1f588ab2, title=测试, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=18233f36, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=7dc1a558, title=测试12, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=37f64ea0, title=测试1212, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=acd5f69c, title=准备Google Play素材, parent_id=93b3cb00, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=87bdafa4, title=测试1212, parent_id=07839eca, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=2dfdfc86, title=测试支付链路, parent_id=33dcd5e2, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=5bf9915e, title=接入Google Play Billing, parent_id=33dcd5e2, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=0e414bef, title=测试1212, parent_id=07839eca, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=291934d3, title=98, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=5b1c5ee0, title=测试12, parent_id=8c7ba2b7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=7b39c751, title=测试, parent_id=a1b6029c, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=5e7650f8, title=测试444, parent_id=f0aed1ab, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=44a1a691, title=98, parent_id=bc69fb3a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=8c7ba2b7, title=测试, parent_id=998c70be, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=b09bb8dc, title=移动端, parent_id=678164b7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=f0aed1ab, title=移动端, parent_id=9828adc8, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=8ff010b2, title=测试, parent_id=cae2560a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a1ec4a59, title=代码CR, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=fdad7dc2, title=处理CR反馈, parent_id=b27ece41, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=5fd86105, title=完成B和C, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=022b453b, title=子节点任务11, parent_id=a434d168, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a494ad6e, title=测试, parent_id=0dbdd8f3, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=c921b4f4, title=测试, parent_id=2a015845, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=d2b0a692, title=对w'c, parent_id=2a015845, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=b141946a, title=测试, parent_id=5e7650f8, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=03b2dc5c, title=执行代码审查, parent_id=a1ec4a59, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=018eafdc, title=执行灰度发布, parent_id=866b41ec, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=8eff08c7, title=测, parent_id=cae2560a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a82a8f85, title=全量上线并监控, parent_id=866b41ec, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=2ab48f79, title=发布后跟进与优化, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=01412bcb, title=准备CR材料, parent_id=b27ece41, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a25b030c, title=组织CR会议, parent_id=b27ece41, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=0c0075fd, title=完成A, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=1e6c0ff8, title=制定发布计划, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=b27ece41, title=代码CR, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=4152d888, title=完成C, parent_id=5fd86105, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=fef6dae6, title=上线检查与监控, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=866b41ec, title=发布上线, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=4442b2aa, title=准备发布物料, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=179a0e34, title=处理审查意见, parent_id=a1ec4a59, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=108ce4f2, title=渠道部署与配置, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=50bbf963, title=准备发布包, parent_id=866b41ec, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=33ad9602, title=提醒有问题 桌面端弹出来一个乱码的确认框而不是右下角弹出来的正常提醒, parent_id=be14791f, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=e830200d, title=修复审查问题, parent_id=9e7ba505, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=90b3faf0, title=收集用户反馈, parent_id=ea0f8b5d, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=9aa63377, title=图片直接显示在描述框里面并且给一个快捷删除键，新建的时候也允许直接复制图片上去, parent_id=be14791f, deleted=0
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=af01bbae, title=创建应用并填写内容、隐私政策、数据安全表单, parent_id=6c923ebe, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=9112d2f2, title=实现模板应用到内容, parent_id=caf7528f, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=865cf6e2, title=梳理行政组织数据源, parent_id=634bbf1b, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=9527167c, title=开发回写逻辑, parent_id=a37d6ff6, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=bec92085, title=首页滑动这里 当鼠标没有点击选择滑动项目的时候还是可以滑动整个页面的，必须要要出现滑动栏了并且鼠标点击了才只滑动这一个, parent_id=be14791f, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=b6d165b2, title=移动端完全没有提醒功能 功能未生效 不知道是不是没有后台常驻, parent_id=be14791f, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a09aba8f, title=执行上线操作, parent_id=7064ee17, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=7064ee17, title=部署与上线, parent_id=a37d6ff6, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a547ff7b, title=发布上线, parent_id=5893e805, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=f4485f6b, title=首页图片也要直接展示出来，并且可以直接删除添加, parent_id=be14791f, deleted=0
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=51e9a162, title=验证上线结果, parent_id=a547ff7b, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=9e7ba505, title=CR, parent_id=467d786a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=01f24d3b, title=代码审查, parent_id=9e7ba505, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=c6c57d06, title=部署代码, parent_id=04483b97, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=ea0f8b5d, title=用户体验评估, parent_id=467d786a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=7175a597, title=提出改进建议, parent_id=ea0f8b5d, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=90e6e11e, title=桌面端修改提前几分钟 数据没有同步到移动端, parent_id=be14791f, deleted=0
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=10446e58, title=设计模板编辑界面原型, parent_id=a6d42944, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a6d42944, title=需求分析与设计, parent_id=34d1ff75, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=9cff07b2, title=模板创建与编辑, parent_id=34d1ff75, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=acde18ea, title=实现模板分类与标签, parent_id=9dc18cfe, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=a359e9da, title=准备发布包, parent_id=a547ff7b, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=099316e0, title=监控运行状态, parent_id=7064ee17, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=04483b97, title=上线, parent_id=467d786a, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=18b43d05, title=分析体验数据, parent_id=ea0f8b5d, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=d0fca4f3, title=明明思维导图页面全部折叠了但是点了一下详情再跳出来又展开了 而且很丑, parent_id=be14791f, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=b551363c, title=子节点任务12, parent_id=a434d168, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=c1dd090b, title=准备CR材料, parent_id=a1ec4a59, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=caf7528f, title=模板应用与渲染, parent_id=34d1ff75, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=d0273d67, title=设计模板数据结构, parent_id=a6d42944, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=50ddf31d, title=实现模板编辑功能, parent_id=9cff07b2, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=cf4547ca, title=实现模板创建功能, parent_id=9cff07b2, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=c939778d, title=实现模板保存与版本管理, parent_id=9cff07b2, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=354bd5a9, title=编写单元测试与集成测试, parent_id=9dc18cfe, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=4d904414, title=测试1212, parent_id=c28ef72b, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=bc04718a, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=99347f08, title=准备代码审查材料, parent_id=8a6c7d88, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=c5d86a98, title=测试1212, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=1aad9f8f, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=353710e8, title=测, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=b1968b41, title=日历模块放大缩小反过来, parent_id=be14791f, deleted=0
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=fdedd443, title=执行代码审查会议, parent_id=8a6c7d88, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=1f162476, title=检查项UI跳转 弄的稍微大一点, parent_id=be14791f, deleted=0
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=3dc881c7, title=测试12, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=0c779b19, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=2170f0cd, title=处理审查意见, parent_id=8a6c7d88, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=27b87ec0, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=ab14f751, title=测试121, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=cb7ea090, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=dbb07536, title=当一个任务父任务变更后项目自动归属到这个父任务, parent_id=be14791f, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=993c0031, title=上线, parent_id=77401884, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=cd88f6f7, title=移动端周视图默认三天就够了, parent_id=be14791f, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=93c21491, title=提醒增加软件图标, parent_id=be14791f, deleted=0
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=f135338f, title=测试1212, parent_id=d7b1109b, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=cc9496bb, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=c28ef72b, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=f0a07e8c, title=测试, parent_id=051dd644, deleted=1
+06-03 12:26:06.704  2858  2858 I flutter : [SyncAll]   cloud child: id=288e8073, title=目前移动端提醒未生效，请调查滴答清单如何实现 实现相同的引导和提醒, parent_id=be14791f, deleted=0
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=7f17a37b, title=编写数据读取模块, parent_id=9527167c, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=634bbf1b, title=分析核算组织与行政组织映射关系, parent_id=a37d6ff6, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=566bd7d7, title=梳理模板功能需求, parent_id=a6d42944, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=97837d3a, title=实现模板渲染引擎, parent_id=caf7528f, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=7d156f07, title=右键日历跳转是可以了但是原先的删除和编辑不要删掉啊, parent_id=be14791f, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=0d34214f, title=测试1212, parent_id=a1b6029c, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=36e04de9, title=测试1212, parent_id=4d904414, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=b4ebfbed, title=父任务点击完成子任务默认全部完成, parent_id=be14791f, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=60a9ddda, title=准备部署脚本, parent_id=7064ee17, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=d7b1109b, title=测试, parent_id=5eb20eb7, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=f456abe5, title=测试21212, parent_id=d7b1109b, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=f5f02036, title=部署到生产环境, parent_id=a547ff7b, deleted=1
+06-03 12:26:06.705  2858  2858 I flutter : [SyncAll]   cloud child: id=e1826eba, title=测试1212, parent_id=d7b1109b, deleted=1
+06-03 12:26:06.705  2858  2858
+
+[… truncated 203696 chars …]

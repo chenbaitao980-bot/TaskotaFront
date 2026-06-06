@@ -4,9 +4,13 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
+  desktop_drop
+  flutter_timezone
+  irondash_engine_context
   screen_retriever_windows
   speech_to_text_windows
   sqlite3_flutter_libs
+  super_native_extensions
   system_tray
   url_launcher_windows
   window_manager

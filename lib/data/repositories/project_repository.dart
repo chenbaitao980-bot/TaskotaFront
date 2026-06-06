@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
+import '../../core/exceptions/quota_exceeded_exception.dart';
 import '../../services/project_sync_service.dart';
+import '../../services/subscription_service.dart';
 
 class ProjectRepository {
   final AppDatabase _db;
@@ -18,7 +20,17 @@ class ProjectRepository {
 
   Future<List<Project>> getActive() async {
     return (_db.select(_db.projects)
-          ..where((p) => p.archived.equals(0) & p.deleted.equals(0)))
+          ..where((p) =>
+              p.archived.equals(0) &
+              p.deleted.equals(0) &
+              p.isTemplate.equals(0)))
+        .get();
+  }
+
+  Future<List<Project>> getTemplateProjects() async {
+    return (_db.select(_db.projects)
+          ..where((p) => p.deleted.equals(0) & p.isTemplate.equals(1))
+          ..orderBy([(p) => OrderingTerm.desc(p.updatedAt)]))
         .get();
   }
 
@@ -29,12 +41,35 @@ class ProjectRepository {
     return result.isNotEmpty ? result.first : null;
   }
 
+  Future<int> getActiveNonTemplateCount() async {
+    final result = await (_db.select(_db.projects)
+          ..where((p) =>
+              p.deleted.equals(0) &
+              p.archived.equals(0) &
+              p.isTemplate.equals(0)))
+        .get();
+    return result.length;
+  }
+
   Future<Project> create({
     required String name,
     String color = '#4772FA',
     int sortOrder = 0,
     String? groupId,
+    bool isTemplate = false,
   }) async {
+    if (!isTemplate) {
+      final count = await getActiveNonTemplateCount();
+      final canCreate =
+          await SubscriptionService.instance.canCreateProject(count);
+      if (!canCreate) {
+        throw QuotaExceededException(
+          '项目数已达上限(3个)，升级VIP解锁无限项目',
+          QuotaType.project,
+        );
+      }
+    }
+
     final id = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db.into(_db.projects).insert(ProjectsCompanion(
@@ -43,6 +78,7 @@ class ProjectRepository {
       color: Value(color),
       sortOrder: Value(sortOrder),
       groupId: groupId != null ? Value(groupId) : const Value.absent(),
+      isTemplate: Value(isTemplate ? 1 : 0),
       createdAt: Value(now),
       updatedAt: Value(now),
     ));
