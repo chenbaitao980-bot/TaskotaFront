@@ -64,7 +64,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _currentIndex = 0;
+  final ValueNotifier<int> _tabIndex = ValueNotifier<int>(0);
   /// 可见 tab 索引通知器，避免每次切换重建整个 _HomeContent
   final ValueNotifier<int> _visibleTabIndex = ValueNotifier<int>(0);
   final LocalStorageService _storage = LocalStorageService();
@@ -127,6 +127,7 @@ class _HomePageState extends State<HomePage> {
     _nodeTemplateChangesSub?.cancel();
     _projectChangesDebounce?.cancel();
     _loadTasksDebounce?.cancel();
+    _tabIndex.dispose();
     _visibleTabIndex.dispose();
     _lifecycleListener?.dispose();
     super.dispose();
@@ -135,25 +136,31 @@ class _HomePageState extends State<HomePage> {
   /// 仅首次调用时创建页面列表，之后复用相同实例以消除每次 tab 切换的 rebuild
   List<Widget> _buildPages() {
     return [
-      _HomeContent(
-        storage: _storage,
-        projectRepository: widget.projectRepository,
-        taskRepository: widget.taskRepository,
-        checklistRepository: widget.checklistRepository,
-        visibleTabIndex: _visibleTabIndex,
-        onCreateSchedule: _createSchedule,
-        onRefresh: _loadStats,
-        onOpenTaskStatus: _openTaskStatus,
-        onEditSchedule: _editSchedule,
-        onDeleteSchedule: _deleteSchedule,
-        key: const ValueKey('home_content'),
+      RepaintBoundary(
+        child: _HomeContent(
+          storage: _storage,
+          projectRepository: widget.projectRepository,
+          taskRepository: widget.taskRepository,
+          checklistRepository: widget.checklistRepository,
+          visibleTabIndex: _visibleTabIndex,
+          onCreateSchedule: _createSchedule,
+          onRefresh: _loadStats,
+          onOpenTaskStatus: _openTaskStatus,
+          onEditSchedule: _editSchedule,
+          onDeleteSchedule: _deleteSchedule,
+          key: const ValueKey('home_content'),
+        ),
       ),
-      const TasksPage(),
-      CalendarPage(onJumpToMindMap: _jumpToMindMap),
-      ProfilePage(
-        database: widget.database,
-        taskRepository: widget.taskRepository,
-        projectRepository: widget.projectRepository,
+      const RepaintBoundary(child: TasksPage()),
+      RepaintBoundary(
+        child: CalendarPage(onJumpToMindMap: _jumpToMindMap),
+      ),
+      RepaintBoundary(
+        child: ProfilePage(
+          database: widget.database,
+          taskRepository: widget.taskRepository,
+          projectRepository: widget.projectRepository,
+        ),
       ),
     ];
   }
@@ -474,22 +481,32 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _pages),
-      bottomNavigationBar: _buildBottomNav(),
-      floatingActionButton: _currentIndex == 0
-          ? FloatingActionButton(
-              onPressed: _createSchedule,
-              elevation: 2,
-              child: const Icon(Icons.add),
-            )
-          : null,
+      body: ValueListenableBuilder<int>(
+        valueListenable: _tabIndex,
+        builder: (ctx, index, _) => IndexedStack(index: index, children: _pages),
+      ),
+      bottomNavigationBar: ValueListenableBuilder<int>(
+        valueListenable: _tabIndex,
+        builder: (ctx, index, _) => _BottomNavWidget(
+          currentIndex: index,
+          onTap: _onNavTap,
+        ),
+      ),
+      floatingActionButton: ValueListenableBuilder<int>(
+        valueListenable: _tabIndex,
+        builder: (ctx, index, _) => index == 0
+            ? FloatingActionButton(
+                onPressed: _createSchedule,
+                elevation: 2,
+                child: const Icon(Icons.add),
+              )
+            : const SizedBox.shrink(),
+      ),
     );
   }
 
   void _jumpToMindMap(Task task) {
-    setState(() {
-      _currentIndex = 1;
-    });
+    _tabIndex.value = 1;
     _visibleTabIndex.value = 1;
     context.read<TaskNewBloc>().add(
       LoadTasks(
@@ -502,7 +519,28 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildBottomNav() {
+  void _onNavTap(int index) {
+    if (_tabIndex.value == index) return;
+    _tabIndex.value = index;
+    _visibleTabIndex.value = index;
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// Bottom navigation bar extracted as reusable widget
+// ────────────────────────────────────────────────────────────
+
+class _BottomNavWidget extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  const _BottomNavWidget({
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.bgCard,
@@ -520,13 +558,10 @@ class _HomePageState extends State<HomePage> {
       child: SafeArea(
         top: false,
         child: BottomNavigationBar(
-          currentIndex: _currentIndex,
+          currentIndex: currentIndex,
           onTap: (index) {
-            if (_currentIndex == index) return;
-            setState(() {
-              _currentIndex = index;
-            });
-            _visibleTabIndex.value = index;
+            if (currentIndex == index) return;
+            onTap(index);
           },
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -562,7 +597,7 @@ class _HomePageState extends State<HomePage> {
     IconData filled,
     String label,
   ) {
-    final isSelected = _currentIndex == index;
+    final isSelected = currentIndex == index;
     return BottomNavigationBarItem(
       icon: Column(
         mainAxisSize: MainAxisSize.min,

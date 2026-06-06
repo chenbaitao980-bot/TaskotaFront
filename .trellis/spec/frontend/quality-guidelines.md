@@ -60,6 +60,50 @@ Future<void> _showOverdueDigest(int count) async {
 
 **适用场景**：过期任务摘要、批量提醒、轮询状态通知
 
+### ValueNotifier + ValueListenableBuilder 替代 setState 做局部重建
+
+当 `setState` 会导致大面积 widget 树重建时，用 `ValueNotifier` + `ValueListenableBuilder` 将重建范围缩小到最小子树。
+
+```dart
+// ❌ 错误：setState 重建了整个 StatefulWidget 的 build()
+BottomNavigationBar(
+  currentIndex: _currentIndex,
+  onTap: (index) {
+    setState(() => _currentIndex = index); // ← build() 全量重跑
+  },
+);
+
+// ✅ 正确：ValueNotifier + ValueListenableBuilder 只重建受影响子树
+final ValueNotifier<int> _tabIndex = ValueNotifier<int>(0);
+
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    body: ValueListenableBuilder<int>(
+      valueListenable: _tabIndex,
+      builder: (ctx, index, _) => IndexedStack(index: index, children: _pages),
+    ),
+    bottomNavigationBar: ValueListenableBuilder<int>(
+      valueListenable: _tabIndex,
+      builder: (ctx, index, _) => _BottomNavBar(currentIndex: index, onTap: _onNavTap),
+    ),
+  );
+}
+
+void _onNavTap(int index) {
+  _tabIndex.value = index; // ← 仅 ValueListenableBuilder 子树重建
+}
+```
+
+**适用场景**：
+- Tab 底部导航切换（IndexedStack + BottomNavigationBar）
+- 大面积 Scaffold 内仅需局部刷新
+- 需要避免 `setState` 重建父 widget 树中的庞大或复杂子节点
+
+**注意事项**：
+- 底部导航栏的 widget 内容应提取为独立 `StatelessWidget`，让框架可以高效复用 widget 引用
+- 需要在 `dispose()` 中调用 `valueNotifier.dispose()`
+
 ---
 
 ## Testing Requirements
