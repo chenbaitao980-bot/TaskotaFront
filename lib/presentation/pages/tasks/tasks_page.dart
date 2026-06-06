@@ -185,10 +185,20 @@ class _TasksPageState extends State<TasksPage> {
                     IconButton(
                       tooltip: '搜索',
                       icon: const Icon(Icons.search),
-                      onPressed: () => showSearch(
-                        context: context,
-                        delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
-                      ),
+                      onPressed: () async {
+                        final taskId = await showSearch<String?>(
+                          context: context,
+                          delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
+                        );
+                        if (taskId != null && context.mounted) {
+                          // 清除搜索状态
+                          context.read<TaskNewBloc>().add(SetSearchQuery(null));
+                          final st = context.read<TaskNewBloc>().state;
+                          if (st is TaskNewLoaded) {
+                            _openTaskDetail(taskId, st);
+                          }
+                        }
+                      },
                     ),
                     IconButton(
                       tooltip: '返回任务',
@@ -204,10 +214,20 @@ class _TasksPageState extends State<TasksPage> {
                     IconButton(
                       tooltip: '搜索',
                       icon: const Icon(Icons.search),
-                      onPressed: () => showSearch(
-                        context: context,
-                        delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
-                      ),
+                      onPressed: () async {
+                        final taskId = await showSearch<String?>(
+                          context: context,
+                          delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
+                        );
+                        if (taskId != null && context.mounted) {
+                          // 清除搜索状态
+                          context.read<TaskNewBloc>().add(SetSearchQuery(null));
+                          final st = context.read<TaskNewBloc>().state;
+                          if (st is TaskNewLoaded) {
+                            _openTaskDetail(taskId, st);
+                          }
+                        }
+                      },
                     ),
                     _buildStatusFilterButton(effective),
                     // 模板节点功能暂时隐藏
@@ -1374,51 +1394,55 @@ class _TaskSearchDelegate extends SearchDelegate<String?> {
   Widget buildResults(BuildContext context) => _buildSearchResults(context);
 
   Widget _buildSearchResults(BuildContext context) {
-    final state = bloc.state;
-    if (state is TaskNewLoaded) {
-      final tasks = state.tasks;
-      if (tasks.isEmpty) {
-        return const Center(
-          child: Text('无匹配结果', style: TextStyle(color: Colors.grey)),
-        );
-      }
-      return ListView.builder(
-        itemCount: tasks.length,
-        itemBuilder: (context, index) {
-          final task = tasks[index];
-          return ListTile(
-            leading: Icon(
-              task.status == 2
-                  ? Icons.check_circle
-                  : Icons.radio_button_unchecked,
-              color: task.status == 2 ? Colors.green : Colors.grey,
-              size: 20,
-            ),
-            title: Text(
-              task.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: task.description.isNotEmpty
-                ? Text(
-                    task.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  )
-                : null,
-            trailing: Text(
-              task.status == 2 ? '已完成' : '待处理',
-              style: TextStyle(
-                fontSize: 12,
-                color: task.status == 2 ? Colors.green : Colors.orange,
-              ),
-            ),
-            onTap: () => close(context, task.id),
+    return BlocBuilder<TaskNewBloc, TaskNewState>(
+      bloc: bloc,
+      builder: (context, state) {
+        if (state is TaskNewLoaded) {
+          final tasks = state.tasks;
+          if (tasks.isEmpty) {
+            return const Center(
+              child: Text('无匹配结果', style: TextStyle(color: Colors.grey)),
+            );
+          }
+          return ListView.builder(
+            itemCount: tasks.length,
+            itemBuilder: (context, index) {
+              final task = tasks[index];
+              return ListTile(
+                leading: Icon(
+                  task.status == 2
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: task.status == 2 ? Colors.green : Colors.grey,
+                  size: 20,
+                ),
+                title: Text(
+                  task.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: task.description.isNotEmpty
+                    ? Text(
+                        task.description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : null,
+                trailing: Text(
+                  task.status == 2 ? '已完成' : '待处理',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: task.status == 2 ? Colors.green : Colors.orange,
+                  ),
+                ),
+                onTap: () => close(context, task.id),
+              );
+            },
           );
-        },
-      );
-    }
-    return const Center(child: CircularProgressIndicator());
+        }
+        return const Center(child: CircularProgressIndicator());
+      },
+    );
   }
 
   @override
