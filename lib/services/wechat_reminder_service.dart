@@ -117,7 +117,7 @@ class WechatReminderService {
           'title': title,
           'body': body,
           'scheduled_at': scheduledAt.toUtc().toIso8601String(),
-          'channels': ['wechat', 'fcm'],
+          'channels': ['aliyun', 'wechat'],
         },
       );
       return resp.data?['success'] == true;

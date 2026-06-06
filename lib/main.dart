@@ -31,6 +31,7 @@ import 'services/attachment_sync_service.dart';
 import 'services/checklist_sync_service.dart';
 import 'services/notification_service.dart';
 import 'services/alarm_service.dart';
+import 'services/aliyun_push_service.dart';
 import 'services/project_sync_service.dart';
 import 'services/supabase_service.dart';
 import 'services/task_attachment_service.dart';
@@ -85,6 +86,7 @@ Future<void> _initServicesAndRun() async {
 
   await NotificationService().init();
   await AlarmService().init();
+  await AliyunPushService().init(); // 阿里云推送初始化（App 被杀后仍能触达）
 
   final database = AppDatabase();
   final projectRepository = ProjectRepository(

@@ -183,3 +183,52 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 阿里云推送 Android 8.0+ 通知修复
+
+**Date**: 2026-06-06
+**Task**: 阿里云推送 Android 8.0+ 兼容性修复 + 小米推送调研
+**Branch**: `master`
+
+### Summary
+
+修复 Android 8.0+ 收不到阿里云推送通知的问题：
+
+1. **服务端缺少 AndroidNotificationChannel** — 在 schedule-push 推送参数中添加 `AndroidNotificationChannel: \"schedule_reminders\"` + `AndroidNotifyType: \"BOTH\"`
+2. **通知通道匹配** — 客户端改为复用 `schedule_reminders` 通道（flutter_local_notifications 已创建并可用），替换独立的 `aliyun_push_channel`
+3. **小米手机问题** — 无 MiPush 厂商通道 + 无自启动权限 → 推送到达设备但不弹通知
+
+**已部署**：schedule-push ✅
+
+### 当前状态
+
+- 非小米手机 — 推送正常工作
+- 小米手机 — 需要注册 MiPush 厂商通道（需小米开发者账号 + AppID/AppKey），**暂时搁置**
+
+### 待办（需小米开发者账号后继续）
+
+- [ ] 注册小米开发者账号，获取 MiPush AppID / AppKey
+- [ ] 在 AndroidManifest.xml 添加 meta-data：`com.xiaomi.push.id` / `com.xiaomi.push.key`
+- [ ] Flutter 端调用 `initThirdPush()` 注册 MiPush
+- [ ] 推送测试验证
+
+### Testing
+
+- 第一次测试（aliyun_push_channel）→ 通知栏状态关闭 ❌
+- 第二次测试（schedule_reminders）→ 通知栏状态打开 ✅，但小米未展示通知栏
+- 服务端 API 调用均成功（msgId 返回正常）
+
+### Status
+
+[PENDING] **搁置 - 等待小米开发者账号**
+
+### Next Steps
+
+- 等待注册小米开发者账号后继续推进
+
+## 2026-06-06 修复：日历移动端长按编辑 + 拖拽边缘调整时间
+
+**根因分析**: commit `a08737c` 引入 `_EagerPanGestureRecognizer`，它在 addAllowedPointer 中立即调用 resolve(GestureDisposition.accepted)，导致 LongPressGestureRecognizer 被 gesture arena 立即拒绝，长按无法触发进入编辑模式
+
+**修复方案**: 移除 LongPressGestureRecognizer，移动端改用 `Listener` + `Timer` 检测长按（400ms，12px 移动阈值取消），绕过 gesture arena 竞争。`_EagerPanGestureRecognizer` 保留不动（继续防止 ScrollView 抢走拖拽手势）。桌面端不受影响（showResize = isEditMode || !_isMobile 在桌面端始终为 true）

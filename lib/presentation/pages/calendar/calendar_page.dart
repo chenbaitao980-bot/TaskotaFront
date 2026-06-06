@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -2207,7 +2208,10 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
 
   // 整块移动：拖动偏移
   Offset? _moveDelta;
-  bool _isDragging = false;
+
+  // 移动端长按检测（使用 Listener 绕过手势竞技场，避免被 _EagerPanGestureRecognizer 抢占）
+  Timer? _longPressTimer;
+  Offset? _pointerDownPosition;
 
   double get _currentTopDelta => _resizeTopDelta ?? 0;
   double get _currentBottomDelta => _resizeBottomDelta ?? 0;
@@ -2216,6 +2220,52 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
 
   void _exitEditMode() {
     if (widget.isEditMode) widget.onEditModeChanged(false);
+  }
+
+  void _startLongPressTimer(Offset position) {
+    _cancelLongPressTimer();
+    if (!widget.isEditMode && _isMobile) {
+      _pointerDownPosition = position;
+      _longPressTimer = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) {
+          widget.onEditModeChanged(true);
+        }
+      });
+    }
+  }
+
+  void _cancelLongPressTimer() {
+    _longPressTimer?.cancel();
+    _longPressTimer = null;
+    _pointerDownPosition = null;
+  }
+
+  void _onPointerDown(PointerDownEvent event) {
+    _startLongPressTimer(event.position);
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    // 移动超过 12px 视为拖拽，取消长按检测
+    if (_pointerDownPosition != null) {
+      final dist = (event.position - _pointerDownPosition!).distance;
+      if (dist > 12) {
+        _cancelLongPressTimer();
+      }
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _cancelLongPressTimer();
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    _cancelLongPressTimer();
+  }
+
+  @override
+  void dispose() {
+    _cancelLongPressTimer();
+    super.dispose();
   }
 
   /// 把像素 delta(dx, dy) 转成目标时间（5 分钟吸附）
@@ -2253,66 +2303,58 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
             child: Transform.translate(
               offset: move,
               child: _isMobile
-                  ? RawGestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      gestures: <Type, GestureRecognizerFactory>{
-                        _EagerPanGestureRecognizer:
-                            GestureRecognizerFactoryWithHandlers<
-                              _EagerPanGestureRecognizer
-                            >(
-                              () => _EagerPanGestureRecognizer(),
-                              (_EagerPanGestureRecognizer instance) {
-                                instance
-                                  ..onStart = (details) {
-                                    setState(() {
-                                      _isDragging = true;
-                                      _moveDelta = Offset.zero;
-                                    });
-                                  }
-                                  ..onUpdate = (details) {
-                                    setState(() {
-                                      _moveDelta =
-                                          (_moveDelta ?? Offset.zero) +
-                                          details.delta;
-                                    });
-                                  }
-                                  ..onEnd = (details) {
-                                    final delta = _moveDelta;
-                                    setState(() {
-                                      _isDragging = false;
-                                      _moveDelta = null;
-                                    });
-                                    if (delta == null || delta.distance < 3) {
-                                      // 移动距离极小，视为点击
-                                      w.onOpenDetail();
-                                      return;
+                  ? Listener(
+                      onPointerDown: _onPointerDown,
+                      onPointerMove: _onPointerMove,
+                      onPointerUp: _onPointerUp,
+                      onPointerCancel: _onPointerCancel,
+                      child: RawGestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        gestures: <Type, GestureRecognizerFactory>{
+                          _EagerPanGestureRecognizer:
+                              GestureRecognizerFactoryWithHandlers<
+                                _EagerPanGestureRecognizer
+                              >(
+                                () => _EagerPanGestureRecognizer(),
+                                (_EagerPanGestureRecognizer instance) {
+                                  instance
+                                    ..onStart = (details) {
+                                      setState(() {
+                                        _moveDelta = Offset.zero;
+                                      });
                                     }
-                                    final target = _targetFromDelta(delta);
-                                    if (target != w.start) {
-                                      w.onMove(target);
+                                    ..onUpdate = (details) {
+                                      setState(() {
+                                        _moveDelta =
+                                            (_moveDelta ?? Offset.zero) +
+                                            details.delta;
+                                      });
                                     }
-                                  }
-                                  ..onCancel = () {
-                                    setState(() {
-                                      _isDragging = false;
-                                      _moveDelta = null;
-                                    });
-                                  };
-                              },
-                            ),
-                        LongPressGestureRecognizer:
-                            GestureRecognizerFactoryWithHandlers<
-                              LongPressGestureRecognizer
-                            >(
-                              () => LongPressGestureRecognizer(),
-                              (LongPressGestureRecognizer instance) {
-                                instance.onLongPress = !w.isEditMode
-                                    ? () => w.onEditModeChanged(true)
-                                    : null;
-                              },
-                            ),
-                      },
-                      child: _buildBlockContent(color, textColor),
+                                    ..onEnd = (details) {
+                                      final delta = _moveDelta;
+                                      setState(() {
+                                        _moveDelta = null;
+                                      });
+                                      if (delta == null || delta.distance < 3) {
+                                        // 移动距离极小，视为点击
+                                        w.onOpenDetail();
+                                        return;
+                                      }
+                                      final target = _targetFromDelta(delta);
+                                      if (target != w.start) {
+                                        w.onMove(target);
+                                      }
+                                    }
+                                    ..onCancel = () {
+                                      setState(() {
+                                        _moveDelta = null;
+                                      });
+                                    };
+                                },
+                              ),
+                        },
+                        child: _buildBlockContent(color, textColor),
+                      ),
                     )
                   : GestureDetector(
                       onSecondaryTap: w.onSecondaryTap,
@@ -2328,7 +2370,6 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                   instance
                                     ..onStart = (details) {
                                       setState(() {
-                                        _isDragging = true;
                                         _moveDelta = Offset.zero;
                                       });
                                     }
@@ -2342,7 +2383,6 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                     ..onEnd = (details) {
                                       final delta = _moveDelta;
                                       setState(() {
-                                        _isDragging = false;
                                         _moveDelta = null;
                                       });
                                       if (delta == null || delta.distance < 3) {
@@ -2356,21 +2396,9 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                     }
                                     ..onCancel = () {
                                       setState(() {
-                                        _isDragging = false;
                                         _moveDelta = null;
                                       });
                                     };
-                                },
-                              ),
-                          LongPressGestureRecognizer:
-                              GestureRecognizerFactoryWithHandlers<
-                                LongPressGestureRecognizer
-                              >(
-                                () => LongPressGestureRecognizer(),
-                                (LongPressGestureRecognizer instance) {
-                                  instance.onLongPress = !w.isEditMode
-                                      ? () => w.onEditModeChanged(true)
-                                      : null;
                                 },
                               ),
                         },

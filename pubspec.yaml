@@ -42,6 +42,8 @@ dependencies:
   timezone: ^0.10.1
   # 闹钟式提醒（绕过静音，支持全屏唤醒）
   alarm: ^5.4.1
+  # 阿里云移动推送（App 被杀后仍能触达）
+  aliyun_push: ^1.2.0
   
   # 自定义字体
   google_fonts: ^6.2.1

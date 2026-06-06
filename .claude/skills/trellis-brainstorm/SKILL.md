@@ -57,6 +57,9 @@ Triggered from /trellis:start when the user describes a development task, especi
    Do not ask "should I search?" or "can you paste the code so I can continue?"
    If you need information: search/inspect. If blocked: ask the minimal blocking question.
 
+8. **Spec-conflict alert (mandatory)**
+   During Auto-Context (Step 1), scan `.trellis/spec/**/*.md` for rules that conflict with the incoming requirement. If any conflict is found, **stop and surface it immediately** before asking any other question. The user must explicitly decide how to resolve it before brainstorming continues. Never silently proceed past a known spec conflict.
+
 ---
 
 ## Step 0: Ensure Task Exists (ALWAYS)
@@ -114,6 +117,10 @@ Create/seed `prd.md` immediately with what you know:
 
 * <what we will not do in this task>
 
+## Spec Conflicts
+
+* <conflict description> → **Resolution**: <option chosen + rationale>
+
 ## Technical Notes
 
 * <files inspected, constraints, links, references>
@@ -137,11 +144,41 @@ Before asking questions like "what does the code look like?", gather context you
 
 * Look for existing PRDs/specs/templates
 * Look for command usage examples, README, ADRs if any
+* **Scan `.trellis/spec/**/*.md` for rules that apply to this task** — check for conflicts with the stated requirement
+
+### Spec Conflict Detection (MANDATORY — run every brainstorm)
+
+After reading the relevant spec files, check each requirement/assumption against existing spec rules:
+
+| Conflict severity | Criteria | Action |
+|---|---|---|
+| **Hard conflict** | Requirement directly violates a spec rule | Stop, surface conflict, ask user to resolve before continuing |
+| **Tension** | Requirement bends or stretches a spec guideline | Surface as a warning, continue after noting it |
+| **No conflict** | Requirement is consistent with or unaddressed by specs | Continue normally |
+
+**Conflict notification format** (use when a conflict is found):
+
+```markdown
+⚠️ **Spec Conflict Detected** — must resolve before continuing
+
+**Requirement**: <what the user wants>
+**Conflicting spec**: [`spec/<path>.md`](spec/<path>.md) — "<exact rule quoted>"
+
+**Options**:
+1. **Adjust requirement** — modify scope to comply with the existing spec
+2. **Update the spec** — this requirement represents a deliberate evolution of the rule
+3. **Accept exception** — proceed despite conflict, with explicit justification recorded in PRD
+
+Which option do you prefer?
+```
+
+Record the resolution in PRD under a `## Spec Conflicts` section.
 
 Write findings into PRD:
 
 * Add to `What I already know`
 * Add constraints/links to `Technical Notes`
+* Add any conflicts to `## Spec Conflicts` (resolved or pending)
 
 ---
 
@@ -493,6 +530,10 @@ python ./.trellis/scripts/task.py add-subtask "$TASK_DIR" "$CHILD_DIR"
 ## Decision (ADR-lite)
 
 Context / Decision / Consequences
+
+## Spec Conflicts
+
+* <conflict> → Resolution: <option + rationale>  *(omit section if none)*
 
 ## Out of Scope
 

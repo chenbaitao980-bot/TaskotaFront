@@ -24,6 +24,7 @@ import '../../../services/task_attachment_service.dart';
 import '../../../services/task_sync_service.dart';
 import '../../../services/node_template_sync_service.dart';
 import '../../../services/subscription_service.dart';
+import '../../../services/aliyun_push_service.dart';
 import '../../widgets/battery_optimization_guide.dart';
 import '../../../services/supabase_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
@@ -221,6 +222,7 @@ class _HomePageState extends State<HomePage> {
       if (!_projectSyncStarted) {
         _projectSyncStarted = true;
         print('[Sync] 检测到登录用户 ${client.auth.currentUser?.id}，启动同步');
+        AliyunPushService().onUserLoggedIn(); // 登录后上传推送 registrationId
         ProjectSyncService.instance.subscribe();
         TaskSyncService.instance.subscribe();
         ChecklistSyncService.instance.subscribe();
@@ -920,8 +922,27 @@ class _HomeContentState extends State<_HomeContent> {
 
     // Auto-scroll to nearest task after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _processPendingNotificationTask();
       _scrollToNow(animated: false);
     });
+  }
+
+  /// 消费通知点击留下的待定位任务 ID，定位到时间轴并选中。
+  void _processPendingNotificationTask() {
+    final taskId = NotificationService.pendingTaskId;
+    if (taskId == null) return;
+    NotificationService.pendingTaskId = null;
+    _TimelineTask? task;
+    for (final t in _timelineTasks) {
+      if (t.id == taskId || t.taskId == taskId) {
+        task = t;
+        break;
+      }
+    }
+    if (task != null) {
+      _selectTask(task);
+      _scrollToTask(task);
+    }
   }
 
   Set<String> get _parentIds =>

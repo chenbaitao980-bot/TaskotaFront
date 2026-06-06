@@ -10,11 +10,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.taskora/battery"
+    private val BATTERY_CHANNEL = "com.taskora/battery"
+    private val ALARM_CHANNEL = "com.taskora/native_alarm"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isIgnoringBatteryOptimizations" -> {
@@ -46,6 +47,29 @@ class MainActivity : FlutterActivity() {
                         } catch (e: Exception) {
                             result.success(false)
                         }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // 原生闹钟式提醒通道
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scheduleNotification" -> {
+                        val id = call.argument<Int>("id") ?: 0
+                        val title = call.argument<String>("title") ?: ""
+                        val body = call.argument<String>("body") ?: ""
+                        val scheduledAtMillis = call.argument<Long>("scheduledAtMillis") ?: 0L
+                        NotificationAlarmHelper.scheduleNotification(
+                            this, id, title, body, scheduledAtMillis
+                        )
+                        result.success(true)
+                    }
+                    "cancelNotification" -> {
+                        val id = call.argument<Int>("id") ?: 0
+                        NotificationAlarmHelper.cancelNotification(this, id)
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }

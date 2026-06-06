@@ -37,6 +37,9 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
+  /// 通知点击后待跳转的任务 ID，由 _HomeContentState 在数据加载后消费并清除。
+  static String? pendingTaskId;
+
   FlutterLocalNotificationsPlugin? _plugin;
   FlutterLocalNotificationsWindows? _windowsPlugin;
   final Map<int, Timer> _timers = {};
@@ -120,12 +123,17 @@ class NotificationService {
       await _plugin!.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (response) {
-          // 点击过期摘要通知 → 导航到主页（任务列表）
-          // 点击过期摘要通知 → 跳转到首页，清除导航栈避免重复
-          if (response.payload == 'overdue_digest') {
+          // 点击任何通知：先停掉对应的 alarm，再跳首页
+          if (response.id != null) AlarmService().cancelAlarm(response.id!);
+          if (response.payload == 'overdue_digest' || response.payload == null) {
             AppRouter.navigatorKey.currentState
                 ?.pushNamedAndRemoveUntil('/', (route) => false);
+            return;
           }
+          // 普通任务/日程通知：记录待定位任务 ID，首页加载完后定位
+          pendingTaskId = response.payload;
+          AppRouter.navigatorKey.currentState
+              ?.pushNamedAndRemoveUntil('/', (route) => false);
         },
       );
 
@@ -147,27 +155,21 @@ class NotificationService {
     if (_plugin == null) return;
 
     final androidPlugin = AndroidFlutterLocalNotificationsPlugin();
-    // Delete old channels first — importance is locked after first creation
+
+    // 清理旧通道（在系统设置中会保留但不再使用，用户仍能看到）
     try {
       await androidPlugin.deleteNotificationChannel('schedule_reminders');
       await androidPlugin.deleteNotificationChannel('repeating_reminders');
     } catch (_) {}
+
     try {
+      // 只创建 1 个通道：taskora_reminders
+      // 原生 AlarmManager + flutter_local_notifications 都使用此通道
       await androidPlugin.createNotificationChannel(
         AndroidNotificationChannel(
-          'schedule_reminders',
-          'Schedule Reminders',
-          description: 'Reminder notifications before schedule starts',
-          importance: Importance.max,
-          playSound: true,
-          enableVibration: true,
-        ),
-      );
-      await androidPlugin.createNotificationChannel(
-        AndroidNotificationChannel(
-          'repeating_reminders',
-          'Repeat Reminders',
-          description: 'Repeating reminder notifications',
+          'taskora_reminders',
+          '任务提醒',
+          description: '任务与日程的提醒通知',
           importance: Importance.max,
           playSound: true,
           enableVibration: true,
@@ -177,9 +179,9 @@ class NotificationService {
   }
 
   static const _androidDetails = AndroidNotificationDetails(
-    'schedule_reminders',
-    'Schedule Reminders',
-    channelDescription: 'Reminder notifications before schedule starts',
+    'taskora_reminders',
+    '任务提醒',
+    channelDescription: '任务与日程的提醒通知',
     importance: Importance.max,
     priority: Priority.high,
     showWhen: true,
@@ -267,7 +269,7 @@ class NotificationService {
           return;
         }
       }
-      // 始终尝试 alarm 备份（alarm 包内部会降级处理），不依赖精确闹钟权限
+      // AlarmService 作为后台兜底（setAlarmClock，App 被杀后仍能触发）
       await AlarmService().scheduleAlarm(
         id: id,
         title: title,
@@ -557,6 +559,7 @@ class NotificationService {
         title: 'Upcoming: $title',
         body: description ?? 'Your schedule starts in $remindBeforeMinutes minutes',
         scheduledDate: remindAt,
+        payload: scheduleId,
       );
     }
 
@@ -566,6 +569,7 @@ class NotificationService {
         title: 'Starting: $title',
         body: description ?? 'Your schedule is starting now',
         scheduledDate: startTime,
+        payload: scheduleId,
       );
     }
 

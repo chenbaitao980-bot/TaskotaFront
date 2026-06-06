@@ -57,6 +57,18 @@
         </receiver>
         <!-- alarm package: 应用被杀时发送通知 -->
         <service android:name="com.gdelataillade.alarm.services.NotificationOnKillService"/>
+        <!-- 原生 AlarmManager 接收器：App 被杀后仍能弹通知 -->
+        <receiver
+            android:name="com.taskora.app.NotificationAlarmReceiver"
+            android:exported="false" />
+            <!-- 阿里云移动推送 AppKey（数字型）/ AppSecret（十六进制） -->
+        <meta-data
+            android:name="com.alibaba.push2.device.channel.appKey"
+            android:value="335723639"/>
+        <meta-data
+            android:name="com.alibaba.push2.device.channel.appSecret"
+            android:value="2fc267edc1b1424ea61952c0f13fb124"/>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
