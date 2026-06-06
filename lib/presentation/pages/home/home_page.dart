@@ -65,16 +65,23 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
+  /// 可见 tab 索引通知器，避免每次切换重建整个 _HomeContent
+  final ValueNotifier<int> _visibleTabIndex = ValueNotifier<int>(0);
   final LocalStorageService _storage = LocalStorageService();
   bool _storageReady = false;
   StreamSubscription<sb.AuthState>? _authSub;
   StreamSubscription<void>? _projectChangesSub;
   StreamSubscription<void>? _taskChangesSub;
   StreamSubscription<void>? _nodeTemplateChangesSub;
+
   Timer? _projectChangesDebounce;
   bool _projectSyncStarted = false;
   DateTime? _lastRescheduleTime;
   AppLifecycleListener? _lifecycleListener;
+  /// 防抖：短时间内密集的 LoadTasks 只执行最后一次
+  Timer? _loadTasksDebounce;
+  /// 缓存页面实例，避免每次 build 重建
+  late final List<Widget> _pages = _buildPages();
 
   @override
   void initState() {
@@ -96,9 +103,19 @@ class _HomePageState extends State<HomePage> {
     Future.microtask(() async {
       await ProjectSyncService.instance.forcePullAll();
       await TaskSyncService.instance.syncAll();
-      if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+      _debounceLoadTasks();
       // 重新调度所有提醒（国产ROM杀进程后AlarmManager可能被清除）
       await _rescheduleTaskReminders();
+    });
+  }
+
+  /// 防抖触发 LoadTasks，500ms 内多次调用只执行最后一次
+  void _debounceLoadTasks() {
+    _loadTasksDebounce?.cancel();
+    _loadTasksDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        context.read<TaskNewBloc>().add(LoadTasks());
+      }
     });
   }
 
@@ -109,10 +126,13 @@ class _HomePageState extends State<HomePage> {
     _taskChangesSub?.cancel();
     _nodeTemplateChangesSub?.cancel();
     _projectChangesDebounce?.cancel();
+    _loadTasksDebounce?.cancel();
+    _visibleTabIndex.dispose();
     _lifecycleListener?.dispose();
     super.dispose();
   }
 
+  /// 仅首次调用时创建页面列表，之后复用相同实例以消除每次 tab 切换的 rebuild
   List<Widget> _buildPages() {
     return [
       _HomeContent(
@@ -120,12 +140,13 @@ class _HomePageState extends State<HomePage> {
         projectRepository: widget.projectRepository,
         taskRepository: widget.taskRepository,
         checklistRepository: widget.checklistRepository,
-        isVisible: _currentIndex == 0,
+        visibleTabIndex: _visibleTabIndex,
         onCreateSchedule: _createSchedule,
         onRefresh: _loadStats,
         onOpenTaskStatus: _openTaskStatus,
         onEditSchedule: _editSchedule,
         onDeleteSchedule: _deleteSchedule,
+        key: const ValueKey('home_content'),
       ),
       const TasksPage(),
       CalendarPage(onJumpToMindMap: _jumpToMindMap),
@@ -183,7 +204,7 @@ class _HomePageState extends State<HomePage> {
       await ChecklistSyncService.instance.syncAll();
       await NodeTemplateSyncService.instance.syncAll();
       await AttachmentSyncService.instance.pullAll();
-      if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+      _debounceLoadTasks();
       await _rescheduleTaskReminders();
     }
 
@@ -206,7 +227,7 @@ class _HomePageState extends State<HomePage> {
           _projectChangesDebounce = Timer(
             const Duration(milliseconds: 500),
             () {
-              if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+              _debounceLoadTasks();
             },
           );
         });
@@ -215,13 +236,13 @@ class _HomePageState extends State<HomePage> {
           _projectChangesDebounce = Timer(
             const Duration(milliseconds: 500),
             () {
-              if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+              _debounceLoadTasks();
             },
           );
         });
         _nodeTemplateChangesSub ??= NodeTemplateSyncService.instance.changes
             .listen((_) {
-              if (mounted) context.read<TaskNewBloc>().add(LoadTasks());
+              _debounceLoadTasks();
             });
       }
       // 桌面端每次登录都 forcePush（本地数据权威），移动端首次登录 forcePush
@@ -453,7 +474,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _buildPages()),
+      body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: _buildBottomNav(),
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
@@ -469,6 +490,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _currentIndex = 1;
     });
+    _visibleTabIndex.value = 1;
     context.read<TaskNewBloc>().add(
       LoadTasks(
         projectIds: {task.projectId},
@@ -504,6 +526,7 @@ class _HomePageState extends State<HomePage> {
             setState(() {
               _currentIndex = index;
             });
+            _visibleTabIndex.value = index;
           },
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -586,7 +609,8 @@ class _HomeContent extends StatefulWidget {
   final ProjectRepository? projectRepository;
   final TaskRepository? taskRepository;
   final ChecklistRepository? checklistRepository;
-  final bool isVisible;
+  /// 监听父级可见 tab 索引，避免 widget 实例随 isVisible 变化重建
+  final ValueNotifier<int> visibleTabIndex;
   final VoidCallback onCreateSchedule;
   final VoidCallback onRefresh;
   final void Function(String status, String title) onOpenTaskStatus;
@@ -598,12 +622,13 @@ class _HomeContent extends StatefulWidget {
     this.projectRepository,
     this.taskRepository,
     this.checklistRepository,
-    this.isVisible = true,
+    required this.visibleTabIndex,
     required this.onCreateSchedule,
     required this.onRefresh,
     required this.onOpenTaskStatus,
     required this.onEditSchedule,
     required this.onDeleteSchedule,
+    super.key,
   });
 
   @override
@@ -618,6 +643,7 @@ class _HomeContentState extends State<_HomeContent> {
   static const int _daysBefore = 180;
   static const int _daysAfter = 180;
 
+  bool _visible = true;
   bool _loading = false;
   bool _modeSwitchGuard = false;
   // 节点类型多选过滤：'parent' | 'child' | 'multiday'，空集合 = 全部显示
@@ -671,7 +697,16 @@ class _HomeContentState extends State<_HomeContent> {
           if (mounted) setState(() {});
         });
       });
+    _visible = widget.visibleTabIndex.value == 0;
+    widget.visibleTabIndex.addListener(_onVisibleTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  }
+
+  void _onVisibleTabChanged() {
+    if (!mounted) return;
+    final nowVisible = widget.visibleTabIndex.value == 0;
+    if (_visible == nowVisible) return;
+    setState(() => _visible = nowVisible);
   }
 
   @override
@@ -679,12 +714,18 @@ class _HomeContentState extends State<_HomeContent> {
     _timelineScrollDebounce?.cancel();
     _hourWidthSyncDebounce?.cancel();
     _descriptionSaveDebounce?.cancel();
+    widget.visibleTabIndex.removeListener(_onVisibleTabChanged);
     _timelineController.dispose();
     super.dispose();
   }
 
   Future<void> _loadData() async {
     if (_loading) return;
+    // 首页不可见时跳过全量加载，避免后台 tab 触发卡顿
+    if (!_visible) {
+      _loading = false;
+      return;
+    }
     _loading = true;
 
     // Load projects
@@ -1132,7 +1173,7 @@ class _HomeContentState extends State<_HomeContent> {
           context.read<TaskNewBloc>().add(LoadTasks());
           return;
         }
-        if (state is TaskNewLoaded && !_loading && mounted && widget.isVisible) {
+        if (state is TaskNewLoaded && !_loading && mounted && _visible) {
           final now = DateTime.now();
           if (_lastLoadTime != null &&
               now.difference(_lastLoadTime!) < const Duration(seconds: 2)) {
