@@ -40,3 +40,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 思维导图切换筛选项目后布局错乱修复
+
+**Date**: 2026-06-06
+**Task**: 思维导图切换筛选项目后布局错乱修复
+**Branch**: `master`
+
+### Summary
+
+修复 MindMapView 在切换筛选项目后手工拖拽位置丢失的问题。根因: _loadOffsets() 只在 initState() 调用一次，didUpdateWidget 中 task 列表变化后未重新加载。新增 _reloadOffsets() 方法在 didUpdateWidget 中重新加载 SharedPreferences 存储的 offset，不触发 setState 或 _focusNearestTask 副作用。同时将 widget 生命周期异步加载陷阱记录至 component-guidelines.md 的 Common Mistakes 部分。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `473f875` | (see git log) |
+| `072a7a9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
