@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/guides/index.md", "reason": "通用开发指导：代码复用、跨层思维"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范总览"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Flutter 组件规范，mind_map_view 和 calendar_page 都是复杂组件"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量准则，避免引入新的反模式"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范，ValueNotifier / Bloc 使用约定"}
