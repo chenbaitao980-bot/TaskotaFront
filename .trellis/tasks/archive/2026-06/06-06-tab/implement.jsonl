@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-06-tab/prd.md", "reason": "Task definition with detailed technical approach and implementation plan"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management patterns - ValueNotifier/Bloc usage guidelines"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns - extracted widget class conventions"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality standards - forbidden patterns and required patterns"}
