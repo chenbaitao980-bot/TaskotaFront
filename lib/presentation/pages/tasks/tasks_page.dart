@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
@@ -181,6 +183,14 @@ class _TasksPageState extends State<TasksPage> {
             actions: effective.isTemplateMode
                 ? [
                     IconButton(
+                      tooltip: '搜索',
+                      icon: const Icon(Icons.search),
+                      onPressed: () => showSearch(
+                        context: context,
+                        delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
+                      ),
+                    ),
+                    IconButton(
                       tooltip: '返回任务',
                       icon: const Icon(Icons.exit_to_app_rounded),
                       onPressed: () => context
@@ -191,6 +201,14 @@ class _TasksPageState extends State<TasksPage> {
                     _buildExpandCollapseButton(effective),
                   ]
                 : [
+                    IconButton(
+                      tooltip: '搜索',
+                      icon: const Icon(Icons.search),
+                      onPressed: () => showSearch(
+                        context: context,
+                        delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
+                      ),
+                    ),
                     _buildStatusFilterButton(effective),
                     // 模板节点功能暂时隐藏
                     // IconButton(
@@ -1296,4 +1314,116 @@ class _TasksPageState extends State<TasksPage> {
   //     ),
   //   );
   // }
+}
+
+/// Search delegate for searching tasks by keyword.
+class _TaskSearchDelegate extends SearchDelegate<String?> {
+  final TaskNewBloc bloc;
+  Timer? _debounce;
+  String _lastQuery = '';
+
+  _TaskSearchDelegate(this.bloc);
+
+  @override
+  List<Widget>? buildActions(BuildContext context) => [
+    if (query.isNotEmpty)
+      IconButton(
+        icon: const Icon(Icons.clear),
+        onPressed: () {
+          query = '';
+          bloc.add(SetSearchQuery(null));
+          showSuggestions(context);
+        },
+      ),
+  ];
+
+  @override
+  Widget? buildLeading(BuildContext context) => IconButton(
+    icon: const Icon(Icons.arrow_back),
+    onPressed: () {
+      bloc.add(SetSearchQuery(null));
+      close(context, null);
+    },
+  );
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    // Debounce: only emit search event after 300ms of no typing
+    if (query != _lastQuery) {
+      _lastQuery = query;
+      _debounce?.cancel();
+      if (query.isEmpty) {
+        bloc.add(SetSearchQuery(null));
+      } else {
+        _debounce = Timer(const Duration(milliseconds: 300), () {
+          bloc.add(SetSearchQuery(query));
+        });
+      }
+    }
+
+    if (query.isEmpty) {
+      return const Center(
+        child: Text('输入关键字搜索任务', style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    return _buildSearchResults(context);
+  }
+
+  @override
+  Widget buildResults(BuildContext context) => _buildSearchResults(context);
+
+  Widget _buildSearchResults(BuildContext context) {
+    final state = bloc.state;
+    if (state is TaskNewLoaded) {
+      final tasks = state.tasks;
+      if (tasks.isEmpty) {
+        return const Center(
+          child: Text('无匹配结果', style: TextStyle(color: Colors.grey)),
+        );
+      }
+      return ListView.builder(
+        itemCount: tasks.length,
+        itemBuilder: (context, index) {
+          final task = tasks[index];
+          return ListTile(
+            leading: Icon(
+              task.status == 2
+                  ? Icons.check_circle
+                  : Icons.radio_button_unchecked,
+              color: task.status == 2 ? Colors.green : Colors.grey,
+              size: 20,
+            ),
+            title: Text(
+              task.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: task.description.isNotEmpty
+                ? Text(
+                    task.description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  )
+                : null,
+            trailing: Text(
+              task.status == 2 ? '已完成' : '待处理',
+              style: TextStyle(
+                fontSize: 12,
+                color: task.status == 2 ? Colors.green : Colors.orange,
+              ),
+            ),
+            onTap: () => close(context, task.id),
+          );
+        },
+      );
+    }
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
 }

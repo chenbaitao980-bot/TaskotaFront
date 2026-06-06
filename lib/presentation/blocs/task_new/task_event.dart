@@ -84,6 +84,8 @@ class LoadTasks extends TaskEvent {
   final bool clearDateRange; // true=清除日期筛选，忽略已保留的日期
   final String? focusTaskId;
   final int? focusRequestToken;
+  final String? searchKeyword;
+  final bool hasSearchKeyword;
   LoadTasks({
     this.projectId,
     Set<String>? projectIds,
@@ -94,6 +96,8 @@ class LoadTasks extends TaskEvent {
     this.clearDateRange = false,
     this.focusTaskId,
     this.focusRequestToken,
+    this.searchKeyword,
+    this.hasSearchKeyword = false,
   }) : projectIds = projectIds ?? (projectId == null ? const {} : {projectId}),
        hasProjectSelectionOverride = projectIds != null || projectId != null;
   @override
@@ -108,7 +112,16 @@ class LoadTasks extends TaskEvent {
     clearDateRange,
     focusTaskId,
     focusRequestToken,
+    searchKeyword,
+    hasSearchKeyword,
   ];
+}
+
+class SetSearchQuery extends TaskEvent {
+  final String? keyword;
+  SetSearchQuery(this.keyword);
+  @override
+  List<Object?> get props => [keyword];
 }
 
 class CreateTask extends TaskEvent {

@@ -93,6 +93,25 @@ class TaskRepository {
         .get();
   }
 
+  /// Search task IDs matching keyword in title, description, or checklist item titles.
+  /// Returns a set of matching task IDs for intersection with existing filters.
+  Future<Set<String>> searchTaskIds(String keyword) async {
+    final pattern = '%$keyword%';
+    // Tasks matching by title or description
+    final tasksMatch = await (_db.select(_db.tasks)
+      ..where((t) =>
+          t.deleted.equals(0) &
+          (t.title.like(pattern) | t.description.like(pattern)))
+    ).get();
+    final matchedIds = tasksMatch.map((t) => t.id).toSet();
+    // Tasks matching by checklist item titles
+    final checklistMatch = await (_db.select(_db.checklistItems)
+      ..where((c) => c.deleted.equals(0) & c.title.like(pattern))
+    ).get();
+    matchedIds.addAll(checklistMatch.map((c) => c.taskId));
+    return matchedIds;
+  }
+
   Future<Task?> get(String id) async {
     final result = await (_db.select(
       _db.tasks,

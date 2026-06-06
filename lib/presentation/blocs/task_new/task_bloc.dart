@@ -74,6 +74,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<ToggleViewMode>(_onToggleViewMode);
     on<MergeSubTasksToChecklist>(_onMergeSubTasksToChecklist);
     on<ApplyTemplate>(_onApplyTemplate);
+    on<SetSearchQuery>(_onSetSearchQuery);
   }
 
   @visibleForTesting
@@ -294,6 +295,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     Set<String> preservedProjectIds = const {};
     int? preservedDateFrom;
     int? preservedDateTo;
+    String? preservedSearchKeyword;
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       preservedSubTrees = current.subTrees;
@@ -304,6 +306,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       preservedProjectIds = current.selectedProjectIds;
       preservedDateFrom = current.dateFrom;
       preservedDateTo = current.dateTo;
+      preservedSearchKeyword = current.searchKeyword;
     }
 
     if (state is! TaskNewLoaded) emit(TaskNewLoading());
@@ -353,6 +356,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final selectedDateTo = event.clearDateRange
           ? null
           : (event.dateTo ?? preservedDateTo);
+      final selectedSearchKeyword = event.hasSearchKeyword ? event.searchKeyword : preservedSearchKeyword;
       List<Task> tasks;
       if (selectedFilter == 'today') {
         tasks = (await taskRepository.getToday())
@@ -389,8 +393,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         tasks = tasks.where((t) => t.status == 2).toList();
       }
 
+      // Search keyword filtering: intersect with DB search results
+      if (selectedSearchKeyword != null && selectedSearchKeyword.isNotEmpty) {
+        final matchedIds = await taskRepository.searchTaskIds(selectedSearchKeyword);
+        tasks = tasks.where((t) => matchedIds.contains(t.id)).toList();
+      }
+
       flog(
-        '[LoadTasks] filter=$selectedFilter, projectIds=$selectedProjectIds, tasks=${tasks.length}/${allTasks.length}',
+        '[LoadTasks] filter=$selectedFilter, projectIds=$selectedProjectIds, searchKeyword=$selectedSearchKeyword, tasks=${tasks.length}/${allTasks.length}',
       );
 
       final allProjects = isTemplateMode
@@ -439,6 +449,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           templateProjects: templateProjects,
           focusTaskId: event.focusTaskId,
           focusRequestToken: event.focusRequestToken,
+          searchKeyword: selectedSearchKeyword,
         ),
       );
       _persistFilterState(
@@ -587,6 +598,12 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       tasks = tasks.where((t) => t.status == 0).toList();
     } else if (statusFilter == 'completed') {
       tasks = tasks.where((t) => t.status == 2).toList();
+    }
+
+    // Search keyword filtering
+    if (previous.searchKeyword != null && previous.searchKeyword!.isNotEmpty) {
+      final matchedIds = await taskRepository.searchTaskIds(previous.searchKeyword!);
+      tasks = tasks.where((t) => matchedIds.contains(t.id)).toList();
     }
 
     final progress = await _calculateProgress(allTasks);
@@ -1313,6 +1330,24 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       }
     } catch (e) {
       emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onSetSearchQuery(
+    SetSearchQuery event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    if (state is TaskNewLoaded) {
+      final current = state as TaskNewLoaded;
+      add(LoadTasks(
+        projectIds: current.selectedProjectIds,
+        filter: current.selectedFilter,
+        statusFilter: current.selectedStatusFilter,
+        dateFrom: current.dateFrom,
+        dateTo: current.dateTo,
+        searchKeyword: event.keyword,
+        hasSearchKeyword: true,
+      ));
     }
   }
 

@@ -33,6 +33,7 @@ class TaskNewLoaded extends TaskNewState {
   final List<Project> templateProjects;
   final String? focusTaskId;
   final int? focusRequestToken;
+  final String? searchKeyword;
 
   TaskNewLoaded({
     this.projects = const [],
@@ -56,6 +57,7 @@ class TaskNewLoaded extends TaskNewState {
     this.templateProjects = const [],
     this.focusTaskId,
     this.focusRequestToken,
+    this.searchKeyword,
   }) : selectedProjectIds = selectedProjectIds.isNotEmpty
            ? selectedProjectIds
            : (selectedProjectId == null ? const {} : {selectedProjectId});
@@ -84,6 +86,7 @@ class TaskNewLoaded extends TaskNewState {
     List<Project>? templateProjects,
     String? focusTaskId,
     int? focusRequestToken,
+    String? searchKeyword,
   }) {
     return TaskNewLoaded(
       projects: projects ?? this.projects,
@@ -112,6 +115,7 @@ class TaskNewLoaded extends TaskNewState {
       templateProjects: templateProjects ?? this.templateProjects,
       focusTaskId: focusTaskId ?? this.focusTaskId,
       focusRequestToken: focusRequestToken ?? this.focusRequestToken,
+      searchKeyword: searchKeyword ?? this.searchKeyword,
     );
   }
 
@@ -137,6 +141,7 @@ class TaskNewLoaded extends TaskNewState {
     templateProjects,
     focusTaskId,
     focusRequestToken,
+    searchKeyword,
   ];
 }
 
