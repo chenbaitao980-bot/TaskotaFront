@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/utils/snackbar_helper.dart';
 import '../../../core/theme/app_theme.dart';
@@ -40,6 +41,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   bool? _exactAlarmGranted;
   bool _notifBusy = false;
   bool? _batteryOptIgnored;
+  bool _isMiui = false; // 是否为小米/Redmi 设备
 
   @override
   void initState() {
@@ -59,8 +61,15 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       notifGranted = await NotificationService().checkMobilePermissions();
       exactGranted = await NotificationService().checkExactAlarmPermission();
     }
+    bool isMiui = false;
     if (Platform.isAndroid) {
       batteryIgnored = await BatteryOptimizationService.isIgnoring();
+      try {
+        const ch = MethodChannel('com.taskora/battery');
+        final mfr = await ch.invokeMethod<String>('getManufacturer') ?? '';
+        final lower = mfr.toLowerCase();
+        isMiui = lower.contains('xiaomi') || lower.contains('redmi');
+      } catch (_) {}
     }
     if (!mounted) return;
     setState(() {
@@ -69,6 +78,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       _notifGranted = notifGranted;
       _exactAlarmGranted = exactGranted;
       _batteryOptIgnored = batteryIgnored;
+      _isMiui = isMiui;
       _ready = true;
     });
   }
@@ -394,8 +404,123 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 ),
             ],
           ),
+          // 小米/Redmi 专属：锁定应用防止划掉后通知失效
+          if (_isMiui) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.lock_outline, color: AppTheme.warning, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('锁定应用（小米专属）'),
+                      const SizedBox(height: 2),
+                      Text(
+                        '划掉 App 后通知可能失效，锁定后不会被系统清除',
+                        style: TextStyle(color: AppTheme.warning, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _showMiuiLockGuide(context),
+                  child: const Text('查看方法'),
+                ),
+              ],
+            ),
+          ],
         ],
       ],
+    );
+  }
+
+  void _showMiuiLockGuide(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, size: 20),
+            SizedBox(width: 8),
+            Text('锁定应用防止通知失效', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '小米 MIUI 在划掉 App 时会同时取消所有定时通知。'
+                '锁定 App 后划掉其他应用不会影响 Taskora，通知可正常送达。',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              _buildGuideStep(1, '按手机底部「最近任务」按钮'),
+              _buildGuideStep(2, '找到 Taskora 应用卡片'),
+              _buildGuideStep(3, '点击卡片右上角的 🔒 锁定图标'),
+              _buildGuideStep(4, '图标变为锁定状态即完成（此后划掉其他 App 不影响 Taskora）'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.warning.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: AppTheme.warning, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '每次重启手机后需要重新锁定。也可配合「电池优化→无限制」一起使用效果更好。',
+                        style: TextStyle(color: AppTheme.warning, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuideStep(int step, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              '$step',
+              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 13)),
+          ),
+        ],
+      ),
     );
   }
 
