@@ -399,3 +399,40 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Taskora Web 上线 — deploy-branch CI/CD
+
+**Date**: 2026-06-07
+**Task**: Taskora Web 上线 — deploy-branch CI/CD
+**Branch**: `master`
+
+### Summary
+
+完成 Flutter Web 部署上线：vercel.json 移至 web/ 并补 COOP/COEP headers；GitHub Actions 改为 deploy-branch 模式（构建产物推 deploy 分支，Vercel serve 静态文件，无需 Secrets）；清理 git 历史中的 APK 大文件；修复 Flutter 版本约束和 GITHUB_TOKEN 权限问题。URL: https://taskota-front.vercel.app
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bfa33fd` | (see git log) |
+| `906fe1d` | (see git log) |
+| `60bf20c` | (see git log) |
+| `decc3af` | (see git log) |
+| `4280faf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

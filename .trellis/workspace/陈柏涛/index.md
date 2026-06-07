@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
+- **Total Sessions**: 11
 - **Last Active**: 2026-06-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~401 | Active |
+| `journal-1.md` | ~438 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-06-07 | Taskora Web 上线 — deploy-branch CI/CD | `bfa33fd`, `906fe1d`, `60bf20c`, `decc3af`, `4280faf` | `master` |
 | 10 | 2026-06-07 | 评估 codegraph+graphify 在 Flutter 项目的可行性 | `5259dcc` | `master` |
 | 9 | 2026-06-07 | 修复首页切回时逾期/时间轴不刷新 | `232d66c`, `2201b36` | `master` |
 | 8 | 2026-06-07 | 修复逾期提醒通知跳转与频率控制 | `9167c73`, `1e8518b` | `master` |
