@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+.pub-cache/
+
+# Flutter build artifacts
+build/
+.dart_tool/
+*.g.dart
+*.freezed.dart
+
+# Flutter platform native code (not Dart)
+android/
+ios/
+macos/
+linux/
+windows/
+web/
+
+# Release builds
+Taskora_windows_release/
+android_build_release/
+
+# Claude / AI tooling (docs, configs, memory)
+.claude/
+.agents/
+.workbuddy/
+.cursor/
+.pi/
+
+# Trellis task management
+.trellis/
+
+# Project docs (not code)
+docs/
+openspec/
+supabase/
+regression-tests/
+personal_admin_site/
+CHANGELOG.md
+ARCHITECTURE.md
+*.md
+
+# Python scripts (non-Dart)
+*.py
+
+# Other tool directories
+.reasonix/
+android_build_debug/
+
+# Git
+.git/
+.graphify/
+.codegraph/
