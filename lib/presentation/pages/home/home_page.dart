@@ -1352,7 +1352,7 @@ class _HomeContentState extends State<_HomeContent> {
     final completedCount = inPeriod.where((t) => t.isCompleted).length;
 
     final totalOverdue = _filteredTasks
-        .where((t) => t.date.isBefore(now) && !t.isCompleted)
+        .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(now))
         .length;
 
     return GestureDetector(
