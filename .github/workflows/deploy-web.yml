@@ -1,8 +1,8 @@
-name: Deploy Flutter Web to Vercel
+name: Deploy Flutter Web
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   deploy:
@@ -22,11 +22,12 @@ jobs:
       - name: Build web
         run: flutter build web --release --base-href /
 
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./build/web
-          vercel-args: '--prod'
+      - name: Push to deploy branch
+        run: |
+          cd build/web
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "deploy: $(date +'%Y-%m-%d %H:%M:%S')"
+          git push --force https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/chenbaitao980-bot/TaskotaFront.git HEAD:deploy
