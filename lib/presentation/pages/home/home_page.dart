@@ -711,6 +711,7 @@ class _HomeContentState extends State<_HomeContent> {
   final Map<String, List<Task>> _subtaskCache = {};
   final Map<String, Task?> _dbTaskCache = {};
   DateTime? _lastLoadTime; // BlocListener 节流
+  bool _needsRefresh = false; // 后台发生数据变化时标记，切回首页时触发刷新
   String? _selectedTaskId;
   _TimelineTask? _selectedTask;
   String? _draggingTimelineTaskId;
@@ -744,6 +745,10 @@ class _HomeContentState extends State<_HomeContent> {
     final nowVisible = widget.visibleTabIndex.value == 0;
     if (_visible == nowVisible) return;
     setState(() => _visible = nowVisible);
+    if (nowVisible && _needsRefresh) {
+      _needsRefresh = false;
+      _loadData();
+    }
   }
 
   @override
@@ -1252,7 +1257,11 @@ class _HomeContentState extends State<_HomeContent> {
           context.read<TaskNewBloc>().add(LoadTasks());
           return;
         }
-        if (state is TaskNewLoaded && !_loading && mounted && _visible) {
+        if (state is TaskNewLoaded && !_loading && mounted) {
+          if (!_visible) {
+            _needsRefresh = true;
+            return;
+          }
           final now = DateTime.now();
           if (_lastLoadTime != null &&
               now.difference(_lastLoadTime!) < const Duration(seconds: 2)) {
