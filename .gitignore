@@ -46,3 +46,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Build release artifacts (large binaries — not for git)
+android_build_debug/
+android_build_release/
+android_build/
+Taskora_windows_release/
