@@ -207,39 +207,84 @@ For Vercel, add to `vercel.json`:
 
 ## Vercel deployment
 
-`flutter build web --release` outputs to `build/web/`. Vercel cannot run Flutter builds — use GitHub Actions.
+`flutter build web --release` outputs to `build/web/`. **Vercel cannot run Flutter builds** — its build servers don't have Flutter installed. Two deployment patterns:
 
-### `vercel.json` (minimum)
+### Pattern A — Deploy-branch (no secrets required) ✅ Recommended
+
+GitHub Actions builds Flutter web and force-pushes `build/web/` contents to a `deploy` branch. Vercel serves that branch as static files with no build step.
+
+**Vercel project settings**:
+- Framework Preset: **Other**
+- Production Branch: **`deploy`**
+- Build Command: **empty**
+- Output Directory: **empty** (serves root)
+
+**`vercel.json`** must live in `web/` (not project root) so Flutter copies it into `build/web/` during build:
 
 ```json
 {
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
-      "source": "/flutter_service_worker.js",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
+      ]
     },
     {
-      "source": "/firebase-messaging-sw.js",
+      "source": "/flutter_service_worker.js",
       "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
     }
   ]
 }
 ```
 
-### GitHub Actions (`.github/workflows/deploy-web.yml`)
+**`.github/workflows/deploy-web.yml`**:
 
 ```yaml
-- uses: subosito/flutter-action@v2
-  with: { flutter-version: '3.x', channel: stable }
-- run: flutter build web --release --web-renderer canvaskit
-- uses: amondnet/vercel-action@v25
-  with:
-    vercel-token: ${{ secrets.VERCEL_TOKEN }}
-    vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-    vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-    working-directory: build/web
+name: Deploy Flutter Web
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write        # Required — without this, git push returns exit 128
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable  # Do NOT pin flutter-version; must match pubspec sdk constraint
+      - run: flutter pub get
+      - run: flutter build web --release --base-href /
+      - name: Push to deploy branch
+        run: |
+          cd build/web
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "deploy: $(date +'%Y-%m-%d %H:%M:%S')"
+          git push --force https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/<org>/<repo>.git HEAD:deploy
 ```
+
+### Pattern B — Vercel CLI via GitHub Actions (requires 3 secrets)
+
+Needs `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` in GitHub repo secrets. Use `amondnet/vercel-action@v25` with `working-directory: build/web`.
+
+### Common Pitfalls
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `exit 128` on git push | Missing `permissions: contents: write` in workflow | Add `permissions: contents: write` at top level |
+| `flutter pub get` fails on CI | Pinned `flutter-version` too old for pubspec `sdk:` constraint | Use `channel: stable` without pinning version |
+| Large file rejected by GitHub | Binary build artifacts committed to history | Use `git filter-repo --path <dir> --invert-paths` to clean history; add dirs to `.gitignore` |
+| Vercel shows 404 | Wrong production branch (showing `main` instead of `deploy`) | Vercel Settings → Git → Production Branch → `deploy` |
 
 ---
 
