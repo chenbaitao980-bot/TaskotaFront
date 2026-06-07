@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
-- **Last Active**: 2026-06-06
+- **Total Sessions**: 6
+- **Last Active**: 2026-06-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~185 | Active |
+| `journal-1.md` | ~267 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-06-07 | 本地通知修复完整实施 + 记录 MIUI 厂商推送阻塞 | `3d24370` | `master` |
 | 5 | 2026-06-06 | 思维导图布局重置 + 日历多层任务排序修复 | `7827dea`, `511d9ed`, `1a05678` | `master` |
 | 4 | 2026-06-06 | Tab 页面切换卡顿优化 | `e5dc5d0` | `master` |
 | 3 | 2026-06-06 | 修复过期任务通知弹窗问题 + 首页性能优化 | `8942fcb`, `1ec7210`, `fb07bee`, `47f79c6` | `master` |

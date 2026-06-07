@@ -232,3 +232,36 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 **根因分析**: commit `a08737c` 引入 `_EagerPanGestureRecognizer`，它在 addAllowedPointer 中立即调用 resolve(GestureDisposition.accepted)，导致 LongPressGestureRecognizer 被 gesture arena 立即拒绝，长按无法触发进入编辑模式
 
 **修复方案**: 移除 LongPressGestureRecognizer，移动端改用 `Listener` + `Timer` 检测长按（400ms，12px 移动阈值取消），绕过 gesture arena 竞争。`_EagerPanGestureRecognizer` 保留不动（继续防止 ScrollView 抢走拖拽手势）。桌面端不受影响（showResize = isEditMode || !_isMobile 在桌面端始终为 true）
+
+
+## Session 6: 本地通知修复完整实施 + 记录 MIUI 厂商推送阻塞
+
+**Date**: 2026-06-07
+**Task**: 本地通知修复完整实施 + 记录 MIUI 厂商推送阻塞
+**Branch**: `master`
+
+### Summary
+
+验证 fix-local-notifications 实施完整（try-catch/降级/logcat/系统默认音/alarm.wav删除），更新 PRD 记录小米 MIUI 需厂商推送 SDK 暂缓。calendar-edit-mode 代码已在 2414cad 完成。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3d24370` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
