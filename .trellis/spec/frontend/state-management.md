@@ -145,3 +145,59 @@ Future<Set<String>> searchTaskIds(String keyword) async {
 - **Forgetting to apply new filter in `refreshTasks`**: A filter added in `_onLoadTasks` but not in `refreshTasks` will be lost after mutations (create/update/delete).
 - **Not preserving existing filter values**: When `LoadTasks` is emitted without explicit filter values, the handler should read preserved values from current state.
 - **Failing to clear search on close**: The `_TaskSearchDelegate` must emit `SetSearchQuery(null)` when closing, otherwise stale search state persists.
+
+---
+
+## Deferred Refresh Pattern (Visibility-Gated Widgets)
+
+> **Gotcha**: A `BlocListener` that gates on a visibility flag (e.g., `_visible`) will silently discard state changes while the widget is hidden. When the widget becomes visible again, the Bloc state hasn't changed, so the listener never re-fires — the UI stays stale.
+
+### Problem
+
+```dart
+// ❌ Wrong: state changes while _visible=false are lost forever
+BlocListener<TaskNewBloc, TaskNewState>(
+  listener: (context, state) {
+    if (state is TaskNewLoaded && _visible) {
+      _loadData(); // never called if state fired while hidden
+    }
+  },
+)
+```
+
+When the user navigates away (tab switch, push route) and edits data in another screen, the Bloc emits a new state while this widget is hidden. On returning, no new state emission happens — the listener never triggers, and the UI shows stale data.
+
+### Fix: Dirty Flag
+
+```dart
+// ✅ Correct: record a dirty flag when hidden, act on it when re-shown
+bool _needsRefresh = false;
+
+// BlocListener: mark instead of skip
+if (state is TaskNewLoaded && !_loading && mounted) {
+  if (!_visible) {
+    _needsRefresh = true;
+    return;
+  }
+  _loadData();
+}
+
+// Visibility callback: check flag on re-show
+void _onVisibleTabChanged() {
+  if (!mounted) return;
+  final nowVisible = widget.visibleTabIndex.value == 0;
+  if (_visible == nowVisible) return;
+  setState(() => _visible = nowVisible);
+  if (nowVisible && _needsRefresh) {
+    _needsRefresh = false;
+    _loadData();
+  }
+}
+```
+
+### When to Apply
+
+Use this pattern whenever:
+- A widget is conditionally shown/hidden (e.g., `IndexedStack` tabs, bottom nav pages)
+- The widget subscribes to a Bloc that other screens can mutate
+- Stale display after returning to the widget would be a visible bug
