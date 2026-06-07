@@ -213,6 +213,84 @@ int effectiveGroupSpan(String rootId) {
 
 **⚠️ 组内排序必须用 DFS 递归，禁止扁平化后直接排序**：将所有非 root 任务扁平化后按 `sortOrder/startDate` 排序，在多层级（祖→父→子）结构中会导致父任务被子任务压到下面。正确做法是 DFS 递归，保证任何父节点永远先于其子节点输出：
 
+---
+
+## Notification Service Patterns
+
+### Pattern: `pendingTaskId` — Cross-Widget Navigation from Notifications
+
+When a notification is tapped, the app may not be running or the home widget may not be mounted yet. Use the static `pendingTaskId` field on `NotificationService` as a rendezvous point:
+
+```dart
+// In notification click callback (NotificationService.init):
+pendingTaskId = response.payload;   // stash the payload
+AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil('/', ...);
+
+// In the home widget (after data is loaded — postFrameCallback):
+void _processPendingNotificationTask() {
+  final taskId = NotificationService.pendingTaskId;
+  if (taskId == null) return;
+  NotificationService.pendingTaskId = null;   // consume once
+
+  if (taskId == 'overdue_navigate') {
+    _navigateToFirstOverdueTask();
+    return;
+  }
+  // find task in timeline and select + scroll
+}
+```
+
+**Rule**: Always consume `pendingTaskId` in a `postFrameCallback` after the data is fully loaded — never consume it before the timeline tasks are populated.
+
+**Reserved payloads**:
+- `'overdue_navigate'` — navigate to the earliest overdue task in the timeline
+
+---
+
+### Gotcha: Windows Notification Click Callback
+
+`FlutterLocalNotificationsWindows.initialize()` uses a **different** parameter name than the mobile plugin:
+
+```dart
+// ✅ Windows — parameter is `onNotificationReceived`
+await _windowsPlugin!.initialize(
+  const WindowsInitializationSettings(...),
+  onNotificationReceived: (response) {
+    pendingTaskId = response.payload;
+    AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil('/', ...);
+  },
+);
+
+// ✅ Mobile — parameter is part of FlutterLocalNotificationsPlugin.initialize()
+await _plugin!.initialize(
+  initSettings,
+  onDidReceiveNotificationResponse: (response) { ... },
+);
+```
+
+**Also**: `_showWindowsPluginNotification` must explicitly pass `payload:` to `plugin.show()`. Without it, the callback receives `response.payload == null` and cannot route to the correct task.
+
+---
+
+### Pattern: Persist Notification Throttle State — Never Use In-Memory Counters
+
+In-memory throttle state (e.g., `int _lastShownOverdueCount`) resets on every app restart, causing the same notification to fire on every cold launch.
+
+```dart
+// ❌ Wrong — resets on every restart
+int _lastShownOverdueCount = 0;
+if (count == _lastShownOverdueCount) return;
+_lastShownOverdueCount = count;
+
+// ✅ Correct — persist timestamp to SharedPreferences
+final lastMs = LocalStorageService().overdueLastNotifMs;
+final intervalMs = LocalStorageService().overdueNotifIntervalHours * 3600 * 1000;
+if (DateTime.now().millisecondsSinceEpoch - lastMs < intervalMs) return;
+await LocalStorageService().setOverdueLastNotifMs(DateTime.now().millisecondsSinceEpoch);
+```
+
+**Why**: `LocalStorageService` wraps `SharedPreferences`, which survives app restarts. The timestamp approach also makes the interval user-configurable with no additional logic.
+
 ```dart
 List<Task> dfsChildren(List<Task> allChildren, String parentId) {
   final direct = allChildren
