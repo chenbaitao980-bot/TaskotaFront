@@ -1451,10 +1451,10 @@ class _HomeContentState extends State<_HomeContent> {
         .where((t) => _isSameDayDate(t.date, today))
         .length;
     final overdueByDay = _filteredTasks
-        .where((t) => t.date.isBefore(today) && !t.isCompleted)
+        .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(today))
         .length;
     final overdueByHour = _filteredTasks
-        .where((t) => _isSameDayDate(t.date, today) && t.date.isBefore(now) && !t.isCompleted)
+        .where((t) => !t.isCompleted && t.endDate != null && _isSameDayDate(t.endDate!, today) && t.endDate!.isBefore(now))
         .length;
     final totalOverdue = overdueByDay + overdueByHour;
 
@@ -1628,20 +1628,20 @@ class _HomeContentState extends State<_HomeContent> {
     switch (mode) {
       case 'day':
         overdue = _filteredTasks
-            .where((t) => t.date.isBefore(today) && !t.isCompleted)
+            .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(today))
             .toList();
         title = '逾期任务-天';
         break;
       case 'hour':
         overdue = _filteredTasks
-            .where((t) => _isSameDayDate(t.date, today) && t.date.isBefore(now) && !t.isCompleted)
+            .where((t) => !t.isCompleted && t.endDate != null && _isSameDayDate(t.endDate!, today) && t.endDate!.isBefore(now))
             .toList();
         title = '逾期任务-小时';
         break;
       case 'total':
       default:
         overdue = _filteredTasks
-            .where((t) => t.date.isBefore(now) && !t.isCompleted)
+            .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(now))
             .toList();
         title = '逾期任务';
         break;

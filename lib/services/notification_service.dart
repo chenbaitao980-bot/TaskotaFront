@@ -659,11 +659,15 @@ class NotificationService {
           ? null
           : DateTime.fromMillisecondsSinceEpoch(task.startDate!);
       if (startTime == null) continue;
-      // 过期任务：startTime 已过，收集但不调度；提醒已在上方 cancel，无需再次取消
-      if (startTime.isBefore(now)) {
+      // 逾期判断：以 dueDate（结束日期）为准；无 dueDate 则永不逾期
+      final dueTime = task.dueDate == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(task.dueDate!);
+      if (dueTime != null && dueTime.isBefore(now)) {
         overdueTaskIds.add(task.id);
         continue;
       }
+      if (startTime.isBefore(now)) continue;
       await scheduleReminderForSchedule(
         scheduleId: task.id,
         title: task.title,
