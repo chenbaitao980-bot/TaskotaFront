@@ -11,6 +11,7 @@ import '../data/database/app_database.dart' show Task;
 import '../models/entities/schedule.dart';
 import '../models/entities/task_breakdown.dart';
 import 'alarm_service.dart';
+import 'local_storage_service.dart';
 import 'wechat_reminder_service.dart';
 import '../core/utils/file_logger.dart';
 
@@ -99,6 +100,13 @@ class NotificationService {
             appUserModelId: 'taskora.desktop.app',
             guid: '7d84f3c8-c11c-4cf4-bc6b-5886b4f08941',
           ),
+          onNotificationReceived: (response) {
+            if (response.payload != null) {
+              pendingTaskId = response.payload;
+            }
+            AppRouter.navigatorKey.currentState
+                ?.pushNamedAndRemoveUntil('/', (route) => false);
+          },
         );
         return;
       }
@@ -125,12 +133,12 @@ class NotificationService {
         onDidReceiveNotificationResponse: (response) {
           // 点击任何通知：先停掉对应的 alarm，再跳首页
           if (response.id != null) AlarmService().cancelAlarm(response.id!);
-          if (response.payload == 'overdue_digest' || response.payload == null) {
+          if (response.payload == null) {
             AppRouter.navigatorKey.currentState
                 ?.pushNamedAndRemoveUntil('/', (route) => false);
             return;
           }
-          // 普通任务/日程通知：记录待定位任务 ID，首页加载完后定位
+          // 所有非空 payload（含 overdue_navigate）：记录待定位 ID，首页加载后消费
           pendingTaskId = response.payload;
           AppRouter.navigatorKey.currentState
               ?.pushNamedAndRemoveUntil('/', (route) => false);
@@ -335,14 +343,19 @@ class NotificationService {
     }
   }
 
-  void _showDesktopNativeNotification(int id, String title, String body) {
+  void _showDesktopNativeNotification(
+    int id,
+    String title,
+    String body, {
+    String? payload,
+  }) {
     try {
       final channel = resolveDesktopNotificationChannel(
         isWindows: Platform.isWindows,
         hasNativeWindowsPlugin: _useNativeWindowsNotifications,
       );
       if (channel == DesktopNotificationChannel.nativePlugin) {
-        unawaited(_showWindowsPluginNotification(id, title, body));
+        unawaited(_showWindowsPluginNotification(id, title, body, payload: payload));
       } else if (channel == DesktopNotificationChannel.windowsScript) {
         _showWindowsNotification(title, body);
       } else if (Platform.isMacOS) {
@@ -360,8 +373,9 @@ class NotificationService {
   Future<void> _showWindowsPluginNotification(
     int id,
     String title,
-    String body,
-  ) async {
+    String body, {
+    String? payload,
+  }) async {
     final plugin = _windowsPlugin;
     if (plugin == null) {
       _showWindowsNotification(title, body);
@@ -383,6 +397,7 @@ class NotificationService {
             ),
           ],
         ),
+        payload: payload,
       );
     } catch (_) {
       _showWindowsNotification(title, body);
@@ -611,17 +626,23 @@ class NotificationService {
   }
 
   static const int _overdueDigestNotificationId = 0x7ffffffe;
-  /// 缓存上次显示的过期数量，数量未变化时不重复弹通知。
-  int _lastShownOverdueCount = 0;
 
   Future<void> _showOverdueDigest(int count) async {
-    if (count <= 0) {
-      _lastShownOverdueCount = 0;
-      return;
+    if (count <= 0) return;
+
+    // 时间窗口节流：读取上次弹通知时间和用户配置的间隔
+    try {
+      final storage = LocalStorageService();
+      await storage.init();
+      final lastMs = storage.overdueLastNotifMs;
+      final intervalHours = storage.overdueNotifIntervalHours;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (nowMs - lastMs < intervalHours * 3600 * 1000) return;
+      // 满足条件，先持久化时间戳再弹通知
+      await storage.setOverdueLastNotifMs(nowMs);
+    } catch (_) {
+      // init 失败时降级：直接弹通知
     }
-    // 数量与上次相同 → 不重复弹
-    if (count == _lastShownOverdueCount) return;
-    _lastShownOverdueCount = count;
 
     final title = '你有 $count 个过期任务未完成';
     const body = '点击查看详情';
@@ -635,14 +656,19 @@ class NotificationService {
             title,
             body,
             _notifDetails,
-            payload: 'overdue_digest',
+            payload: 'overdue_navigate',
           );
         } catch (e) {
           _log('[Notif] overdue digest show failed: $e');
         }
       }
     } else {
-      _showDesktopNativeNotification(_overdueDigestNotificationId, title, body);
+      _showDesktopNativeNotification(
+        _overdueDigestNotificationId,
+        title,
+        body,
+        payload: 'overdue_navigate',
+      );
     }
     _log('[Notif] overdue digest: $count tasks');
   }

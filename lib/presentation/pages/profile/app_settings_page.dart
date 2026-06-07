@@ -35,6 +35,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   final _localDataService = LocalDataService();
   bool _ready = false;
   bool _skipWeekends = false;
+  int _overdueNotifIntervalHours = 4;
   bool _dataBusy = false;
   String? _dataDirectory;
   bool? _notifGranted;
@@ -74,6 +75,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     if (!mounted) return;
     setState(() {
       _skipWeekends = _storage.skipWeekends;
+      _overdueNotifIntervalHours = _storage.overdueNotifIntervalHours;
       _dataDirectory = dataDirectory;
       _notifGranted = notifGranted;
       _exactAlarmGranted = exactGranted;
@@ -138,14 +140,16 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
           if (Platform.isAndroid || Platform.isIOS)
             _buildMobileNotifSection()
           else
-            const _SectionCard(
+            _SectionCard(
               title: '通知',
               children: [
-                _InfoTile(
+                const _InfoTile(
                   icon: Icons.notifications_active_outlined,
                   title: '任务与日程提醒',
                   body: '应用会在创建日程或任务提醒时调用系统通知能力。',
                 ),
+                const SizedBox(height: 8),
+                _buildOverdueIntervalTile(),
               ],
             ),
           const SizedBox(height: 14),
@@ -317,6 +321,8 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
             label: const Text('发送测试通知'),
           ),
         ),
+        const SizedBox(height: 12),
+        _buildOverdueIntervalTile(),
         if (Platform.isAndroid) ...[
           const SizedBox(height: 12),
           Row(
@@ -433,6 +439,35 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
           ],
         ],
       ],
+    );
+  }
+
+  Widget _buildOverdueIntervalTile() {
+    return ListTile(
+      leading: const Icon(Icons.schedule_outlined),
+      title: const Text('逾期提醒间隔'),
+      subtitle: Text('每 $_overdueNotifIntervalHours 小时最多提醒一次'),
+      contentPadding: EdgeInsets.zero,
+      trailing: PopupMenuButton<int>(
+        initialValue: _overdueNotifIntervalHours,
+        onSelected: (value) async {
+          setState(() => _overdueNotifIntervalHours = value);
+          await _storage.setOverdueNotifIntervalHours(value);
+        },
+        itemBuilder: (_) => [1, 2, 4, 8, 24]
+            .map((h) => PopupMenuItem(value: h, child: Text('$h 小时')))
+            .toList(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$_overdueNotifIntervalHours 小时',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+            ),
+            Icon(Icons.arrow_drop_down, color: AppTheme.textHint),
+          ],
+        ),
+      ),
     );
   }
 

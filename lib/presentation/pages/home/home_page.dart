@@ -932,6 +932,12 @@ class _HomeContentState extends State<_HomeContent> {
     final taskId = NotificationService.pendingTaskId;
     if (taskId == null) return;
     NotificationService.pendingTaskId = null;
+
+    if (taskId == 'overdue_navigate') {
+      _navigateToFirstOverdueTask();
+      return;
+    }
+
     _TimelineTask? task;
     for (final t in _timelineTasks) {
       if (t.id == taskId || t.taskId == taskId) {
@@ -943,6 +949,23 @@ class _HomeContentState extends State<_HomeContent> {
       _selectTask(task);
       _scrollToTask(task);
     }
+  }
+
+  void _navigateToFirstOverdueTask() {
+    final now = DateTime.now();
+    final overdueTasks = _timelineTasks
+        .where(
+          (t) =>
+              !t.isCompleted &&
+              t.endDate != null &&
+              t.endDate!.isBefore(now),
+        )
+        .toList();
+    if (overdueTasks.isEmpty) return;
+    overdueTasks.sort((a, b) => a.date.compareTo(b.date));
+    final earliest = overdueTasks.first;
+    _selectTask(earliest);
+    _scrollToTask(earliest);
   }
 
   Set<String> get _parentIds =>

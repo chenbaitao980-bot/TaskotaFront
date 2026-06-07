@@ -517,6 +517,28 @@ class LocalStorageService {
     await LocalDataService().persistPreferencesSnapshot();
   }
 
+  // 逾期提醒间隔（小时，默认 4）
+  static const _overdueNotifIntervalHoursKey = 'overdue_notif_interval_hours';
+
+  int get overdueNotifIntervalHours =>
+      _prefs?.getInt(_overdueNotifIntervalHoursKey) ?? 4;
+
+  Future<void> setOverdueNotifIntervalHours(int value) async {
+    await _prefs?.setInt(_overdueNotifIntervalHoursKey, value);
+    await LocalDataService().persistPreferencesSnapshot();
+  }
+
+  // 上次逾期通知时间（毫秒时间戳，默认 0）
+  static const _overdueLastNotifMsKey = 'overdue_last_notif_ms';
+
+  int get overdueLastNotifMs =>
+      _prefs?.getInt(_overdueLastNotifMsKey) ?? 0;
+
+  Future<void> setOverdueLastNotifMs(int value) async {
+    await _prefs?.setInt(_overdueLastNotifMsKey, value);
+    await LocalDataService().persistPreferencesSnapshot();
+  }
+
   Future<void> saveExplicitProfile(Map<String, dynamic> data) async {
     await _prefs?.setString(_profileKey, json.encode(data));
     await LocalDataService().persistPreferencesSnapshot();
