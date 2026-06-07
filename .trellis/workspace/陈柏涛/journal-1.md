@@ -265,3 +265,36 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: calendar-edit-mode 质量检查 + 归档
+
+**Date**: 2026-06-07
+**Task**: calendar-edit-mode 质量检查 + 归档
+**Branch**: `master`
+
+### Summary
+
+对 fix(calendar): 长按进入编辑模式后松手不再退出 进行 trellis-check，确认 _longPressActivated 标志位逻辑完整、无调试日志、无新增 lint 问题，质量检验通过后归档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2414cad` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
