@@ -1,25 +1,26 @@
 import 'dart:async';
-import 'dart:io' show Platform, exit;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
-import 'package:window_manager/window_manager.dart';
-import 'package:system_tray/system_tray.dart';
 
 import 'core/constants/app_constants.dart';
-import 'core/desktop/desktop_runtime.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/utils/file_logger.dart';
+import 'core/utils/platform_utils.dart';
 import 'data/database/app_database.dart';
 import 'data/repositories/project_repository.dart';
 import 'data/repositories/project_group_repository.dart';
 import 'data/repositories/task_repository.dart';
 import 'data/repositories/checklist_repository.dart';
 import 'data/repositories/node_template_repository.dart';
+import 'platform/tray_service.dart';
+import 'platform/window_manager_bridge.dart';
 import 'presentation/blocs/auth/auth_bloc.dart';
 import 'presentation/blocs/schedule/schedule_bloc.dart';
 import 'presentation/blocs/task/task_bloc.dart';
@@ -38,9 +39,6 @@ import 'services/task_attachment_service.dart';
 import 'services/task_sync_service.dart';
 import 'services/node_template_sync_service.dart';
 import 'services/subscription_service.dart';
-import 'core/utils/file_logger.dart';
-
-final SystemTray systemTray = SystemTray();
 
 void main() async {
   runZonedGuarded(() async {
@@ -53,11 +51,12 @@ void main() async {
 
     await FileLogger.instance.clear();
     final logPath = await FileLogger.instance.filePath;
-    print('📋 调试日志路径: $logPath');
+    print('Log path: $logPath');
     flog('[App] ===== 应用启动 =====');
 
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      await windowManager.ensureInitialized();
+    if (!kIsWeb && isDesktop) {
+      // window_manager is desktop-only; import via conditional at call site
+      await _initWindowManager();
     }
 
     await themeController.load();
@@ -70,12 +69,16 @@ void main() async {
       runApp(_PrivacyGateApp(onAccepted: _initServicesAndRun));
     }
 
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      await _initSystemTray();
+    if (!kIsWeb && isDesktop) {
+      await initTray();
     }
   }, (error, stack) {
     flog('[UncaughtError] $error\n$stack');
   });
+}
+
+Future<void> _initWindowManager() async {
+  await ensureWindowManagerInitialized();
 }
 
 Future<void> _initServicesAndRun() async {
@@ -86,7 +89,7 @@ Future<void> _initServicesAndRun() async {
 
   await NotificationService().init();
   await AlarmService().init();
-  await AliyunPushService().init(); // 阿里云推送初始化（App 被杀后仍能触达）
+  await AliyunPushService().init();
 
   final database = AppDatabase();
   final projectRepository = ProjectRepository(
@@ -132,52 +135,6 @@ Future<void> _initServicesAndRun() async {
       nodeTemplateRepository: nodeTemplateRepository,
     ),
   );
-}
-
-Future<void> _initSystemTray() async {
-  try {
-    await windowManager.waitUntilReadyToShow();
-    await windowManager.setSkipTaskbar(false);
-
-    final trayOk = await systemTray.initSystemTray(
-      title: AppConstants.appName,
-      iconPath: 'assets/icons/tray_icon.ico',
-      toolTip: AppConstants.appName,
-    );
-    print(trayOk ? '[Tray] 初始化成功' : '[Tray] 初始化失败 - 检查图标路径');
-  } catch (e) {
-    print('[Tray] 异常: $e');
-    return;
-  }
-
-  final menu = [
-    MenuItem(
-      label: '显示',
-      onClicked: () async {
-        await windowManager.show();
-        await windowManager.focus();
-      },
-    ),
-    MenuSeparator(),
-    MenuItem(
-      label: '退出',
-      onClicked: () async {
-        await windowManager.destroy();
-        exit(0);
-      },
-    ),
-  ];
-  await systemTray.setContextMenu(menu);
-
-  systemTray.registerSystemTrayEventHandler((eventName) {
-    final action = trayEventActionFor(eventName);
-    if (action == TrayEventAction.showWindow) {
-      windowManager.show();
-      windowManager.focus();
-    } else if (action == TrayEventAction.popUpContextMenu) {
-      systemTray.popUpContextMenu();
-    }
-  });
 }
 
 class _PrivacyGateApp extends StatelessWidget {

@@ -1,13 +1,15 @@
 {
     "name": "Taskora",
     "short_name": "Taskora",
-    "start_url": ".",
+    "start_url": "/",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
     "description": "Taskora task management app.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
+    "lang": "zh-CN",
     "icons": [
         {
             "src": "icons/Icon-192.png",

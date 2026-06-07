@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -8,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/platform_utils.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
@@ -40,7 +40,7 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime? _selectedDay;
   final ScrollController _weekScrollController = ScrollController();
   bool _didAutoScrollWeek = false;
-  int _displayDayCount = (Platform.isAndroid || Platform.isIOS) ? 3 : 7;
+  int _displayDayCount = isMobile ? 3 : 7;
   double _hourHeight = 80;
   static const double _timeColumnWidth = 48;
   static const double _minHourHeight = 32;
@@ -2217,7 +2217,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
   double get _currentTopDelta => _resizeTopDelta ?? 0;
   double get _currentBottomDelta => _resizeBottomDelta ?? 0;
 
-  bool get _isMobile => Platform.isAndroid || Platform.isIOS;
+  bool get _isMobile => isMobile;
 
   void _exitEditMode() {
     if (widget.isEditMode) widget.onEditModeChanged(false);

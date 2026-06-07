@@ -1,7 +1,7 @@
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/utils/platform_utils.dart';
 
 class BatteryOptimizationGuide {
   static const _dismissedKey = 'battery_optimization_guide_dismissed';
@@ -95,7 +95,7 @@ class BatteryOptimizationGuide {
   }
 
   static Future<bool> shouldShow() async {
-    if (!Platform.isAndroid) return false;
+    if (!isAndroid) return false;
     final prefs = await SharedPreferences.getInstance();
     return !(prefs.getBool(_dismissedKey) ?? false);
   }

@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../widgets/image_file_view.dart';
 
 class ImagePreviewPage extends StatefulWidget {
-  final List<File> images;
+  final List<dynamic> images;
   final int initialIndex;
 
   const ImagePreviewPage({
@@ -65,15 +65,7 @@ class _ImagePreviewPageState extends State<ImagePreviewPage> {
               child: InteractiveViewer(
                 minScale: 0.5,
                 maxScale: 4.0,
-                child: Image.file(
-                  widget.images[index],
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(
-                    Icons.broken_image,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
-                ),
+                child: buildImageFileWidget(widget.images[index]),
               ),
             );
           },

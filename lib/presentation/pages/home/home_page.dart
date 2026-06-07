@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import '../../../core/utils/platform_utils.dart';
 import 'dart:math';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/gestures.dart';
@@ -255,7 +255,6 @@ class _HomePageState extends State<HomePage> {
             });
       }
       // 桌面端每次登录都 forcePush（本地数据权威），移动端首次登录 forcePush
-      final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
       runSyncAll(forcePush: isFirstSync || isDesktop);
     }
 

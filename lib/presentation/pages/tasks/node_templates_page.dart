@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/file_reader.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/node_template_repository.dart';
 import '../../../models/node_template_payload.dart';
@@ -202,7 +202,7 @@ class _NodeTemplateEditDialogState extends State<_NodeTemplateEditDialog> {
       if (mounted) showAppSnackBar(context, '图片文件不可用');
       return;
     }
-    final bytes = await File(file.path!).readAsBytes();
+    final bytes = file.bytes ?? await readFileBytes(file.path!);
     if (!mounted) return;
     setState(() {
       _images.add(

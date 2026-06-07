@@ -1,6 +1,5 @@
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import '../../services/local_data_service.dart';
+import 'connection/connection.dart';
 
 part 'app_database.g.dart';
 
@@ -227,12 +226,4 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final file = await LocalDataService().databaseFile();
-    if (!await file.parent.exists()) {
-      await file.parent.create(recursive: true);
-    }
-    return NativeDatabase(file);
-  });
-}
+QueryExecutor _openConnection() => openConnection();

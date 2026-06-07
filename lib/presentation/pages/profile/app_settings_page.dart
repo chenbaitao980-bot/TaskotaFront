@@ -1,9 +1,8 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/utils/snackbar_helper.dart';
+import '../../../core/utils/platform_utils.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/task_repository.dart';
@@ -58,12 +57,12 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     bool? notifGranted;
     bool? exactGranted;
     bool? batteryIgnored;
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (isMobile) {
       notifGranted = await NotificationService().checkMobilePermissions();
       exactGranted = await NotificationService().checkExactAlarmPermission();
     }
     bool isMiui = false;
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       batteryIgnored = await BatteryOptimizationService.isIgnoring();
       try {
         const ch = MethodChannel('com.taskora/battery');
@@ -137,7 +136,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
             _buildLocalDataSection(),
             const SizedBox(height: 14),
           ],
-          if (Platform.isAndroid || Platform.isIOS)
+          if (isMobile)
             _buildMobileNotifSection()
           else
             _SectionCard(
@@ -323,7 +322,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
         ),
         const SizedBox(height: 12),
         _buildOverdueIntervalTile(),
-        if (Platform.isAndroid) ...[
+        if (isAndroid) ...[
           const SizedBox(height: 12),
           Row(
             children: [

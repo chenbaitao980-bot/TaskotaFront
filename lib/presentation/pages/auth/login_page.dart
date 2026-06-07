@@ -1,11 +1,10 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/platform_utils.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../services/local_storage_service.dart';
@@ -108,8 +107,7 @@ class _LoginPageState extends State<LoginPage>
     }
   }
 
-  bool get _isDesktop =>
-      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+  bool get _isDesktop => isDesktop;
 
   Future<void> _useLocalOnly() async {
     if (!_acceptTerms) {

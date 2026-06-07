@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:open_filex/open_filex.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/file_writer.dart';
+import '../../../core/utils/platform_utils.dart';
 import '../../../core/utils/snackbar_helper.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/project_repository.dart';
@@ -287,16 +286,15 @@ class _TaskExportPageState extends State<TaskExportPage> {
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: const ['xlsx'],
-        bytes: Platform.isAndroid || Platform.isIOS ? bytes : null,
+        bytes: isMobile ? bytes : null,
         lockParentWindow: true,
       );
       if (path == null) return;
       final outputPath = path.toLowerCase().endsWith('.xlsx')
           ? path
           : '$path.xlsx';
-      if (!Platform.isAndroid && !Platform.isIOS) {
-        await File(outputPath).writeAsBytes(bytes, flush: true);
-        await OpenFilex.open(outputPath);
+      if (!isMobile) {
+        await _writeAndOpenFile(outputPath, bytes);
       }
       if (mounted) showAppSnackBar(context, '导出完成');
     } catch (e) {
@@ -308,6 +306,10 @@ class _TaskExportPageState extends State<TaskExportPage> {
 
   static DateTime _endOfDay(DateTime date) {
     return DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
+  }
+
+  Future<void> _writeAndOpenFile(String path, List<int> bytes) async {
+    await writeAndOpenFile(path, bytes);
   }
 }
 

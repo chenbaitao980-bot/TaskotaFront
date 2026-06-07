@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/native_file_ops.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/project_group_repository.dart';
 import '../../../../data/repositories/project_repository.dart';
@@ -307,11 +307,13 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: path != null
-                                  ? Image.file(
-                                      File(path),
+                                  ? SizedBox(
                                       width: 80,
                                       height: 80,
-                                      fit: BoxFit.cover,
+                                      child: imageFromFile(
+                                        fileFromPath(path),
+                                        fit: BoxFit.cover,
+                                      ),
                                     )
                                   : Container(
                                       width: 80,

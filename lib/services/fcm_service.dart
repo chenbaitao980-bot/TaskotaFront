@@ -1,7 +1,7 @@
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/utils/file_logger.dart';
+import '../core/utils/platform_utils.dart';
 
 class FcmService {
   static final FcmService _instance = FcmService._internal();
@@ -17,7 +17,7 @@ class FcmService {
     if (_initialized) return;
     _initialized = true;
 
-    if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return;
+    if (kIsWeb || !isMobile) return;
 
     try {
       // 动态导入 firebase_messaging 以避免桌面端编译错误
@@ -62,7 +62,7 @@ class FcmService {
         method: HttpMethod.post,
         body: {
           'token': token,
-          'platform': Platform.isAndroid ? 'android' : 'ios',
+          'platform': isAndroid ? 'android' : 'ios',
         },
       );
       flog('[FCM] token uploaded');

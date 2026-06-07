@@ -1,15 +1,15 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 import '../../../../../core/theme/app_theme.dart';
+import '../../../../../core/utils/native_file_ops.dart';
 import '../../../common/image_preview_page.dart';
 import '../../../../../data/database/app_database.dart' hide TaskAttachment;
 import '../../../../../services/attachment_sync_service.dart';
 import '../../../../../services/task_attachment_service.dart';
 import 'package:smart_assistant/core/utils/snackbar_helper.dart';
+import '../../../../../core/utils/open_file_helper.dart';
 
 class AttachmentImageStrip extends StatefulWidget {
   final String taskId;
@@ -68,12 +68,12 @@ class _AttachmentImageStripState extends State<AttachmentImageStrip> {
     final files = _images
         .map((img) {
           final p = img.localPath;
-          return p == null ? null : File(p);
+          return p == null ? null : fileFromPath(p);
         })
-        .where((f) => f != null && f.existsSync())
-        .cast<File>()
+        .where((f) => f != null && fileExistsSync(f))
         .toList();
-    final tappedIndex = files.indexWhere((f) => f.path == file.path);
+    final tappedIndex =
+        files.indexWhere((f) => f != null && filePath(f) == filePath(file));
     if (!mounted) return;
     Navigator.push(
       context,
@@ -98,11 +98,11 @@ class _AttachmentImageStripState extends State<AttachmentImageStrip> {
       return;
     }
     final file = await _service.ensureLocalFile(attachment);
-    if (file == null || !file.existsSync()) {
+    if (file == null || !fileExistsSync(file)) {
       if (mounted) showAppSnackBar(context, '图片文件不可用');
       return;
     }
-    final bytes = await file.readAsBytes();
+    final bytes = await fileReadBytes(file);
     final item = DataWriterItem(suggestedName: attachment.fileName);
     final name = attachment.fileName.toLowerCase();
     if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
@@ -133,14 +133,14 @@ class _AttachmentImageStripState extends State<AttachmentImageStrip> {
           itemBuilder: (context, index) {
             final image = _images[index];
             final path = image.localPath;
-            final file = path == null ? null : File(path);
+            final file = path == null ? null : fileFromPath(path);
             final thumb = ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 width: widget.maxHeight * 1.25,
                 color: AppTheme.bgInput,
-                child: file != null && file.existsSync()
-                    ? Image.file(file, fit: BoxFit.cover)
+                child: file != null && fileExistsSync(file)
+                    ? imageFromFile(file, fit: BoxFit.cover)
                     : Center(
                         child: Icon(
                           Icons.image_outlined,
@@ -172,11 +172,15 @@ class _AttachmentImageStripState extends State<AttachmentImageStrip> {
                       child: Container(
                         width: 20,
                         height: 20,
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: Colors.black54,
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(Icons.close, size: 12, color: Colors.white),
+                        child: const Icon(
+                          Icons.close,
+                          size: 12,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -189,11 +193,11 @@ class _AttachmentImageStripState extends State<AttachmentImageStrip> {
                       child: Container(
                         width: 20,
                         height: 20,
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: Colors.black54,
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
+                        child: const Icon(
                           Icons.copy_rounded,
                           size: 11,
                           color: Colors.white,
@@ -246,15 +250,10 @@ class _AttachmentSectionState extends State<AttachmentSection> {
     try {
       final file = await _service.ensureLocalFile(att);
       if (file == null) {
-        if (mounted) {
-          showAppSnackBar(context, '附件下载失败');
-        }
+        if (mounted) showAppSnackBar(context, '附件下载失败');
         return;
       }
-      final result = await OpenFilex.open(file.path);
-      if (result.type != ResultType.done && mounted) {
-        showAppSnackBar(context, '打开失败：${result.message}');
-      }
+      await openNativeFile(filePath(file), mounted ? context : null);
     } finally {
       if (mounted) setState(() => _openingId = null);
     }
@@ -328,7 +327,6 @@ class _AttachmentSectionState extends State<AttachmentSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 紧凑头部
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
             child: Row(
@@ -384,7 +382,7 @@ class _AttachmentSectionState extends State<AttachmentSection> {
           ),
           if (_attachments.isEmpty)
             Padding(
-              padding: EdgeInsets.fromLTRB(10, 0, 10, 10),
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
               child: Text(
                 '暂无附件',
                 style: TextStyle(color: AppTheme.textHint, fontSize: 11),
@@ -439,8 +437,12 @@ class _AttachmentSectionState extends State<AttachmentSection> {
             GestureDetector(
               onTap: () => _deleteFile(attachment),
               child: Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(Icons.close, size: 12, color: AppTheme.textHint),
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  Icons.close,
+                  size: 12,
+                  color: AppTheme.textHint,
+                ),
               ),
             ),
           ],
