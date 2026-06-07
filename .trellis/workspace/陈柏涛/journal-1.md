@@ -298,3 +298,37 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 修复逾期提醒通知跳转与频率控制
+
+**Date**: 2026-06-07
+**Task**: 修复逾期提醒通知跳转与频率控制
+**Branch**: `master`
+
+### Summary
+
+修复桌面端和移动端点击逾期提醒通知不跳转的问题，改造通知节流为基于 SharedPreferences 的时间戳窗口（默认 4 小时），设置页新增逾期提醒间隔配置
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9167c73` | (see git log) |
+| `1e8518b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
