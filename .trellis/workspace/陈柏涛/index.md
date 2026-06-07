@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-06-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~334 | Active |
+| `journal-1.md` | ~368 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-06-07 | 修复首页切回时逾期/时间轴不刷新 | `232d66c`, `2201b36` | `master` |
 | 8 | 2026-06-07 | 修复逾期提醒通知跳转与频率控制 | `9167c73`, `1e8518b` | `master` |
 | 7 | 2026-06-07 | calendar-edit-mode 质量检查 + 归档 | `2414cad` | `master` |
 | 6 | 2026-06-07 | 本地通知修复完整实施 + 记录 MIUI 厂商推送阻塞 | `3d24370` | `master` |

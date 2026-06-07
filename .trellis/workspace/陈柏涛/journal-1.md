@@ -332,3 +332,37 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 修复首页切回时逾期/时间轴不刷新
+
+**Date**: 2026-06-07
+**Task**: 修复首页切回时逾期/时间轴不刷新
+**Branch**: `master`
+
+### Summary
+
+根因：BlocListener 在首页不可见时丢弃 TaskNewLoaded 事件，切回首页的 _onVisibleTabChanged 只 setState 不加载数据。用脏标记法（_needsRefresh）解决：后台有变化时记标记，切回时按需调用 _loadData()，无变化不多查 DB。同步更新 state-management.md 记录该模式。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `232d66c` | (see git log) |
+| `2201b36` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
