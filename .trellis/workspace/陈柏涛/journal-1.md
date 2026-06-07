@@ -366,3 +366,36 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: 评估 codegraph+graphify 在 Flutter 项目的可行性
+
+**Date**: 2026-06-07
+**Task**: 评估 codegraph+graphify 在 Flutter 项目的可行性
+**Branch**: `master`
+
+### Summary
+
+评估了 codegraph 和 graphify 在本 Flutter/Dart 项目中的实际效果。graphify 原始图谱含 5177 节点（97.5% 为噪音），配置 .graphifyignore 后重建降至 136 节点（Dart 占 99%）。确认 codegraph 为结构查询主力（364类/1799方法），graphify 仅做概念预筛（Dart 边稀疏，不适合调用链）。建立两场景工作流规范并写入项目专用记忆 flutter-codegraph-workflow.md。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5259dcc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
