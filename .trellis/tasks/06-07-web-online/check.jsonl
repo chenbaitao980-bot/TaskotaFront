@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec index — verify implementation follows project conventions"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality checklist: no dead code, no platform leaks, proper error handling"}
+{"file": ".trellis/tasks/06-07-web-online/prd.md", "reason": "Acceptance criteria to verify against"}
+{"file": ".trellis/tasks/06-07-web-online/research/flutter-web-stubs.md", "reason": "Verify all web-incompatible imports are properly stubbed (dart:io, system_tray, aliyun_push, alarm)"}
+{"file": ".trellis/tasks/06-07-web-online/research/drift-web-wasm.md", "reason": "Verify Drift web initialization uses correct conditional import pattern"}

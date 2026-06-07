@@ -20,6 +20,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [State Management](./state-management.md) | Local state, global state, server state | ✅ Filled — Bloc filter stacking, search state, etc. |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [Platform Compatibility](./platform-compatibility.md) | Flutter Web/native split — conditional export, Drift WASM, stubs | ✅ Filled |
 
 ---
 

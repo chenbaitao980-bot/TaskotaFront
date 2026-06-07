@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec index — baseline rules for this project"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code quality rules to follow during implementation"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management conventions — BLoC pattern used in this project"}
+{"file": ".trellis/tasks/06-07-web-online/prd.md", "reason": "PRD with full requirements: Drift Web WASM, Firebase Push, PWA, Vercel, stub pattern for incompatible packages"}
+{"file": ".trellis/tasks/06-07-web-online/research/drift-web-wasm.md", "reason": "How to set up Drift WASM for Flutter Web: conditional import pattern, WasmDatabase.open(), OPFS headers"}
+{"file": ".trellis/tasks/06-07-web-online/research/flutter-web-stubs.md", "reason": "Stub pattern for system_tray/aliyun_push/alarm/notification — conditional export _io.dart/_web.dart split"}
+{"file": ".trellis/tasks/06-07-web-online/research/firebase-push-pwa-vercel.md", "reason": "Firebase Messaging web setup, PWA manifest, Vercel deployment with GitHub Actions CI"}
