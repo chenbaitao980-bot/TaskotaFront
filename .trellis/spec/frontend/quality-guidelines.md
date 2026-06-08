@@ -104,6 +104,128 @@ void _onNavTap(int index) {
 - 底部导航栏的 widget 内容应提取为独立 `StatelessWidget`，让框架可以高效复用 widget 引用
 - 需要在 `dispose()` 中调用 `valueNotifier.dispose()`
 
+### Canvas 分层渲染：AnimatedBuilder 只包 CustomPaint，节点层用独立 VLB
+
+画布内拖拽时，**不要**用单个 `AnimatedBuilder(Listenable.merge(all_notifiers))` 包裹整个 Stack。这会在每次任意一个节点位置改变时重建全部 N 个节点，60fps 下 = O(N) 全量 rebuild/frame。
+
+**正确做法**：连线层和节点层分开渲染：
+
+```dart
+// ❌ 错误：整个 Stack 被同一个 AnimatedBuilder 包裹
+AnimatedBuilder(
+  animation: Listenable.merge(_positionNotifiers.values.toList()),
+  builder: (context, _) => Stack(children: [
+    CustomPaint(painter: LinesPainter(...)),  // 需要所有位置
+    ...nodes.map((n) => Positioned(..., child: NodeCard(n))),  // 各自只需自己的位置
+  ]),
+);
+
+// ✅ 正确：连线层 AnimatedBuilder 只包 CustomPaint；节点层各自 VLB
+Stack(children: [
+  // 连线层：必须感知所有位置，但只重建 CustomPaint
+  AnimatedBuilder(
+    animation: Listenable.merge(_positionNotifiers.values.toList()),
+    builder: (_, __) => CustomPaint(painter: LinesPainter(...)),
+  ),
+  // 节点层：各节点独立 VLB，只在自身位置变化时 rebuild
+  ...nodes.map((node) {
+    final notifier = _positionNotifiers[node.id]!;
+    return ValueListenableBuilder<Offset>(
+      valueListenable: notifier,
+      builder: (_, pos, child) => Positioned(left: pos.dx, top: pos.dy, child: child!),
+      child: NodeCard(node),   // child 只在 parent VLB 重建时才重建（不受位置变化影响）
+    );
+  }),
+]);
+```
+
+**效果**：拖拽时只有 `CustomPaint` + 被拖节点的 `Positioned` 更新；其余 N-1 个节点零 rebuild。
+
+**适用场景**：MindMapView 或任何包含大量独立可移动元素的 Canvas 组件。
+
+---
+
+### 拖拽开关用 ValueNotifier<bool> + VLB，禁止 setState
+
+`onDragStart`/`onDragEnd` 需要切换 `InteractiveViewer.panEnabled`。若用 `setState` 驱动，会重建整个 State 的 `build()`，触发所有节点 VLB 重建。
+
+```dart
+// ❌ 错误：setState 导致全量重建
+setState(() => _nodeDragging = true);
+
+// ✅ 正确：只重建 InteractiveViewer 这一棵子树
+final ValueNotifier<bool> _nodeDragging = ValueNotifier(false);
+
+// 在 build 中包裹 InteractiveViewer：
+ValueListenableBuilder<bool>(
+  valueListenable: _nodeDragging,
+  builder: (context, dragging, _) => InteractiveViewer(
+    panEnabled: !dragging,
+    child: ...,
+  ),
+);
+
+// 在 onDragStart / onDragEnd 中：
+_nodeDragging.value = true;   // 不触发 build()
+```
+
+**注意**：必须在 `dispose()` 中调用 `_nodeDragging.dispose()`。
+
+---
+
+### build() 中的 O(n²) 查找必须提前提取为 Set
+
+任何在 `build()` 中对 `List<T>` 执行的 `any()` / `contains()` 嵌套循环，在节点数增长后都会成为帧率杀手。
+
+```dart
+// ❌ 错误：每次 build 时 O(n²)
+final allParentIds = state.tasks
+    .where((t) => state.tasks.any((c) => c.parentId == t.id))  // O(n²)
+    .map((t) => t.id)
+    .toSet();
+
+// ✅ 正确：先建 Set，再查，O(n)
+final parentIdSet = state.tasks
+    .map((t) => t.parentId)
+    .whereType<String>()
+    .toSet();
+final allParentIds = state.tasks
+    .where((t) => parentIdSet.contains(t.id))  // O(1) per lookup
+    .map((t) => t.id)
+    .toSet();
+```
+
+**Prevention**：`build()` 中若出现 `.any((c) => list.xxx == yyy)` 嵌套，立即提取为 Set。
+
+---
+
+### SharedPreferences 写入必须防抖，不得在拖拽热路径中同步触发
+
+拖拽结束时每次都直接写 SharedPreferences 会在低端设备上造成可感知卡顿。
+
+```dart
+// ❌ 错误：每次 onDragEnd 直接写
+void _saveOffsets() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(_storageKey, jsonEncode(map));  // 每次触发 I/O
+}
+
+// ✅ 正确：300ms 防抖，仅合并最后一次写
+Timer? _saveOffsetDebounce;
+
+void _saveOffsets() {
+  _saveOffsetDebounce?.cancel();
+  _saveOffsetDebounce = Timer(const Duration(milliseconds: 300), _flushOffsets);
+}
+
+Future<void> _flushOffsets() async {
+  final prefs = await SharedPreferences.getInstance();
+  // ... 实际写入
+}
+```
+
+**注意**：`dispose()` 中必须 `_saveOffsetDebounce?.cancel()`，避免 widget 销毁后异步回调访问已释放资源。显式"重置布局"等用户主动操作可跳过防抖，直接调用 `_flushOffsets()`。
+
 ---
 
 ## Testing Requirements
