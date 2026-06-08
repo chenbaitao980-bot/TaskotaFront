@@ -60,7 +60,7 @@ serve(async (req) => {
     }
 
     // 否则主动查询支付宝
-    const config = getAlipayConfig();
+    const config = await getAlipayConfig();
     const result = await queryTrade(config, outTradeNo);
 
     let status = "pending";

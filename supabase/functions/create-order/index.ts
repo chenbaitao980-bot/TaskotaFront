@@ -42,7 +42,7 @@ serve(async (req) => {
     const outTradeNo = `TKR${Date.now()}${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
     // 4. 调用支付宝当面付
-    const config = getAlipayConfig();
+    const config = await getAlipayConfig();
     const result = await precreate(config, outTradeNo, planConfig.amount, planConfig.subject);
 
     if (!result.qrCode) {

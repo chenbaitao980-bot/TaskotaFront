@@ -4,6 +4,8 @@
  * 签名算法：RSA2 (SHA256WithRSA)
  */
 
+import { getServiceClient } from "./supabase.ts";
+
 // --- 配置 ---
 export interface AlipayConfig {
   appId: string;
@@ -13,13 +15,19 @@ export interface AlipayConfig {
   notifyUrl?: string;
 }
 
-export function getAlipayConfig(): AlipayConfig {
+export async function getAlipayConfig(): Promise<AlipayConfig> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("app_config").select("key,value");
+  if (error) throw new Error(`读取支付配置失败: ${error.message}`);
+  const cfg: Record<string, string> = {};
+  for (const row of (data ?? [])) cfg[row.key] = row.value;
+  if (!cfg.alipay_app_id) throw new Error("支付宝凭证未配置，请在管理后台设置");
   return {
-    appId: Deno.env.get("ALIPAY_APP_ID") || "",
-    privateKey: (Deno.env.get("ALIPAY_PRIVATE_KEY") || "").replace(/\\n/g, "\n"),
-    alipayPublicKey: (Deno.env.get("ALIPAY_PUBLIC_KEY") || "").replace(/\\n/g, "\n"),
-    gateway: Deno.env.get("ALIPAY_GATEWAY") || "https://openapi.alipay.com/gateway.do",
-    notifyUrl: Deno.env.get("ALIPAY_NOTIFY_URL") || "",
+    appId: cfg.alipay_app_id,
+    privateKey: (cfg.alipay_private_key || "").replace(/\\n/g, "\n"),
+    alipayPublicKey: (cfg.alipay_public_key || "").replace(/\\n/g, "\n"),
+    gateway: cfg.alipay_gateway || "https://openapi.alipay.com/gateway.do",
+    notifyUrl: cfg.alipay_notify_url || "",
   };
 }
 

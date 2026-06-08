@@ -17,7 +17,7 @@ serve(async (req) => {
     }
 
     // 2. 验签
-    const config = getAlipayConfig();
+    const config = await getAlipayConfig();
     const valid = await verifyAlipayNotify(params, config.alipayPublicKey);
     if (!valid) {
       console.error("[alipay-notify] 验签失败");
