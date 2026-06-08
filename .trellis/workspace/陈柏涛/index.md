@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-06-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~506 | Active |
+| `journal-1.md` | ~539 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-06-08 | 移除 WxPusher 微信推送功能 | `11b4188` | `master` |
 | 13 | 2026-06-08 | perf: 消除思维导图拖拽/tab切换卡顿 | `f897d18`, `049ba46` | `master` |
 | 12 | 2026-06-08 | 修复 WxPusher 推送漏发 + spec 记录 | `98cc9ad`, `0eb7bed` | `master` |
 | 11 | 2026-06-07 | Taskora Web 上线 — deploy-branch CI/CD | `bfa33fd`, `906fe1d`, `60bf20c`, `decc3af`, `4280faf` | `master` |

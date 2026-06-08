@@ -504,3 +504,36 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 移除 WxPusher 微信推送功能
+
+**Date**: 2026-06-08
+**Task**: 移除 WxPusher 微信推送功能
+**Branch**: `master`
+
+### Summary
+
+WxPusher被微信封禁，删除所有微信推送相关代码（6个文件删除，4个文件修改，955行净删除），flutter analyze无error，Aliyun推送继续覆盖Android用户
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `11b4188` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
