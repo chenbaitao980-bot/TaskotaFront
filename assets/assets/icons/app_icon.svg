@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F4845F"/>
+      <stop offset="100%" stop-color="#DE6B48"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFD97D"/>
+      <stop offset="100%" stop-color="#FFB830"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
+
+  <!-- Subtle inner shadow -->
+  <rect x="32" y="32" width="960" height="960" rx="196" ry="196" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4"/>
+
+  <!-- Sun / light rays (top-right) -->
+  <circle cx="760" cy="240" r="72" fill="url(#sun)" opacity="0.95"/>
+  <!-- rays -->
+  <line x1="760" y1="140" x2="760" y2="108" stroke="#FFD97D" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
+  <line x1="760" y1="340" x2="760" y2="372" stroke="#FFD97D" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
+  <line x1="660" y1="240" x2="628" y2="240" stroke="#FFD97D" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
+  <line x1="860" y1="240" x2="892" y2="240" stroke="#FFD97D" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
+  <line x1="689" y1="169" x2="667" y2="147" stroke="#FFD97D" stroke-width="10" stroke-linecap="round" opacity="0.7"/>
+  <line x1="831" y1="169" x2="853" y2="147" stroke="#FFD97D" stroke-width="10" stroke-linecap="round" opacity="0.7"/>
+  <line x1="689" y1="311" x2="667" y2="333" stroke="#FFD97D" stroke-width="10" stroke-linecap="round" opacity="0.7"/>
+  <line x1="831" y1="311" x2="853" y2="333" stroke="#FFD97D" stroke-width="10" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- Checklist lines -->
+  <!-- Item 1 - checked -->
+  <circle cx="260" cy="380" r="32" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="8"/>
+  <polyline points="242,380 256,396 282,366" fill="none" stroke="rgba(255,255,255,0.95)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="330" y1="380" x2="600" y2="380" stroke="rgba(255,255,255,0.7)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Item 2 - checked -->
+  <circle cx="260" cy="510" r="32" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="8"/>
+  <polyline points="242,510 256,526 282,496" fill="none" stroke="rgba(255,255,255,0.95)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="330" y1="510" x2="540" y2="510" stroke="rgba(255,255,255,0.7)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Item 3 - unchecked -->
+  <circle cx="260" cy="640" r="32" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="8"/>
+  <line x1="330" y1="640" x2="660" y2="640" stroke="rgba(255,255,255,0.4)" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Item 4 - unchecked -->
+  <circle cx="260" cy="770" r="32" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="8"/>
+  <line x1="330" y1="770" x2="500" y2="770" stroke="rgba(255,255,255,0.25)" stroke-width="8" stroke-linecap="round"/>
+</svg>
