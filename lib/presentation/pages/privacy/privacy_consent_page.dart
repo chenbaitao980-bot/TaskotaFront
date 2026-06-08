@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/snackbar_helper.dart';
 
-class PrivacyConsentPage extends StatelessWidget {
-  final VoidCallback onAccepted;
+class PrivacyConsentPage extends StatefulWidget {
+  final Future<void> Function() onAccepted;
 
   const PrivacyConsentPage({super.key, required this.onAccepted});
+
+  @override
+  State<PrivacyConsentPage> createState() => _PrivacyConsentPageState();
 
   static const _prefKey = 'privacy_policy_accepted';
 
@@ -15,105 +19,23 @@ class PrivacyConsentPage extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_prefKey) ?? false;
   }
+}
+
+class _PrivacyConsentPageState extends State<PrivacyConsentPage> {
+  bool _loading = false;
 
   Future<void> _accept() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefKey, true);
-    onAccepted();
-  }
-
-  void _showFullPolicy(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (ctx, scrollController) => Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                '隐私政策',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: SingleChildScrollView(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: const Text(
-                  privacyPolicyText,
-                  style: TextStyle(fontSize: 14, height: 1.8),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showFullTerms(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (ctx, scrollController) => Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                '用户协议',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: SingleChildScrollView(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: const Text(
-                  termsOfServiceText,
-                  style: TextStyle(fontSize: 14, height: 1.8),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    setState(() => _loading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(PrivacyConsentPage._prefKey, true);
+      await widget.onAccepted();
+    } catch (e) {
+      if (mounted) {
+        showAppSnackBar(context, '初始化失败，请重试');
+        setState(() => _loading = false);
+      }
+    }
   }
 
   @override
@@ -221,17 +143,27 @@ class PrivacyConsentPage extends StatelessWidget {
                 width: double.infinity,
                 height: 50,
                 child: FilledButton(
-                  onPressed: () => _accept(),
+                  onPressed: _loading ? null : _accept,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: const Text(
-                    '同意并继续',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          '同意并继续',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -239,7 +171,7 @@ class PrivacyConsentPage extends StatelessWidget {
                 width: double.infinity,
                 height: 50,
                 child: OutlinedButton(
-                  onPressed: () => _showDisagreeDialog(context),
+                  onPressed: _loading ? null : () => _showDisagreeDialog(context),
                   style: OutlinedButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -254,6 +186,100 @@ class PrivacyConsentPage extends StatelessWidget {
               const Spacer(flex: 1),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showFullPolicy(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (ctx, scrollController) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                '隐私政策',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: const Text(
+                  privacyPolicyText,
+                  style: TextStyle(fontSize: 14, height: 1.8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFullTerms(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (ctx, scrollController) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                '用户协议',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: const Text(
+                  termsOfServiceText,
+                  style: TextStyle(fontSize: 14, height: 1.8),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

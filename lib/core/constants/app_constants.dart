@@ -58,6 +58,6 @@ class AppConstants {
   static const String vipYearlyPriceDisplay = '¥68/年';
 
   // WxPusher 微信提醒
-  static const String wxpusherAppToken = 'AT_YOUR_APP_TOKEN_HERE';
-  static const int wxpusherAppId = 0; // 替换为实际 appId
+  static const String wxpusherAppToken = 'AT_jdaZaaj5CLY9HY4LUJwGTxoLskK5XIa3';
+  static const int wxpusherAppId = 128230;
 }
