@@ -154,7 +154,7 @@ class _WechatBindingPageState extends State<WechatBindingPage> {
             ),
           ),
           const SizedBox(height: 24),
-          if (qrUrl.isNotEmpty)
+          if (_qrUrl.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -163,7 +163,7 @@ class _WechatBindingPageState extends State<WechatBindingPage> {
                 boxShadow: AppTheme.cardShadowLight,
               ),
               child: QrImageView(
-                data: qrUrl,
+                data: _qrUrl,
                 version: QrVersions.auto,
                 size: 220,
                 backgroundColor: Colors.white,
