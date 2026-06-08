@@ -11,8 +11,9 @@ serve(async (req) => {
 
   try {
     const now = new Date();
-    // 窗口：5分钟前到2分钟后（防漏发 + 提前触发容差）
-    const windowStart = new Date(now.getTime() - 5 * 60 * 1000);
+    // 窗口：24小时前到2分钟后
+    // 左边界扩大到24h：若某次cron期间WxPusher短暂失败，下一次cron仍能补发，不会永久丢失
+    const windowStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const windowEnd = new Date(now.getTime() + 2 * 60 * 1000);
 
     // 1. 查未发送的、在时间窗口内的推送记录
@@ -32,11 +33,13 @@ serve(async (req) => {
 
     // 2. 批量查用户微信绑定（已启用）
     const userIds = [...new Set(pushes.map((p: any) => p.user_id))];
-    const { data: bindings } = await supabase
+    const { data: bindings, error: bindErr } = await supabase
       .from("wechat_bindings")
       .select("user_id, wxpusher_uid")
       .in("user_id", userIds)
       .eq("enabled", true);
+
+    if (bindErr) console.error("[scan] wechat_bindings query error:", bindErr);
 
     const bindingMap = new Map<string, string>(
       (bindings ?? []).map((b: any) => [b.user_id, b.wxpusher_uid])
@@ -46,7 +49,10 @@ serve(async (req) => {
 
     for (const push of pushes) {
       const wxpusherUid = bindingMap.get(push.user_id);
-      if (!wxpusherUid) continue;
+      if (!wxpusherUid) {
+        console.warn(`[scan] no enabled binding for user=${push.user_id}`);
+        continue;
+      }
 
       const ok = await sendWxPusherMessage(
         wxpusherUid,

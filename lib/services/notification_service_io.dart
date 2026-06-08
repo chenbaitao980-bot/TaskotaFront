@@ -600,7 +600,7 @@ class NotificationService {
     }
 
     // 服务端推送兜底（微信 + FCM）
-    final pushBody = description ?? 'Your schedule starts in $remindBeforeMinutes minutes';
+    final pushBody = description ?? '距开始还有 $remindBeforeMinutes 分钟';
     final pushAt = remindAt.isAfter(now) ? remindAt : startTime;
     if (pushAt.isAfter(now)) {
       WechatReminderService().scheduleServerPush(
