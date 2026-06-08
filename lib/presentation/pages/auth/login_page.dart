@@ -403,6 +403,25 @@ class _LoginPageState extends State<LoginPage>
                               ),
                             ],
                           ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.wechat_rounded,
+                                size: 15,
+                                color: AppTheme.textHint,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '登录后可绑定微信，随时接收任务提醒',
+                                style: TextStyle(
+                                  color: AppTheme.textHint,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
