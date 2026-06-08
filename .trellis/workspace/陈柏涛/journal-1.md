@@ -436,3 +436,37 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 修复 WxPusher 推送漏发 + spec 记录
+
+**Date**: 2026-06-08
+**Task**: 修复 WxPusher 推送漏发 + spec 记录
+**Branch**: `master`
+
+### Summary
+
+确认根因：scan-wechat-reminders 的5min时间窗口导致WxPusher瞬时失败后无法补发；修复为24h窗口并加错误日志；修Flutter推送body中文；写server-push.md合约spec
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `98cc9ad` | (see git log) |
+| `0eb7bed` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
