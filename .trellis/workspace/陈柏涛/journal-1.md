@@ -470,3 +470,37 @@ Feature 1: 思维导图父子关系变更后，用 _pendingLayoutResetIds 机制
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: perf: 消除思维导图拖拽/tab切换卡顿
+
+**Date**: 2026-06-08
+**Task**: perf: 消除思维导图拖拽/tab切换卡顿
+**Branch**: `master`
+
+### Summary
+
+分层渲染画布（AnimatedBuilder 只包 CustomPaint，节点层各自独立 VLB）；_nodeDragging 改 ValueNotifier 替代 setState；_saveOffsets 加 300ms 防抖；O(n²) parentId 查找改为 O(n) Set；spec 更新记录 Canvas 性能模式
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f897d18` | (see git log) |
+| `049ba46` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
