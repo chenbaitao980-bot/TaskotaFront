@@ -21,6 +21,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
 | [Platform Compatibility](./platform-compatibility.md) | Flutter Web/native split — conditional export, Drift WASM, stubs | ✅ Filled |
+| [Server Push](./server-push.md) | WxPusher + Aliyun push pipeline, pg_cron contract, debug toolchain | ✅ Filled |
 
 ---
 
