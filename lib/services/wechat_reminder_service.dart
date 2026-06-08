@@ -76,12 +76,17 @@ class WechatReminderService {
     }
   }
 
-  String getBindQrCodeUrl() {
-    final user = _client.auth.currentUser;
-    if (user == null) return '';
-    return 'https://wxpusher.zjiecode.com/api/fun/create/qrcode'
-        '?appToken=${AppConstants.wxpusherAppToken}'
-        '&extra=${Uri.encodeComponent(user.id)}';
+  Future<String> getBindQrCodeUrl() async {
+    try {
+      final resp = await _client.functions.invoke(
+        'wechat-qr',
+        method: HttpMethod.post,
+      );
+      return resp.data?['url'] as String? ?? '';
+    } catch (e) {
+      print('[WechatReminder] getBindQrCodeUrl error: $e');
+      return '';
+    }
   }
 
   Future<bool> sendTestMessage() async {

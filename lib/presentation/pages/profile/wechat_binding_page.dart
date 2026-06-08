@@ -18,6 +18,7 @@ class _WechatBindingPageState extends State<WechatBindingPage> {
   WechatBindingStatus? _status;
   bool _loading = true;
   bool _busy = false;
+  String _qrUrl = '';
   Timer? _pollTimer;
 
   @override
@@ -33,10 +34,16 @@ class _WechatBindingPageState extends State<WechatBindingPage> {
   }
 
   Future<void> _loadStatus() async {
-    final status = await _service.getStatus();
+    final results = await Future.wait([
+      _service.getStatus(),
+      _service.getBindQrCodeUrl(),
+    ]);
     if (!mounted) return;
+    final status = results[0] as WechatBindingStatus;
+    final qrUrl = results[1] as String;
     setState(() {
       _status = status;
+      _qrUrl = qrUrl;
       _loading = false;
     });
     if (!status.bound) {
@@ -122,7 +129,6 @@ class _WechatBindingPageState extends State<WechatBindingPage> {
   }
 
   Widget _buildUnboundView() {
-    final qrUrl = _service.getBindQrCodeUrl();
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
