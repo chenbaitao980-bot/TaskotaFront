@@ -4148,7 +4148,7 @@ class _HomeContentState extends State<_HomeContent> {
     }
 
     Widget taskItem(_TimelineTask task) {
-      final isOverdueItem = task.date.isBefore(today);
+      final isOverdueItem = (task.endDate ?? task.date).isBefore(today);
       return GestureDetector(
         onTap: () => _selectTask(task),
         child: Padding(

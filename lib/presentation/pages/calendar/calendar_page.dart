@@ -488,18 +488,39 @@ class _CalendarPageState extends State<CalendarPage> {
     if (_taskRepo == null) return;
     final shouldCascade = await _confirmCascadeComplete(task);
     if (shouldCascade == null) return;
+
+    // 乐观更新：立即更新本地状态，不等 DB
+    final newStatus = task.status == 2 ? 0 : 2;
     if (shouldCascade) {
-      await _taskRepo!.setStatusCascade(task.id, 2, includeDescendants: true);
+      final affectedIds = {task.id, ..._allTasks.where((t) => t.parentId == task.id).map((t) => t.id)};
+      setState(() {
+        for (var i = 0; i < _allTasks.length; i++) {
+          if (affectedIds.contains(_allTasks[i].id)) {
+            _allTasks[i] = _allTasks[i].copyWith(status: 2);
+          }
+        }
+      });
+      _taskRepo!.setStatusCascade(task.id, 2, includeDescendants: true).then((_) {
+        _reloadData();
+        _notifyBloc();
+      });
     } else {
-      await _taskRepo!.toggleStatus(task.id);
+      setState(() {
+        final idx = _allTasks.indexWhere((t) => t.id == task.id);
+        if (idx != -1) {
+          _allTasks[idx] = _allTasks[idx].copyWith(status: newStatus);
+        }
+      });
+      _taskRepo!.toggleStatus(task.id).then((_) {
+        _reloadData();
+        _notifyBloc();
+      });
     }
-    _reloadData();
-    _notifyBloc();
   }
 
   Future<bool?> _confirmCascadeComplete(Task task) async {
-    if (_taskRepo == null || task.status == 2) return false;
-    final children = await _taskRepo!.getSubTasks(task.id);
+    if (task.status == 2) return false;
+    final children = _allTasks.where((t) => t.parentId == task.id).toList();
     if (children.isEmpty || !mounted) return false;
     return showDialog<bool>(
       context: context,
@@ -2209,6 +2230,9 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
   // 整块移动：拖动偏移
   Offset? _moveDelta;
 
+  // Checkbox 区域命中标志：阻止 EagerPan 的小位移误判为 tap→openDetail
+  bool _checkboxHit = false;
+
   // 移动端长按检测（使用 Listener 绕过手势竞技场，避免被 _EagerPanGestureRecognizer 抢占）
   Timer? _longPressTimer;
   Offset? _pointerDownPosition;
@@ -2340,6 +2364,11 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                         _moveDelta = null;
                                       });
                                       if (delta == null || delta.distance < 3) {
+                                        if (_checkboxHit) {
+                                          _checkboxHit = false;
+                                          w.onToggle();
+                                          return;
+                                        }
                                         if (_longPressActivated) {
                                           // 长按激活编辑模式后松手，不视为点击
                                           _longPressActivated = false;
@@ -2349,6 +2378,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                         w.onOpenDetail();
                                         return;
                                       }
+                                      _checkboxHit = false;
                                       _longPressActivated = false;
                                       final target = _targetFromDelta(delta);
                                       if (target != w.start) {
@@ -2356,6 +2386,7 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                       }
                                     }
                                     ..onCancel = () {
+                                      _checkboxHit = false;
                                       _longPressActivated = false;
                                       setState(() {
                                         _moveDelta = null;
@@ -2397,15 +2428,22 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                         _moveDelta = null;
                                       });
                                       if (delta == null || delta.distance < 3) {
+                                        if (_checkboxHit) {
+                                          _checkboxHit = false;
+                                          w.onToggle();
+                                          return;
+                                        }
                                         w.onOpenDetail();
                                         return;
                                       }
+                                      _checkboxHit = false;
                                       final target = _targetFromDelta(delta);
                                       if (target != w.start) {
                                         w.onMove(target);
                                       }
                                     }
                                     ..onCancel = () {
+                                      _checkboxHit = false;
                                       setState(() {
                                         _moveDelta = null;
                                       });
@@ -2518,20 +2556,26 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
             Expanded(
               child: Row(
                 children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: Checkbox(
-                      value: w.isCompleted,
-                      onChanged: (_) => w.onToggle(),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      side: const BorderSide(color: Colors.white, width: 1.4),
-                      checkColor: Colors.grey,
-                      fillColor: WidgetStateProperty.resolveWith(
-                        (states) => states.contains(WidgetState.selected)
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.16),
+                  Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: (_) => _checkboxHit = true,
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: IgnorePointer(
+                        child: Checkbox(
+                          value: w.isCompleted,
+                          onChanged: null,
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: Colors.white, width: 1.4),
+                          checkColor: Colors.grey,
+                          fillColor: WidgetStateProperty.resolveWith(
+                            (states) => states.contains(WidgetState.selected)
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.16),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -2813,20 +2857,26 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(
             children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: Checkbox(
-                  value: isCompleted,
-                  onChanged: (_) => w.onToggle(),
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  side: const BorderSide(color: Colors.white, width: 1.5),
-                  checkColor: Colors.grey,
-                  fillColor: WidgetStateProperty.resolveWith(
-                    (states) => states.contains(WidgetState.selected)
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.18),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: w.onToggle,
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: IgnorePointer(
+                    child: Checkbox(
+                      value: isCompleted,
+                      onChanged: null,
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      side: const BorderSide(color: Colors.white, width: 1.5),
+                      checkColor: Colors.grey,
+                      fillColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.18),
+                      ),
+                    ),
                   ),
                 ),
               ),
