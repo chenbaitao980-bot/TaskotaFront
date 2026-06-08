@@ -504,8 +504,9 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Widget _buildExpandCollapseButton(TaskNewLoaded state) {
+    final parentIdSet = state.tasks.map((t) => t.parentId).whereType<String>().toSet();
     final allParentIds = state.tasks
-        .where((t) => state.tasks.any((c) => c.parentId == t.id))
+        .where((t) => parentIdSet.contains(t.id))
         .map((t) => t.id)
         .toSet();
     final expandedIds = state.expandedNodes['main_tree'] ?? {};

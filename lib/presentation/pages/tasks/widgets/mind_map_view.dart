@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -90,8 +91,8 @@ class _MindMapViewState extends State<MindMapView> {
   // ─── 自由拖拽模式 ───
   final bool _freeDragMode = true;
 
-  // ─── 节点拖拽中标记：true 时禁用画布平移，避免整片画布联动 ───
-  bool _nodeDragging = false;
+  // ─── 节点拖拽中标记：ValueNotifier 驱动，不触发全量 setState ───
+  final ValueNotifier<bool> _nodeDragging = ValueNotifier(false);
 
   // ─── 框选模式（桌面端 Ctrl+左键） ───
   final ValueNotifier<bool> _ctrlPressed = ValueNotifier(false);
@@ -119,6 +120,9 @@ class _MindMapViewState extends State<MindMapView> {
   // 下次 didUpdateWidget 时，这些节点需要重置为自动布局位置（忽略 SharedPreferences 中的旧坐标）
   final Set<String> _pendingLayoutResetIds = {};
   int? _handledFocusRequestToken;
+
+  // ─── saveOffsets 防抖：300ms 内多次拖拽只写一次 SharedPreferences ───
+  Timer? _saveOffsetDebounce;
 
   // ─── 初始定位标志 ───
   bool _initialFocusDone = false;
@@ -193,6 +197,8 @@ class _MindMapViewState extends State<MindMapView> {
 
   @override
   void dispose() {
+    _saveOffsetDebounce?.cancel();
+    _nodeDragging.dispose();
     HardwareKeyboard.instance.removeHandler(_onKeyEvent);
     _ctrlPressed.dispose();
     for (final n in _positionNotifiers.values) {
@@ -301,7 +307,12 @@ class _MindMapViewState extends State<MindMapView> {
     }
   }
 
-  Future<void> _saveOffsets() async {
+  void _saveOffsets() {
+    _saveOffsetDebounce?.cancel();
+    _saveOffsetDebounce = Timer(const Duration(milliseconds: 300), _flushOffsets);
+  }
+
+  Future<void> _flushOffsets() async {
     final prefs = await SharedPreferences.getInstance();
     final map = <String, List<double>>{};
     for (final id in _draggedIds) {
@@ -331,7 +342,7 @@ class _MindMapViewState extends State<MindMapView> {
         _selectionRect = null;
         _connectingFromId = null;
         _connectingEndPos = null;
-        if (_nodeDragging) _nodeDragging = false;
+        if (_nodeDragging.value) _nodeDragging.value = false;
         setState(() {});
         return true;
       }
@@ -372,7 +383,7 @@ class _MindMapViewState extends State<MindMapView> {
     _isSelecting = true;
     _selectionStart = raw;
     _selectionRect = null;
-    _nodeDragging = true;
+    _nodeDragging.value = true;
     setState(() {});
   }
 
@@ -408,7 +419,7 @@ class _MindMapViewState extends State<MindMapView> {
     }
     _isSelecting = false;
     _selectionRect = null;
-    _nodeDragging = false;
+    _nodeDragging.value = false;
     _pointerDownPos = null;
     _pointerDownNodeId = null;
     setState(() {});
@@ -726,13 +737,18 @@ class _MindMapViewState extends State<MindMapView> {
           freeDragMode: _freeDragMode,
           onDragStart: _freeDragMode
               ? (id) {
+                  bool needsRebuild = false;
                   if (_selectedIds.contains(id) && _selectedIds.length > 1) {
                     _draggedIds.addAll(_selectedIds);
                   } else {
                     _draggedIds.add(id);
-                    if (!_selectedIds.contains(id)) _selectedIds.clear();
+                    if (!_selectedIds.contains(id) && _selectedIds.isNotEmpty) {
+                      _selectedIds.clear();
+                      needsRebuild = true;
+                    }
                   }
-                  setState(() => _nodeDragging = true);
+                  _nodeDragging.value = true;
+                  if (needsRebuild) setState(() {});
                 }
               : null,
           onDragUpdate: _freeDragMode
@@ -752,8 +768,8 @@ class _MindMapViewState extends State<MindMapView> {
               ? (_) {
                   _saveOffsets();
                   // 连线模式期间保持 _nodeDragging=true，不重置
-                  if (_nodeDragging && _connectingFromId == null) {
-                    setState(() => _nodeDragging = false);
+                  if (_nodeDragging.value && _connectingFromId == null) {
+                    _nodeDragging.value = false;
                   }
                 }
               : null,
@@ -766,10 +782,10 @@ class _MindMapViewState extends State<MindMapView> {
           onMoveToParent: _handleMoveToParent,
           onAddSubtask: () => widget.onAddSubtask(node.task.id),
           onConnectStart: (id) {
+            _nodeDragging.value = true;
             setState(() {
               _connectingFromId = id;
               _connectingEndPos = null;
-              _nodeDragging = true;
             });
           },
           onConnectUpdate: (id, localPos) {
@@ -794,17 +810,17 @@ class _MindMapViewState extends State<MindMapView> {
                 _handleMoveToParent(targetId, id);
               }
             }
+            _nodeDragging.value = false;
             setState(() {
               _connectingFromId = null;
               _connectingEndPos = null;
-              _nodeDragging = false;
             });
           },
           onConnectCancel: () {
+            _nodeDragging.value = false;
             setState(() {
               _connectingFromId = null;
               _connectingEndPos = null;
-              _nodeDragging = false;
             });
           },
           allTasks: widget.tasks,
@@ -813,137 +829,123 @@ class _MindMapViewState extends State<MindMapView> {
       );
     }
 
-    // 连线 + 节点层（pending 节点统一用 AnimatedBuilder + ValueListenableBuilder，
-    // 每个节点有稳定的 ValueNotifier，拖拽期间 widget 树不重建，手势不中断）
+    // ─── 连线 + 节点层（分层渲染）
+    // 连线层：AnimatedBuilder 监听所有位置 Notifier，只重绘 CustomPaint
+    // 节点层：每个节点独立 ValueListenableBuilder，拖拽时只有被拖节点移动
+    // 两层相互独立，拖拽 pan update 期间其余节点完全不 rebuild
     Widget canvasContent() {
-      final listenables = isCompleted
-          ? <Listenable>[]
-          : _positionNotifiers.values.toList();
-      return AnimatedBuilder(
-        animation: Listenable.merge(listenables),
-        builder: (context, _) {
-          final effectivePositions = isCompleted
-              ? nodePositions
-              : _buildPendingPositionMap();
-
-          // 偏移后坐标（确保所有节点在固定大画布内）
-          final shiftedPositions = effectivePositions
-              .map((k, v) => MapEntry(k, v + const Offset(_kCanvasShift, _kCanvasShift)));
-
-          // 橡皮筋连线端点（shifted 坐标系）
-          Offset? cFrom;
-          Offset? cTo;
-          if (_connectingFromId != null) {
-            final fp = effectivePositions[_connectingFromId];
-            if (fp != null) {
-              cFrom = Offset(
-                fp.dx + _kNodeWidth + _kCanvasShift,
-                fp.dy + _kNodeHeight / 2 + _kCanvasShift,
-              );
-            }
-            if (_connectingEndPos != null) {
-              cTo = _connectingEndPos! + const Offset(_kCanvasShift, _kCanvasShift);
-            }
-          }
-
-          return GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onSecondaryTapUp: (details) {
-              final nodePos = details.localPosition -
-                  const Offset(_kCanvasShift, _kCanvasShift);
-              _handleLineRightClick(context, nodePos, details.globalPosition);
-            },
-            child: SizedBox(
-            width: _kCanvasSize,
-            height: _kCanvasSize,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-
+      return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onSecondaryTapUp: (details) {
+          final nodePos = details.localPosition -
+              const Offset(_kCanvasShift, _kCanvasShift);
+          _handleLineRightClick(context, nodePos, details.globalPosition);
+        },
+        child: SizedBox(
+          width: _kCanvasSize,
+          height: _kCanvasSize,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // ── 连线层：随任意节点位置变化重绘，不波及节点层 ──
+              if (!isCompleted)
+                AnimatedBuilder(
+                  animation: Listenable.merge(_positionNotifiers.values.toList()),
+                  builder: (context, _) {
+                    final effectivePositions = _buildPendingPositionMap();
+                    final shiftedPositions = effectivePositions.map(
+                      (k, v) => MapEntry(k, v + const Offset(_kCanvasShift, _kCanvasShift)),
+                    );
+                    Offset? cFrom;
+                    Offset? cTo;
+                    if (_connectingFromId != null) {
+                      final fp = effectivePositions[_connectingFromId];
+                      if (fp != null) {
+                        cFrom = Offset(
+                          fp.dx + _kNodeWidth + _kCanvasShift,
+                          fp.dy + _kNodeHeight / 2 + _kCanvasShift,
+                        );
+                      }
+                      if (_connectingEndPos != null) {
+                        cTo = _connectingEndPos! + const Offset(_kCanvasShift, _kCanvasShift);
+                      }
+                    }
+                    return CustomPaint(
+                      size: const Size(_kCanvasSize, _kCanvasSize),
+                      painter: _MindMapLinesPainter(
+                        lines: lines,
+                        nodePositions: shiftedPositions,
+                        connectingFrom: cFrom,
+                        connectingTo: cTo,
+                      ),
+                    );
+                  },
+                )
+              else
                 CustomPaint(
                   size: const Size(_kCanvasSize, _kCanvasSize),
                   painter: _MindMapLinesPainter(
                     lines: lines,
-                    nodePositions: shiftedPositions,
-                    connectingFrom: cFrom,
-                    connectingTo: cTo,
+                    nodePositions: nodePositions.map(
+                      (k, v) => MapEntry(k, v + const Offset(_kCanvasShift, _kCanvasShift)),
+                    ),
                   ),
                 ),
-                if (_isSelecting && _selectionRect != null)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        painter: _SelectionRectPainter(
-                            rect: _selectionRect!.shift(const Offset(
-                                _kCanvasShift, _kCanvasShift))),
+              if (_isSelecting && _selectionRect != null)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _SelectionRectPainter(
+                        rect: _selectionRect!.shift(
+                          const Offset(_kCanvasShift, _kCanvasShift),
+                        ),
                       ),
                     ),
                   ),
-                ...nodes.map((node) {
-                  final notifier = _positionNotifiers[node.task.id];
-                  if (notifier != null) {
-                    return ValueListenableBuilder<Offset>(
-                      valueListenable: notifier,
-                      builder: (_, pos, child) => Positioned(
-                          left: pos.dx + _kCanvasShift,
-                          top: pos.dy + _kCanvasShift,
-                          child: child!),
-                      child: buildNodeCard(node),
-                    );
-                  }
-                  final pos = effectivePositions[node.task.id] ??
-                      Offset(node.x, node.y);
-                  return Positioned(
-                    left: pos.dx + _kCanvasShift,
-                    top: pos.dy + _kCanvasShift,
+                ),
+              // ── 节点层：每个节点独立 VLB，互不干扰 ──
+              ...nodes.map((node) {
+                final notifier = _positionNotifiers[node.task.id];
+                if (notifier != null) {
+                  return ValueListenableBuilder<Offset>(
+                    valueListenable: notifier,
+                    builder: (_, pos, child) => Positioned(
+                      left: pos.dx + _kCanvasShift,
+                      top: pos.dy + _kCanvasShift,
+                      child: child!,
+                    ),
                     child: buildNodeCard(node),
                   );
-                }),
-                // Ctrl+框选覆盖层
-                ValueListenableBuilder<bool>(
-                  valueListenable: _ctrlPressed,
-                  builder: (context, ctrlDown, _) {
-                    return IgnorePointer(
-                      ignoring: !ctrlDown,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onPanStart:
-                            ctrlDown ? _onSelectionPanStart : null,
-                        onPanUpdate:
-                            ctrlDown ? _onSelectionPanUpdate : null,
-                        onPanEnd: ctrlDown ? _onSelectionPanEnd : null,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ), // SizedBox
-          ); // GestureDetector
-        },
+                }
+                final pos = isCompleted
+                    ? (nodePositions[node.task.id] ?? Offset(node.x, node.y))
+                    : (_positionNotifiers[node.task.id]?.value ?? Offset(node.x, node.y));
+                return Positioned(
+                  left: pos.dx + _kCanvasShift,
+                  top: pos.dy + _kCanvasShift,
+                  child: buildNodeCard(node),
+                );
+              }),
+              // Ctrl+框选覆盖层
+              ValueListenableBuilder<bool>(
+                valueListenable: _ctrlPressed,
+                builder: (context, ctrlDown, _) {
+                  return IgnorePointer(
+                    ignoring: !ctrlDown,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onPanStart: ctrlDown ? _onSelectionPanStart : null,
+                      onPanUpdate: ctrlDown ? _onSelectionPanUpdate : null,
+                      onPanEnd: ctrlDown ? _onSelectionPanEnd : null,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
       );
     }
-
-    final viewer = InteractiveViewer(
-      transformationController: _transformController,
-      constrained: false,
-      boundaryMargin: const EdgeInsets.all(double.infinity),
-      minScale: 0.15,
-      maxScale: 3.0,
-      panEnabled: !_nodeDragging,
-      child: DragTarget<String>(
-        onAcceptWithDetails: (details) {
-          final draggedId = details.data;
-          final task =
-              widget.tasks.where((t) => t.id == draggedId).firstOrNull;
-          if (task == null || task.parentId == null) return;
-          _handleMoveToParent(draggedId, null);
-        },
-        builder: (context, candidateData, rejectedData) {
-          return canvasContent();
-        },
-      ),
-    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -968,62 +970,87 @@ class _MindMapViewState extends State<MindMapView> {
         }
         return Stack(
           children: [
-        // 背景点击取消框选：Listener 放在 InteractiveViewer 外层，
-        // 绕过 InteractiveViewer 内部的 ScaleGestureRecognizer 拦截
-        Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: (e) {
-            _bgPointerDownPos = e.localPosition;
-          },
-          onPointerUp: (e) {
-            final down = _bgPointerDownPos;
-            _bgPointerDownPos = null;
-            if (down != null &&
-                (e.localPosition - down).distance < 8 &&
-                _selectedIds.isNotEmpty) {
-              setState(() => _selectedIds.clear());
-            }
-          },
-          child: viewer,
-        ),
-        Positioned(
-          right: 80,
-          top: 16,
-          child: FloatingActionButton.small(
-            heroTag: 'focus_nearest_task',
-            backgroundColor: AppTheme.bgCard,
-            tooltip: '自动锁定',
-            onPressed: () => _focusNearestTask(viewportSize),
-            child: Icon(
-              Icons.center_focus_strong_rounded,
-              color: AppTheme.textSecondary,
-              size: 20,
+            // ── InteractiveViewer 通过 VLB 监听 _nodeDragging，
+            // panEnabled 切换时只重建此子树，不触发全量 build ──
+            ValueListenableBuilder<bool>(
+              valueListenable: _nodeDragging,
+              builder: (context, dragging, _) {
+                return Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: (e) {
+                    _bgPointerDownPos = e.localPosition;
+                  },
+                  onPointerUp: (e) {
+                    final down = _bgPointerDownPos;
+                    _bgPointerDownPos = null;
+                    if (down != null &&
+                        (e.localPosition - down).distance < 8 &&
+                        _selectedIds.isNotEmpty) {
+                      setState(() => _selectedIds.clear());
+                    }
+                  },
+                  child: InteractiveViewer(
+                    transformationController: _transformController,
+                    constrained: false,
+                    boundaryMargin: const EdgeInsets.all(double.infinity),
+                    minScale: 0.15,
+                    maxScale: 3.0,
+                    panEnabled: !dragging,
+                    child: DragTarget<String>(
+                      onAcceptWithDetails: (details) {
+                        final draggedId = details.data;
+                        final task = widget.tasks
+                            .where((t) => t.id == draggedId)
+                            .firstOrNull;
+                        if (task == null || task.parentId == null) return;
+                        _handleMoveToParent(draggedId, null);
+                      },
+                      builder: (context, candidateData, rejectedData) {
+                        return canvasContent();
+                      },
+                    ),
+                  ),
+                );
+              },
             ),
-          ),
-        ),
-        Positioned(
-          right: 16,
-          top: 16,
-          child: FloatingActionButton.small(
-            heroTag: 'reset_layout',
-            backgroundColor: AppTheme.bgCard,
-            tooltip: '重置布局',
-            onPressed: () {
-              _draggedIds.clear();
-              _selectedIds.clear();
-              for (final node in _cachedPendingNodes) {
-                _positionNotifiers[node.task.id]?.value =
-                    Offset(node.x, node.y);
-              }
-              _saveOffsets();
-            },
-            child: Icon(
-              Icons.restart_alt_rounded,
-              color: AppTheme.textSecondary,
-              size: 20,
+            Positioned(
+              right: 80,
+              top: 16,
+              child: FloatingActionButton.small(
+                heroTag: 'focus_nearest_task',
+                backgroundColor: AppTheme.bgCard,
+                tooltip: '自动锁定',
+                onPressed: () => _focusNearestTask(viewportSize),
+                child: Icon(
+                  Icons.center_focus_strong_rounded,
+                  color: AppTheme.textSecondary,
+                  size: 20,
+                ),
+              ),
             ),
-          ),
-        ),
+            Positioned(
+              right: 16,
+              top: 16,
+              child: FloatingActionButton.small(
+                heroTag: 'reset_layout',
+                backgroundColor: AppTheme.bgCard,
+                tooltip: '重置布局',
+                onPressed: () {
+                  _draggedIds.clear();
+                  _selectedIds.clear();
+                  for (final node in _cachedPendingNodes) {
+                    _positionNotifiers[node.task.id]?.value =
+                        Offset(node.x, node.y);
+                  }
+                  _flushOffsets();
+                },
+                child: Icon(
+                  Icons.restart_alt_rounded,
+                  color: AppTheme.textSecondary,
+                  size: 20,
+                ),
+              ),
+            ),
           ],
         );
       },
