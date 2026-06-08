@@ -55,19 +55,26 @@ void main() async {
     flog('[App] ===== 应用启动 =====');
 
     if (!kIsWeb && isDesktop) {
-      // window_manager is desktop-only; import via conditional at call site
       await _initWindowManager();
     }
 
     await themeController.load();
 
+    // 先检查隐私协议是否已同意
     final privacyAccepted = await PrivacyConsentPage.isAccepted();
 
-    if (privacyAccepted) {
-      await _initServicesAndRun();
-    } else {
-      runApp(_PrivacyGateApp(onAccepted: _initServicesAndRun));
-    }
+    // 始终只调用一次 runApp，由 MyApp 内部决定展示隐私页还是主界面
+    final deps = await _initServices();
+
+    runApp(MyApp(
+      privacyAccepted: privacyAccepted,
+      database: deps.database,
+      projectRepository: deps.projectRepository,
+      projectGroupRepository: deps.projectGroupRepository,
+      taskRepository: deps.taskRepository,
+      checklistRepository: deps.checklistRepository,
+      nodeTemplateRepository: deps.nodeTemplateRepository,
+    ));
 
     if (!kIsWeb && isDesktop) {
       await initTray();
@@ -81,7 +88,25 @@ Future<void> _initWindowManager() async {
   await ensureWindowManagerInitialized();
 }
 
-Future<void> _initServicesAndRun() async {
+class _AppDeps {
+  final AppDatabase database;
+  final ProjectRepository projectRepository;
+  final ProjectGroupRepository projectGroupRepository;
+  final TaskRepository taskRepository;
+  final ChecklistRepository checklistRepository;
+  final NodeTemplateRepository nodeTemplateRepository;
+
+  _AppDeps({
+    required this.database,
+    required this.projectRepository,
+    required this.projectGroupRepository,
+    required this.taskRepository,
+    required this.checklistRepository,
+    required this.nodeTemplateRepository,
+  });
+}
+
+Future<_AppDeps> _initServices() async {
   await Supabase.initialize(
     url: AppConstants.supabaseUrl,
     anonKey: AppConstants.supabaseAnonKey,
@@ -125,55 +150,18 @@ Future<void> _initServicesAndRun() async {
     groupRepo: projectGroupRepository,
   );
 
-  runApp(
-    MyApp(
-      database: database,
-      projectRepository: projectRepository,
-      projectGroupRepository: projectGroupRepository,
-      taskRepository: taskRepository,
-      checklistRepository: checklistRepository,
-      nodeTemplateRepository: nodeTemplateRepository,
-    ),
+  return _AppDeps(
+    database: database,
+    projectRepository: projectRepository,
+    projectGroupRepository: projectGroupRepository,
+    taskRepository: taskRepository,
+    checklistRepository: checklistRepository,
+    nodeTemplateRepository: nodeTemplateRepository,
   );
 }
 
-class _PrivacyGateApp extends StatelessWidget {
-  final Future<void> Function() onAccepted;
-  const _PrivacyGateApp({required this.onAccepted});
-
-  @override
-  Widget build(BuildContext context) {
-    return ScreenUtilInit(
-      designSize: const Size(375, 812),
-      minTextAdapt: true,
-      splitScreenMode: true,
-      builder: (context, child) {
-        return ListenableBuilder(
-          listenable: themeController,
-          builder: (context, _) => MaterialApp(
-            title: AppConstants.appName,
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.themeData,
-            darkTheme: AppTheme.themeData,
-            themeMode:
-                AppTheme.current.isDark ? ThemeMode.dark : ThemeMode.light,
-            navigatorKey: AppRouter.navigatorKey,
-            locale: const Locale('zh', 'CN'),
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
-            home: PrivacyConsentPage(onAccepted: () => onAccepted()),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
+  final bool privacyAccepted;
   final AppDatabase database;
   final ProjectRepository projectRepository;
   final ProjectGroupRepository projectGroupRepository;
@@ -183,6 +171,7 @@ class MyApp extends StatelessWidget {
 
   const MyApp({
     super.key,
+    required this.privacyAccepted,
     required this.database,
     required this.projectRepository,
     required this.projectGroupRepository,
@@ -190,6 +179,23 @@ class MyApp extends StatelessWidget {
     required this.checklistRepository,
     required this.nodeTemplateRepository,
   });
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late bool _privacyAccepted;
+
+  @override
+  void initState() {
+    super.initState();
+    _privacyAccepted = widget.privacyAccepted;
+  }
+
+  void _onPrivacyAccepted() {
+    setState(() => _privacyAccepted = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -214,11 +220,11 @@ class MyApp extends StatelessWidget {
             ),
             BlocProvider(
               create: (context) => task_new.TaskNewBloc(
-                projectRepository: projectRepository,
-                projectGroupRepository: projectGroupRepository,
-                taskRepository: taskRepository,
-                checklistRepository: checklistRepository,
-                nodeTemplateRepository: nodeTemplateRepository,
+                projectRepository: widget.projectRepository,
+                projectGroupRepository: widget.projectGroupRepository,
+                taskRepository: widget.taskRepository,
+                checklistRepository: widget.checklistRepository,
+                nodeTemplateRepository: widget.nodeTemplateRepository,
                 supabaseService: SupabaseService(),
               ),
             ),
@@ -242,19 +248,22 @@ class MyApp extends StatelessWidget {
               ],
               supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
               onGenerateRoute: AppRouter.onGenerateRoute,
-              home: BlocBuilder<AuthBloc, AuthState>(
-                builder: (context, state) {
-                  if (state is Authenticated || state is LocalAuthenticated) {
-                    return HomePage(
-                      database: database,
-                      projectRepository: projectRepository,
-                      taskRepository: taskRepository,
-                      checklistRepository: checklistRepository,
-                    );
-                  }
-                  return const LoginPage();
-                },
-              ),
+              home: _privacyAccepted
+                  ? BlocBuilder<AuthBloc, AuthState>(
+                      builder: (context, state) {
+                        if (state is Authenticated ||
+                            state is LocalAuthenticated) {
+                          return HomePage(
+                            database: widget.database,
+                            projectRepository: widget.projectRepository,
+                            taskRepository: widget.taskRepository,
+                            checklistRepository: widget.checklistRepository,
+                          );
+                        }
+                        return const LoginPage();
+                      },
+                    )
+                  : PrivacyConsentPage(onAccepted: _onPrivacyAccepted),
             ),
           ),
         );

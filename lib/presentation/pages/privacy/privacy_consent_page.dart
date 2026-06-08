@@ -6,7 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/snackbar_helper.dart';
 
 class PrivacyConsentPage extends StatefulWidget {
-  final Future<void> Function() onAccepted;
+  final VoidCallback onAccepted;
 
   const PrivacyConsentPage({super.key, required this.onAccepted});
 
@@ -29,10 +29,10 @@ class _PrivacyConsentPageState extends State<PrivacyConsentPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(PrivacyConsentPage._prefKey, true);
-      await widget.onAccepted();
+      if (mounted) widget.onAccepted();
     } catch (e) {
       if (mounted) {
-        showAppSnackBar(context, '初始化失败，请重试');
+        showAppSnackBar(context, '操作失败，请重试');
         setState(() => _loading = false);
       }
     }
