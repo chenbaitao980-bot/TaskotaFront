@@ -36,5 +36,5 @@ export async function sendWxPusherMessage(
 }
 
 export function getWxPusherQrUrl(appToken: string, extra: string): string {
-  return `${WXPUSHER_API}/fun/create/qrcode/${appToken}?extra=${encodeURIComponent(extra)}`;
+  return `${WXPUSHER_API}/fun/create/qrcode?appToken=${appToken}&extra=${encodeURIComponent(extra)}`;
 }

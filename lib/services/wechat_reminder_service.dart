@@ -79,9 +79,9 @@ class WechatReminderService {
   String getBindQrCodeUrl() {
     final user = _client.auth.currentUser;
     if (user == null) return '';
-    return 'https://wxpusher.zjiecode.com/api/fun/create/qrcode/'
-        '${AppConstants.wxpusherAppToken}'
-        '?extra=${Uri.encodeComponent(user.id)}';
+    return 'https://wxpusher.zjiecode.com/api/fun/create/qrcode'
+        '?appToken=${AppConstants.wxpusherAppToken}'
+        '&extra=${Uri.encodeComponent(user.id)}';
   }
 
   Future<bool> sendTestMessage() async {
