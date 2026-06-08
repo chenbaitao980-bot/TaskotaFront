@@ -117,6 +117,7 @@ class _CalendarPageState extends State<CalendarPage> {
   Future<void> _reloadData({
     List<Project>? cachedProjects,
     List<ProjectGroup>? cachedGroups,
+    bool force = false,
   }) async {
     if (_taskRepo == null || _projectRepo == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -125,7 +126,8 @@ class _CalendarPageState extends State<CalendarPage> {
       return;
     }
     final now = DateTime.now();
-    if (_initialized &&
+    if (!force &&
+        _initialized &&
         _lastReloadTime != null &&
         now.difference(_lastReloadTime!) < const Duration(seconds: 2)) {
       return;
@@ -771,6 +773,7 @@ class _CalendarPageState extends State<CalendarPage> {
           _reloadData(
             cachedProjects: state.projects,
             cachedGroups: state.groups,
+            force: true,
           );
         }
       },
