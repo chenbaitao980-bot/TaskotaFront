@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/snackbar_helper.dart';
@@ -156,17 +155,26 @@ class _WechatBindingPageState extends State<WechatBindingPage> {
           const SizedBox(height: 24),
           if (_qrUrl.isNotEmpty)
             Container(
-              padding: const EdgeInsets.all(16),
+              width: 220,
+              height: 220,
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: AppTheme.cardShadowLight,
               ),
-              child: QrImageView(
-                data: _qrUrl,
-                version: QrVersions.auto,
-                size: 220,
-                backgroundColor: Colors.white,
+              child: Image.network(
+                _qrUrl,
+                width: 204,
+                height: 204,
+                fit: BoxFit.contain,
+                loadingBuilder: (ctx, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(child: CircularProgressIndicator());
+                },
+                errorBuilder: (ctx, _, __) => const Center(
+                  child: Icon(Icons.error_outline, color: Colors.red),
+                ),
               ),
             )
           else
