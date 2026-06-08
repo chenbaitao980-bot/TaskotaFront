@@ -213,7 +213,7 @@ class _LoginPageState extends State<LoginPage>
                           ),
                           const SizedBox(height: 20),
                           Text(
-                            '智能小助手',
+                            'Taskora',
                             textAlign: TextAlign.center,
                             style: GoogleFonts.instrumentSerifTextTheme()
                                 .displayMedium
@@ -224,7 +224,7 @@ class _LoginPageState extends State<LoginPage>
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '你的 AI 日程管家',
+                            '智能任务管理',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AppTheme.textSecondary,
@@ -232,128 +232,57 @@ class _LoginPageState extends State<LoginPage>
                             ),
                           ),
                           const SizedBox(height: 40),
-                          SegmentedButton<_LoginMode>(
-                            segments: const [
-                              ButtonSegment(
-                                value: _LoginMode.email,
-                                icon: Icon(Icons.email_outlined, size: 18),
-                                label: Text('邮箱'),
+                          TextField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: '邮箱',
+                              prefixIcon: Icon(
+                                Icons.email_outlined,
+                                size: 20,
                               ),
-                              ButtonSegment(
-                                value: _LoginMode.phone,
-                                icon: Icon(Icons.sms_outlined, size: 18),
-                                label: Text('手机验证码'),
-                              ),
-                            ],
-                            selected: {_loginMode},
-                            onSelectionChanged: isSubmitting
-                                ? null
-                                : (value) => setState(() {
-                                    _loginMode = value.first;
-                                    _otpSent = false;
-                                    _otpController.clear();
-                                  }),
+                            ),
+                            onTapOutside: (_) =>
+                                FocusScope.of(context).unfocus(),
+                            onSubmitted: (_) =>
+                                FocusScope.of(context).nextFocus(),
                           ),
-                          const SizedBox(height: 16),
-                          if (_loginMode == _LoginMode.email) ...[
-                            TextField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              textInputAction: TextInputAction.next,
-                              decoration: const InputDecoration(
-                                labelText: '邮箱',
-                                prefixIcon: Icon(
-                                  Icons.email_outlined,
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            textInputAction: TextInputAction.done,
+                            decoration: InputDecoration(
+                              labelText: '密码',
+                              prefixIcon: const Icon(
+                                Icons.lock_outlined,
+                                size: 20,
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
                                   size: 20,
                                 ),
-                              ),
-                              onTapOutside: (_) =>
-                                  FocusScope.of(context).unfocus(),
-                              onSubmitted: (_) =>
-                                  FocusScope.of(context).nextFocus(),
-                            ),
-                            const SizedBox(height: 14),
-                            TextField(
-                              controller: _passwordController,
-                              obscureText: _obscurePassword,
-                              textInputAction: TextInputAction.done,
-                              decoration: InputDecoration(
-                                labelText: '密码',
-                                prefixIcon: const Icon(
-                                  Icons.lock_outlined,
-                                  size: 20,
-                                ),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_outlined
-                                        : Icons.visibility_off_outlined,
-                                    size: 20,
-                                  ),
-                                  onPressed: () => setState(
-                                    () => _obscurePassword = !_obscurePassword,
-                                  ),
+                                onPressed: () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
                                 ),
                               ),
-                              onTapOutside: (_) =>
-                                  FocusScope.of(context).unfocus(),
-                              onSubmitted: (_) => _login(),
                             ),
-                            const SizedBox(height: 4),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: () {},
-                                child: const Text('忘记密码？'),
-                              ),
+                            onTapOutside: (_) =>
+                                FocusScope.of(context).unfocus(),
+                            onSubmitted: (_) => _login(),
+                          ),
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () {},
+                              child: const Text('忘记密码？'),
                             ),
-                          ] else ...[
-                            TextField(
-                              controller: _phoneController,
-                              keyboardType: TextInputType.phone,
-                              textInputAction: _otpSent
-                                  ? TextInputAction.next
-                                  : TextInputAction.done,
-                              decoration: const InputDecoration(
-                                labelText: '手机号',
-                                hintText: '+8613812345678',
-                                prefixIcon: Icon(Icons.phone_iphone, size: 20),
-                              ),
-                              onTapOutside: (_) =>
-                                  FocusScope.of(context).unfocus(),
-                              onSubmitted: (_) => _login(),
-                            ),
-                            if (_otpSent) ...[
-                              const SizedBox(height: 14),
-                              TextField(
-                                controller: _otpController,
-                                keyboardType: TextInputType.number,
-                                textInputAction: TextInputAction.done,
-                                decoration: const InputDecoration(
-                                  labelText: '短信验证码',
-                                  prefixIcon: Icon(Icons.password, size: 20),
-                                ),
-                                onTapOutside: (_) =>
-                                    FocusScope.of(context).unfocus(),
-                                onSubmitted: (_) => _verifyPhoneOtp(),
-                              ),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: isSubmitting
-                                      ? null
-                                      : () {
-                                          setState(() {
-                                            _otpSent = false;
-                                            _otpController.clear();
-                                          });
-                                          _requestPhoneOtp();
-                                        },
-                                  child: const Text('重新获取验证码'),
-                                ),
-                              ),
-                            ],
-                          ],
+                          ),
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
@@ -378,10 +307,8 @@ class _LoginPageState extends State<LoginPage>
                                         color: Colors.white,
                                       ),
                                     )
-                                  : Text(
-                                      _loginMode == _LoginMode.phone
-                                          ? (_otpSent ? '验证码登录' : '获取验证码')
-                                          : '登录',
+                                  : const Text(
+                                      '登录',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w600,
