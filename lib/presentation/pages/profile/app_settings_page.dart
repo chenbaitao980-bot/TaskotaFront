@@ -11,7 +11,6 @@ import '../../../services/local_data_service.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import 'theme_settings_page.dart';
-import 'wechat_binding_page.dart';
 
 class AppSettingsPage extends StatefulWidget {
   final bool showLocalDataTools;
@@ -151,25 +150,6 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 _buildOverdueIntervalTile(),
               ],
             ),
-          const SizedBox(height: 14),
-          _SectionCard(
-            title: '微信提醒',
-            children: [
-              _SettingsRow(
-                icon: Icons.chat_outlined,
-                title: '微信提醒',
-                subtitle: '通过微信接收任务提醒，APP关闭也能收到',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const WechatBindingPage(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
           const SizedBox(height: 14),
           const _SectionCard(
             title: '数据',

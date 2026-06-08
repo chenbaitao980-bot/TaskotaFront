@@ -12,7 +12,6 @@ import '../models/entities/schedule.dart';
 import '../models/entities/task_breakdown.dart';
 import 'alarm_service.dart';
 import 'local_storage_service.dart';
-import 'wechat_reminder_service.dart';
 import '../core/utils/file_logger.dart';
 
 class PendingNotification {
@@ -599,17 +598,6 @@ class NotificationService {
       );
     }
 
-    // 服务端推送兜底（微信 + FCM）
-    final pushBody = description ?? '距开始还有 $remindBeforeMinutes 分钟';
-    final pushAt = remindAt.isAfter(now) ? remindAt : startTime;
-    if (pushAt.isAfter(now)) {
-      WechatReminderService().scheduleServerPush(
-        taskId: scheduleId,
-        title: title,
-        body: pushBody,
-        scheduledAt: pushAt,
-      );
-    }
   }
 
   Future<void> cancelReminderForSchedule(String scheduleId) async {
@@ -621,8 +609,6 @@ class NotificationService {
       await cancelNotification((baseId + i + 1) & 0x7fffffff);
     }
     await cancelNotification(baseId);
-    // 取消服务端推送
-    WechatReminderService().cancelServerPush(taskId: scheduleId);
   }
 
   static const int _overdueDigestNotificationId = 0x7ffffffe;

@@ -28,8 +28,6 @@ import '../../../services/subscription_service.dart';
 import '../../../services/aliyun_push_service.dart';
 import '../../widgets/battery_optimization_guide.dart';
 import '../../../services/supabase_service.dart';
-import '../../../services/wechat_reminder_service.dart';
-import '../profile/wechat_binding_page.dart';
 import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/schedule/schedule_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
@@ -93,106 +91,10 @@ class _HomePageState extends State<HomePage> {
     _initStorage();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PermissionService.showNotificationGuideIfNeeded(context);
-      _showWechatGuideIfNeeded();
     });
     // 每次 App 回到前台时触发全量对账（打开就刷新）
     _lifecycleListener = AppLifecycleListener(
       onResume: _onAppResume,
-    );
-  }
-
-  static const _prefKeyWechatGuideShown = 'wechat_guide_shown';
-
-  Future<void> _showWechatGuideIfNeeded() async {
-    // 仅对 Supabase 登录用户显示（本地模式跳过）
-    final authState = context.read<AuthBloc>().state;
-    if (authState is! Authenticated) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_prefKeyWechatGuideShown) == true) return;
-
-    final status = await WechatReminderService().getStatus();
-    if (status.bound) return;
-
-    if (!mounted) return;
-    await prefs.setBool(_prefKeyWechatGuideShown, true);
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Icon(Icons.wechat_rounded, size: 48, color: AppTheme.primaryColor),
-            const SizedBox(height: 12),
-            Text(
-              '开启微信任务提醒',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '绑定微信后，任务到期前将自动推送提醒到你的微信\n随时掌握任务进度，不遗漏每个重要事项',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.6,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const WechatBindingPage(),
-                    ),
-                  );
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  '立即绑定',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(
-                '暂不绑定',
-                style: TextStyle(color: AppTheme.textHint, fontSize: 14),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

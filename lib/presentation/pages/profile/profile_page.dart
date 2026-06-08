@@ -12,7 +12,6 @@ import '../../widgets/upgrade_dialog.dart';
 import '../../widgets/vip_badge.dart';
 import 'about_page.dart';
 import 'app_settings_page.dart';
-import 'wechat_binding_page.dart';
 import 'help_feedback_page.dart';
 import 'profile_edit_page.dart';
 import 'task_export_page.dart';
@@ -286,13 +285,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   : null,
             ),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
-            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
-            _buildMenuItem(Icons.wechat_rounded, '微信提醒', () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const WechatBindingPage()),
-              );
-            }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _buildMenuItem(Icons.settings_rounded, '设置', () {
               Navigator.push(
