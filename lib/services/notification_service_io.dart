@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:io' show Directory, File, Platform, Process;
-import 'package:flutter/material.dart' show showDialog;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
-import 'package:flutter/widgets.dart' show AppLifecycleState;
+import 'package:flutter/widgets.dart'
+    show AppLifecycleState, OverlayEntry, Positioned;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/desktop/desktop_runtime.dart';
+import '../core/desktop/window_state.dart';
 import '../core/router/app_router.dart';
 import '../data/database/app_database.dart' show Task;
 import '../models/entities/schedule.dart';
@@ -71,9 +72,17 @@ class NotificationService {
   bool _useOsNotifications = false;
   bool _useNativeWindowsNotifications = false;
 
-  // 应用内提醒弹窗队列（桌面端前台时使用）
+  // 应用内提醒弹窗队列（macOS/Linux 前台时使用）
   final Queue<_PendingDialog> _dialogQueue = Queue();
   bool _dialogShowing = false;
+  OverlayEntry? _currentOverlayEntry;
+
+  // Windows Toast 状态追踪
+  // key: 通知 id；value: 发出通知时窗口是否处于隐藏状态（用于按钮回调后决定是否重新隐藏）
+  final Map<int, bool> _windowWasHiddenWhenNotifSent = {};
+  // key: 通知 id；value: 标题/正文/payload（用于稍后提醒重新调度）
+  final Map<int, ({String title, String body, String? payload})>
+      _notifStore = {};
 
   List<String> get diagnosticLog => List.unmodifiable(_diagnosticLog);
   String get diagnosticSummary => _diagnosticLog.join('\n');
@@ -126,11 +135,48 @@ class NotificationService {
             guid: '7d84f3c8-c11c-4cf4-bc6b-5886b4f08941',
           ),
           onNotificationReceived: (response) {
-            if (response.payload != null) {
-              pendingTaskId = response.payload;
+            final action = response.actionId ?? '';
+            final id = response.id ?? -1;
+            // 通知发送时的窗口状态（foreground 激活会自动唤起窗口，需按此决定是否重新隐藏）
+            final wasHidden = _windowWasHiddenWhenNotifSent.remove(id) ?? true;
+
+            if (action == 'dismiss') {
+              if (wasHidden) hideDesktopWindow?.call();
+              return;
             }
-            AppRouter.navigatorKey.currentState
-                ?.pushNamedAndRemoveUntil('/', (route) => false);
+            if (action == 'snooze') {
+              final snoozeMin = int.tryParse(
+                    (response.data['snoozeTime'] as String?) ?? '15',
+                  ) ??
+                  15;
+              _rescheduleSnooze(id, snoozeMin);
+              if (wasHidden) hideDesktopWindow?.call();
+              return;
+            }
+            if (action == 'markdone') {
+              final p = response.payload;
+              if (p != null && p.isNotEmpty && p != 'overdue_navigate') {
+                pendingMarkDoneTaskId = p;
+              }
+              if (wasHidden) hideDesktopWindow?.call();
+              return;
+            }
+            if (action.startsWith('view:')) {
+              pendingTaskId = action.substring(5);
+              // foreground 激活是异步的，需等 showDesktopWindow 完成后再导航，
+              // 否则 Flutter lifecycle 尚未 resume，pushNamedAndRemoveUntil 会静默失败
+              (showDesktopWindow?.call() ?? Future.value()).then((_) {
+                AppRouter.navigatorKey.currentState
+                    ?.pushNamedAndRemoveUntil('/', (route) => false);
+              });
+              return;
+            }
+            // 点击通知主体（非按钮）
+            if (response.payload != null) pendingTaskId = response.payload;
+            (showDesktopWindow?.call() ?? Future.value()).then((_) {
+              AppRouter.navigatorKey.currentState
+                  ?.pushNamedAndRemoveUntil('/', (route) => false);
+            });
           },
         );
         return;
@@ -249,7 +295,7 @@ class NotificationService {
       _timers[id]?.cancel();
       final duration = scheduledDate.difference(now);
       _timers[id] = Timer(duration, () {
-        _showDesktopNativeNotification(id, title, body);
+        _showDesktopNativeNotification(id, title, body, payload: payload);
       });
       return;
     }
@@ -368,18 +414,19 @@ class NotificationService {
     }
   }
 
-  /// 应用是否处于前台（桌面端：窗口可见即算前台，含失焦 inactive 状态）
+  /// 应用是否处于前台（桌面端：窗口真实可见 + lifecycle 非后台）
   bool _isAppInForeground() {
     final ctx = AppRouter.navigatorKey.currentContext;
     if (ctx == null) return false;
-    final lifecycle = SchedulerBinding.instance.lifecycleState;
     if (!Platform.isAndroid && !Platform.isIOS) {
-      // 桌面端：resumed（有焦点）/ inactive（失焦但可见）/ null（未初始化）均弹 in-app dialog
-      // 只有 paused / hidden / detached（最小化/隐藏）才降级为 OS 通知
+      // 窗口隐藏（hide 到托盘）时走 OS 通知，不在不可见窗口里弹 dialog
+      if (!desktopWindowVisible) return false;
+      final lifecycle = SchedulerBinding.instance.lifecycleState;
       return lifecycle == AppLifecycleState.resumed ||
           lifecycle == AppLifecycleState.inactive ||
           lifecycle == null;
     }
+    final lifecycle = SchedulerBinding.instance.lifecycleState;
     return lifecycle == AppLifecycleState.resumed || lifecycle == null;
   }
 
@@ -389,31 +436,17 @@ class NotificationService {
     String body, {
     String? payload,
   }) {
-    try {
-      // 前台时使用应用内 Dialog，后台时使用 OS 通知
-      if (_isAppInForeground()) {
-        _showInAppReminderDialog(id, title, body, payload);
-        return;
-      }
-
-      final channel = resolveDesktopNotificationChannel(
-        isWindows: Platform.isWindows,
-        hasNativeWindowsPlugin: _useNativeWindowsNotifications,
-      );
-      if (channel == DesktopNotificationChannel.nativePlugin) {
-        unawaited(_showWindowsPluginNotification(id, title, body, payload: payload));
-      } else if (channel == DesktopNotificationChannel.windowsScript) {
-        _showWindowsNotification(title, body);
-      } else if (Platform.isMacOS) {
-        _showMacOSNotification(title, body);
-      } else if (Platform.isLinux) {
-        _showLinuxNotification(title, body);
-      }
-    } catch (_) {
-      _pendingNotifications.add(
-        PendingNotification(id: id, title: title, body: body),
-      );
+    // Windows: 统一走系统 Toast，不论窗口是否可见
+    if (Platform.isWindows && _useNativeWindowsNotifications) {
+      unawaited(_showWindowsPluginNotification(id, title, body, payload: payload));
+      return;
     }
+    // macOS/Linux: 前台时弹应用内 Overlay，后台时走 OS 通知
+    if (_isAppInForeground()) {
+      _showInAppReminderDialog(id, title, body, payload);
+      return;
+    }
+    _showOsNotificationFallback(id, title, body, payload: payload);
   }
 
   /// 将提醒加入队列，若当前没有弹窗则立即弹出
@@ -436,9 +469,8 @@ class NotificationService {
       _dialogShowing = false;
       return;
     }
-    final ctx = AppRouter.navigatorKey.currentContext;
-    if (ctx == null) {
-      // context 不可用，降级为 OS 通知
+    final overlay = AppRouter.navigatorKey.currentState?.overlay;
+    if (overlay == null) {
       _dialogShowing = false;
       while (_dialogQueue.isNotEmpty) {
         final item = _dialogQueue.removeFirst();
@@ -448,27 +480,39 @@ class NotificationService {
     }
     _dialogShowing = true;
     final item = _dialogQueue.removeFirst();
-    showDialog<void>(
-      context: ctx,
-      barrierDismissible: false,
-      builder: (_) => ReminderDialog(
-        title: item.title,
-        body: item.body,
-        onMarkDone: () => _handleMarkDone(item.payload),
-        onSnooze: (delay) =>
-            _rescheduleNotification(item.id, item.title, item.body, item.payload, delay),
+
+    void closeOverlay() {
+      _currentOverlayEntry?.remove();
+      _currentOverlayEntry = null;
+      _processDialogQueue();
+    }
+
+    _currentOverlayEntry = OverlayEntry(
+      builder: (_) => Positioned(
+        right: 16,
+        bottom: 16,
+        child: ReminderDialog(
+          title: item.title,
+          body: item.body,
+          onClose: closeOverlay,
+          onMarkDone: () => _handleMarkDone(item.payload),
+          onSnooze: (delay) =>
+              _rescheduleNotification(item.id, item.title, item.body, item.payload, delay),
+          onViewDetail: () => _handleViewDetail(item.payload),
+        ),
       ),
-    ).whenComplete(_processDialogQueue);
+    );
+    overlay.insert(_currentOverlayEntry!);
   }
 
-  void _showOsNotificationFallback(int id, String title, String body) {
+  void _showOsNotificationFallback(int id, String title, String body, {String? payload}) {
     try {
       final channel = resolveDesktopNotificationChannel(
         isWindows: Platform.isWindows,
         hasNativeWindowsPlugin: _useNativeWindowsNotifications,
       );
       if (channel == DesktopNotificationChannel.nativePlugin) {
-        unawaited(_showWindowsPluginNotification(id, title, body));
+        unawaited(_showWindowsPluginNotification(id, title, body, payload: payload));
       } else if (channel == DesktopNotificationChannel.windowsScript) {
         _showWindowsNotification(title, body);
       } else if (Platform.isMacOS) {
@@ -480,13 +524,21 @@ class NotificationService {
   }
 
   /// 解析 payload 中的 taskId 并标记任务完成
-  /// payload 格式：taskId 字符串（来自 scheduleReminderForSchedule 的 scheduleId）
   void _handleMarkDone(String? payload) {
     if (payload == null || payload.isEmpty) return;
     if (payload == 'overdue_navigate') return;
-    // 通过 pendingMarkDoneTaskId 通知首页执行 ToggleTaskStatus
     _log('[Notif] markDone payload=$payload (via pendingMarkDoneTaskId)');
     NotificationService.pendingMarkDoneTaskId = payload;
+  }
+
+  /// "查看详情"按钮：导航到对应任务
+  void _handleViewDetail(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    if (payload == 'overdue_navigate') return;
+    _log('[Notif] viewDetail navigate payload=$payload');
+    NotificationService.pendingTaskId = payload;
+    AppRouter.navigatorKey.currentState
+        ?.pushNamedAndRemoveUntil('/', (route) => false);
   }
 
   /// 在指定延迟后重新触发提醒
@@ -517,12 +569,20 @@ class NotificationService {
       return;
     }
     try {
+      final hasTask = payload != null &&
+          payload.isNotEmpty &&
+          payload != 'overdue_navigate';
+
+      _windowWasHiddenWhenNotifSent[id] = !desktopWindowVisible;
+      _notifStore[id] = (title: title, body: body, payload: payload);
+
       await plugin.show(
         id,
         title,
         body,
         details: WindowsNotificationDetails(
-          duration: WindowsNotificationDuration.long,
+          scenario: WindowsNotificationScenario.alarm,
+          audio: WindowsNotificationAudio.silent(),
           images: [
             WindowsImage(
               WindowsImage.getAssetUri('assets/icons/app_icon_1024.png'),
@@ -531,12 +591,58 @@ class NotificationService {
               crop: WindowsImageCrop.circle,
             ),
           ],
+          inputs: [
+            WindowsSelectionInput(
+              id: 'snoozeTime',
+              title: '稍后提醒',
+              items: const [
+                WindowsSelection(id: '5', content: '5 分钟后'),
+                WindowsSelection(id: '15', content: '15 分钟后'),
+                WindowsSelection(id: '30', content: '30 分钟后'),
+                WindowsSelection(id: '60', content: '60 分钟后'),
+              ],
+              defaultItem: '15',
+            ),
+          ],
+          actions: [
+            const WindowsAction(
+              content: '稍后提醒',
+              arguments: 'snooze',
+              inputId: 'snoozeTime',
+            ),
+            if (hasTask) ...[
+              const WindowsAction(content: '标记完成', arguments: 'markdone'),
+              WindowsAction(content: '查看详情', arguments: 'view:$payload'),
+            ],
+            const WindowsAction(content: '知道了', arguments: 'dismiss'),
+          ],
         ),
         payload: payload,
       );
-    } catch (_) {
+    } catch (e) {
+      _log('[Notif] windows plugin show failed: $e');
       _showWindowsNotification(title, body);
     }
+  }
+
+  /// 稍后提醒：按选定时长重新调度 Windows Toast
+  void _rescheduleSnooze(int id, int snoozeMinutes) {
+    final stored = _notifStore[id];
+    if (stored == null) {
+      _log('[Notif] snooze: no stored details for id=$id, skipping');
+      return;
+    }
+    _timers[id]?.cancel();
+    _timers[id] = Timer(
+      Duration(minutes: snoozeMinutes),
+      () => _showDesktopNativeNotification(
+        id,
+        stored.title,
+        stored.body,
+        payload: stored.payload,
+      ),
+    );
+    _log('[Notif] snooze id=$id delay=${snoozeMinutes}min');
   }
 
   void _showWindowsNotification(String title, String body) {
@@ -903,6 +1009,8 @@ class NotificationService {
     _timers[id]?.cancel();
     _timers.remove(id);
     _pendingNotifications.removeWhere((n) => n.id == id);
+    _notifStore.remove(id);
+    _windowWasHiddenWhenNotifSent.remove(id);
     if (_plugin != null) await _plugin!.cancel(id);
     if (_windowsPlugin != null) await _windowsPlugin!.cancel(id);
     await AlarmService().cancelAlarm(id);
@@ -914,6 +1022,8 @@ class NotificationService {
     }
     _timers.clear();
     _pendingNotifications.clear();
+    _notifStore.clear();
+    _windowWasHiddenWhenNotifSent.clear();
     if (_plugin != null) await _plugin!.cancelAll();
     if (_windowsPlugin != null) await _windowsPlugin!.cancelAll();
   }

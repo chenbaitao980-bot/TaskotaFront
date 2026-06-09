@@ -87,6 +87,9 @@ void main() async {
 
 Future<void> _initWindowManager() async {
   await ensureWindowManagerInitialized();
+  if (!kIsWeb && isDesktop) {
+    await setupCloseToTray();
+  }
 }
 
 class _AppDeps {
