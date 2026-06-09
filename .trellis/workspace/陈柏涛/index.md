@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
+- **Total Sessions**: 21
 - **Last Active**: 2026-06-09
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~737 | Active |
+| `journal-1.md` | ~770 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-06-09 | 日历拖拽把手热区优化 | `a1593ec` | `master` |
 | 20 | 2026-06-09 | 桌面端提醒持久化：Windows Toast不自动消失 | `1834bce` | `master` |
 | 19 | 2026-06-09 | 折扣码表单UX优化：下拉选类型+自动推荐码 | `781447f` | `master` |
 | 18 | 2026-06-09 | 时间选择分钟手动输入 | `742ce82` | `master` |

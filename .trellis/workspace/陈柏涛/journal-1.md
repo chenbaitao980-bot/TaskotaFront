@@ -735,3 +735,36 @@ Windows提醒改为系统Toast（reminder场景不自动消失），支持稍后
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: 日历拖拽把手热区优化
+
+**Date**: 2026-06-09
+**Task**: 日历拖拽把手热区优化
+**Branch**: `master`
+
+### Summary
+
+扩大桌面端 resize 热区（顶部 8→24px、底部 16→24px），HitTestBehavior 改为 opaque，修复把手触发不灵/误触日历整体拖拽问题
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a1593ec` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
