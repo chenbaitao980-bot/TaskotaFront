@@ -2464,8 +2464,8 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
             Positioned(
               left: 0,
               right: 0,
-              top: _isMobile ? -16 : 0,
-              height: _isMobile ? 32 : 8,
+              top: _isMobile ? -16 : -12,
+              height: _isMobile ? 32 : 24,
               child: _ResizeHotZone(
                 isMobileEditMode: _isMobile && w.isEditMode,
                 onPanUpdate: (delta) {
@@ -2492,8 +2492,8 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: _isMobile ? -16 : -8,
-              height: _isMobile ? 32 : 16,
+              bottom: _isMobile ? -16 : -16,
+              height: _isMobile ? 32 : 24,
               child: _ResizeHotZone(
                 isMobileEditMode: _isMobile && w.isEditMode,
                 onPanUpdate: (delta) {
@@ -2667,9 +2667,7 @@ class _ResizeHotZone extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      behavior: isMobileEditMode
-          ? HitTestBehavior.opaque
-          : HitTestBehavior.translucent,
+      behavior: HitTestBehavior.opaque,
       onPanUpdate: (details) => onPanUpdate(details.delta),
       onPanEnd: (_) => onPanEnd(),
       child: Center(
