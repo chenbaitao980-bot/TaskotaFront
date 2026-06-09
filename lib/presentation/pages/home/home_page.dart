@@ -3160,12 +3160,9 @@ class _HomeContentState extends State<_HomeContent> {
                   const SizedBox(height: 10),
                   _buildProjectBadge(task.projectId!, task),
                 ],
-                // Description（固定高度可滚动；超过 1000 字截断，显示"展开全文"）
-                if (task.description != null &&
-                    task.description!.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _buildDescriptionBox(task),
-                ],
+                // Description（始终显示可编辑区域）
+                const SizedBox(height: 12),
+                _buildDescriptionBox(task),
                 if (task.source == 'db') ...[
                   const SizedBox(height: 12),
                   DropTarget(
@@ -3223,9 +3220,11 @@ class _HomeContentState extends State<_HomeContent> {
                 fontSize: 14,
                 height: 1.5,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.all(12),
+                contentPadding: const EdgeInsets.all(12),
+                hintText: '添加描述...',
+                hintStyle: TextStyle(color: AppTheme.textHint),
               ),
             ),
           ),
