@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-06-09
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~605 | Active |
+| `journal-1.md` | ~638 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-06-09 | 繁星计划申请书+商业计划书 | `b7acb81` | `master` |
 | 16 | 2026-06-09 | 首页任务详情描述可编辑 | `1cbafbb` | `master` |
 | 15 | 2026-06-08 | fix: 思维导图完成状态不同步到日历 bug | `f97adc3` | `master` |
 | 14 | 2026-06-08 | 移除 WxPusher 微信推送功能 | `11b4188` | `master` |
