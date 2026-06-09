@@ -802,3 +802,37 @@ Windows提醒改为系统Toast（reminder场景不自动消失），支持稍后
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: 导出页分组多选 + Excel 分组列
+
+**Date**: 2026-06-10
+**Task**: 导出页分组多选 + Excel 分组列
+**Branch**: `master`
+
+### Summary
+
+导出页项目筛选区升级为三态复选分组树（ProjectGroup 分组+可折叠），Excel 新增分组列（第2列）；ProjectGroupRepository 贯通注入链路；spec 新增 Group Tri-state Multi-select Pattern
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0101c1c` | (see git log) |
+| `d0528f7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

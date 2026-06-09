@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "BLoC 状态管理规范，归档 Event/State 需遵循"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "目录结构规范，新建已归档页面需遵循"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 规范，Repository 方法规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层思考指南，归档功能涉及 DB/Repo/BLoC/UI 多层"}

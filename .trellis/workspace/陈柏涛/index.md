@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
-- **Last Active**: 2026-06-09
+- **Total Sessions**: 23
+- **Last Active**: 2026-06-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~804 | Active |
+| `journal-1.md` | ~838 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-06-10 | 导出页分组多选 + Excel 分组列 | `0101c1c`, `d0528f7` | `master` |
 | 22 | 2026-06-09 | VIP折扣展示 + 日历拖拽热区修复 | `05a944d`, `a1593ec` | `master` |
 | 21 | 2026-06-09 | 日历拖拽把手热区优化 | `a1593ec` | `master` |
 | 20 | 2026-06-09 | 桌面端提醒持久化：Windows Toast不自动消失 | `1834bce` | `master` |
