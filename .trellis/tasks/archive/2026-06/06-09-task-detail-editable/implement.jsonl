@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Debounce I/O pattern for description auto-save"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Bloc state patterns used in home page"}
