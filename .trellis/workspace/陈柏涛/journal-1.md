@@ -768,3 +768,37 @@ Windows提醒改为系统Toast（reminder场景不自动消失），支持稍后
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: VIP折扣展示 + 日历拖拽热区修复
+
+**Date**: 2026-06-09
+**Task**: VIP折扣展示 + 日历拖拽热区修复
+**Branch**: `master`
+
+### Summary
+
+实现VIP页面按typeId自动匹配折扣码并展示折扣徽标/划线原价/折后价/折扣说明；DiscountCodeConfig新增description字段；Supabase member_discount_codes表新增description列；管理后台折扣表单增加折扣说明输入框；修复桌面端日历拖拽把手触发区域过小问题。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `05a944d` | (see git log) |
+| `a1593ec` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
