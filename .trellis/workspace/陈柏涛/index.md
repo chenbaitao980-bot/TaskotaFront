@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-06-08
+- **Total Sessions**: 16
+- **Last Active**: 2026-06-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~572 | Active |
+| `journal-1.md` | ~605 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-06-09 | 首页任务详情描述可编辑 | `1cbafbb` | `master` |
 | 15 | 2026-06-08 | fix: 思维导图完成状态不同步到日历 bug | `f97adc3` | `master` |
 | 14 | 2026-06-08 | 移除 WxPusher 微信推送功能 | `11b4188` | `master` |
 | 13 | 2026-06-08 | perf: 消除思维导图拖拽/tab切换卡顿 | `f897d18`, `049ba46` | `master` |

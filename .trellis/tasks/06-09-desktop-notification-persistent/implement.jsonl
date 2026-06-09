@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Dialog UI 组件规范，新建 ReminderDialog 需遵循"}
+{"file": ".trellis/spec/frontend/platform-compatibility.md", "reason": "桌面端 vs 移动端平台分支逻辑规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Bloc 模式：标记完成/稍后提醒需触发任务状态更新"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量规范，lint/typecheck 要求"}

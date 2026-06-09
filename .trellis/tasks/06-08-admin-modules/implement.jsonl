@@ -1,0 +1,9 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "E:\\claude\\project2\\taskora-website\\.trellis\\spec\\frontend\\integration-patterns.md", "reason": "Supabase auth, file upload, Edge Function patterns"}
+{"file": "E:\\claude\\project2\\taskora-website\\.trellis\\spec\\frontend\\directory-structure.md", "reason": "Astro project structure and conventions"}
+{"file": "E:\\claude\\project2\\taskora-website\\.trellis\\spec\\frontend\\component-guidelines.md", "reason": "Astro page structure and styling patterns"}
+{"file": "E:\\claude\\project2\\taskora-website\\.trellis\\spec\\frontend\\quality-guidelines.md", "reason": "Build verification and CSS quality"}
+{"file": "E:\\claude\\project2\\smart_assistant\\.trellis\\spec\\frontend\\state-management.md", "reason": "Flutter Bloc state management patterns"}
+{"file": "E:\\claude\\project2\\smart_assistant\\.trellis\\spec\\frontend\\quality-guidelines.md", "reason": "Flutter code quality and forbidden patterns"}
+{"file": "E:\\claude\\project2\\smart_assistant\\.trellis\\spec\\frontend\\platform-compatibility.md", "reason": "Flutter Web/Native conditional export patterns"}
+{"file": "E:\\claude\\project2\\taskora-website\\.trellis\\tasks\\06-08-admin-modules\\prd.md", "reason": "Requirements and acceptance criteria"}
