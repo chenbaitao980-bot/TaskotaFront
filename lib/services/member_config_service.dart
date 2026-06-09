@@ -80,6 +80,8 @@ class DiscountCodeConfig {
   final String? typeId;
   final bool active;
   final int usedCount;
+  /// 折扣说明，向用户解释为什么能享受此折扣（如：首次购买专属优惠）
+  final String? description;
 
   const DiscountCodeConfig({
     required this.id,
@@ -88,6 +90,7 @@ class DiscountCodeConfig {
     this.typeId,
     this.active = true,
     this.usedCount = 0,
+    this.description,
   });
 
   factory DiscountCodeConfig.fromJson(Map<String, dynamic> json) {
@@ -98,6 +101,7 @@ class DiscountCodeConfig {
       typeId: json['type_id'] as String?,
       active: json['active'] as bool? ?? true,
       usedCount: json['used_count'] as int? ?? 0,
+      description: json['description'] as String?,
     );
   }
 

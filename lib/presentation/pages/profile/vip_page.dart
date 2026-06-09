@@ -19,6 +19,10 @@ class _VipPageState extends State<VipPage> {
   bool _isCreatingOrder = false;
   String _monthlyPrice = '¥9.9/月';
   String _yearlyPrice = '¥68/年';
+  String? _monthlyOriginalPrice;
+  String? _yearlyOriginalPrice;
+  DiscountCodeConfig? _monthlyDiscount;
+  DiscountCodeConfig? _yearlyDiscount;
 
   @override
   void initState() {
@@ -33,11 +37,27 @@ class _VipPageState extends State<VipPage> {
     setState(() {
       final monthlyType = MemberConfigService.instance.getMemberTypeByPlan('vip_monthly');
       final yearlyType = MemberConfigService.instance.getMemberTypeByPlan('vip_yearly');
+      final codes = MemberConfigService.instance.discountCodes;
+
       if (monthlyType != null) {
         _monthlyPrice = monthlyType.priceDisplay;
+        final d = codes.where((c) => c.typeId == monthlyType.id || c.typeId == null).firstOrNull;
+        _monthlyDiscount = d;
+        if (d != null) {
+          _monthlyOriginalPrice = monthlyType.priceDisplay;
+          final discounted = monthlyType.price * (1 - d.percent / 100.0);
+          _monthlyPrice = '¥${discounted % 1 == 0 ? discounted.toInt() : discounted.toStringAsFixed(2)}';
+        }
       }
       if (yearlyType != null) {
         _yearlyPrice = yearlyType.priceDisplay;
+        final d = codes.where((c) => c.typeId == yearlyType.id || c.typeId == null).firstOrNull;
+        _yearlyDiscount = d;
+        if (d != null) {
+          _yearlyOriginalPrice = yearlyType.priceDisplay;
+          final discounted = yearlyType.price * (1 - d.percent / 100.0);
+          _yearlyPrice = '¥${discounted % 1 == 0 ? discounted.toInt() : discounted.toStringAsFixed(2)}';
+        }
       }
     });
   }
@@ -185,6 +205,8 @@ class _VipPageState extends State<VipPage> {
           child: _PlanCard(
             title: '月度VIP',
             price: _monthlyPrice,
+            originalPrice: _monthlyOriginalPrice,
+            discount: _monthlyDiscount,
             selected: _selectedPlan == SubscriptionPlan.vipMonthly,
             onTap: () =>
                 setState(() => _selectedPlan = SubscriptionPlan.vipMonthly),
@@ -195,6 +217,8 @@ class _VipPageState extends State<VipPage> {
           child: _PlanCard(
             title: '年度VIP',
             price: _yearlyPrice,
+            originalPrice: _yearlyOriginalPrice,
+            discount: _yearlyDiscount,
             badge: '推荐',
             selected: _selectedPlan == SubscriptionPlan.vipYearly,
             onTap: () =>
@@ -472,6 +496,8 @@ class _PlanCard extends StatelessWidget {
   final String title;
   final String price;
   final String? badge;
+  final String? originalPrice;
+  final DiscountCodeConfig? discount;
   final bool selected;
   final VoidCallback onTap;
 
@@ -479,6 +505,8 @@ class _PlanCard extends StatelessWidget {
     required this.title,
     required this.price,
     this.badge,
+    this.originalPrice,
+    this.discount,
     required this.selected,
     required this.onTap,
   });
@@ -501,29 +529,73 @@ class _PlanCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            if (badge != null)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF6D00),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(badge!,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold)),
+            if (badge != null || discount != null)
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                alignment: WrapAlignment.center,
+                children: [
+                  if (badge != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF6D00),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(badge!,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  if (discount != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE53935),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(discount!.discountDisplay,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                ],
               ),
+            if (badge != null || discount != null) const SizedBox(height: 8),
             Text(title,
                 style: const TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 15)),
             const SizedBox(height: 4),
-            Text(price,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).colorScheme.outline)),
+            if (originalPrice != null) ...[
+              Text(originalPrice!,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.outline,
+                      decoration: TextDecoration.lineThrough)),
+              const SizedBox(height: 2),
+              Text(price,
+                  style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFFE53935),
+                      fontWeight: FontWeight.w600)),
+            ] else
+              Text(price,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.outline)),
+            if (discount?.description != null &&
+                discount!.description!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(discount!.description!,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: const Color(0xFFE53935).withValues(alpha: 0.85)),
+                  textAlign: TextAlign.center),
+            ],
           ],
         ),
       ),
