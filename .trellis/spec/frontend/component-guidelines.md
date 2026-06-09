@@ -151,6 +151,62 @@ for (final entry in map.entries) {
 
 ---
 
+### 分组多选 + 三态复选框 + 可折叠（Group Tri-state Multi-select）
+
+**Pattern**: 适用于"项目按分组显示，可整组选中/取消/半选"的筛选 UI（如导出页项目筛选区）。
+
+**State**:
+```dart
+Set<String> _selectedIds = {};           // 已选项目 id
+Set<String> _expandedGroupIds = {};      // 已展开分组 id
+```
+
+**Tri-state 计算**（每个分组头复选框的 value）：
+```dart
+// ✅ 正确：null = 半选态（indeterminate）
+final groupItemIds = items.where((p) => p.groupId == group.id).map((p) => p.id).toSet();
+final selectedCount = groupItemIds.intersection(_selectedIds).length;
+final bool? groupValue = selectedCount == 0
+    ? false
+    : selectedCount == groupItemIds.length
+        ? true
+        : null; // indeterminate
+
+// CheckboxListTile 用法：
+CheckboxListTile(
+  value: groupValue,
+  tristate: true,
+  onChanged: (v) => _onGroupChanged(group.id, groupItemIds, v),
+  ...
+)
+```
+
+**分组勾选逻辑**（点击分组头复选框）：
+```dart
+void _onGroupChanged(String groupId, Set<String> groupItemIds, bool? value) {
+  setState(() {
+    final next = Set<String>.from(_selectedIds);
+    if (value == true || value == null) {
+      // null（半选）点击后变全选
+      next.addAll(groupItemIds);
+    } else {
+      next.removeAll(groupItemIds);
+    }
+    _selectedIds = next;
+  });
+}
+```
+
+> **⚠️ 注意**：`tristate: true` 时，`onChanged` 的 `value` 参数循环顺序是 `false → null → true → false`，而非 `false → true`。分组复选框的点击语义应覆盖：未选→全选，半选→全选，全选→取消。因此判断 `value == true || value == null` → addAll。
+
+**折叠展开**：用 `_expandedGroupIds.contains(id)` 条件渲染子列表（而非 `AnimatedCrossFade`，避免不必要的性能开销）。
+
+**未分组区块**：用哨兵 ID（如 `'__ungrouped__'`）统一处理未分组项目，逻辑与正常分组一致，避免 if/else 分叉。
+
+**Related**: 导出页实现参见 `lib/presentation/pages/profile/task_export_page.dart`；折叠状态管理的更底层模式见下方"多层级列表的独立折叠状态管理"。
+
+---
+
 ### 多层级列表的独立折叠状态管理
 
 **Pattern**: 将一组任务按父任务分组、支持每组独立折叠/展开（日历跨天区使用此模式）。
