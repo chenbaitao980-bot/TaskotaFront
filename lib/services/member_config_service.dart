@@ -175,34 +175,34 @@ class MemberConfigService {
     await refresh();
   }
 
-  /// 刷新配置
+  /// 刷新配置（直接调用 REST API，无需 Edge Function）
   Future<void> refresh() async {
     try {
-      final response = await Supabase.instance.client
-          .functions
-          .invoke('member-config', method: HttpMethod.get);
+      final client = Supabase.instance.client;
 
-      if (response.status == 200) {
-        final data = response.data;
-        _memberTypes = (data['member_types'] as List?)
-                ?.map((e) => MemberTypeConfig.fromJson(e))
-                .toList() ??
-            [];
-        _discountCodes = (data['discount_codes'] as List?)
-                ?.map((e) => DiscountCodeConfig.fromJson(e))
-                .toList() ??
-            [];
-        _rechargeTiers = (data['recharge_tiers'] as List?)
-                ?.map((e) => RechargeTierConfig.fromJson(e))
-                .toList() ??
-            [];
+      // 并发请求三张表
+      final typesFuture = client.from('member_types').select();
+      final codesFuture = client
+          .from('member_discount_codes')
+          .select()
+          .eq('active', true);
+      final tiersFuture = client.from('member_recharge_tiers').select();
 
-        _isLoaded = true;
-        flog(
-            '[MemberConfig] refreshed: ${_memberTypes.length} types, ${_discountCodes.length} discounts, ${_rechargeTiers.length} tiers');
-      } else {
-        flog('[MemberConfig] fetch failed: ${response.status}');
-      }
+      final results = await Future.wait([typesFuture, codesFuture, tiersFuture]);
+
+      _memberTypes = (results[0] as List)
+          .map((e) => MemberTypeConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+      _discountCodes = (results[1] as List)
+          .map((e) => DiscountCodeConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+      _rechargeTiers = (results[2] as List)
+          .map((e) => RechargeTierConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      _isLoaded = true;
+      flog(
+          '[MemberConfig] refreshed: ${_memberTypes.length} types, ${_discountCodes.length} discounts, ${_rechargeTiers.length} tiers');
     } catch (e) {
       flog('[MemberConfig] refresh failed: $e');
     }
