@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
 
 /// 显示自定义日历日期+时间选择器（合并弹窗）
@@ -51,17 +52,13 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
   late DateTime _selectedDate;
   late int _selectedHour;
   late int _selectedMinute;
+  late TextEditingController _minuteController;
 
   static const List<String> _weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
 
   static const List<int> _hourOptions = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
     12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-  ];
-
-  // 分钟下拉，5 分钟一档（与日历拖动吸附粒度一致）
-  static const List<int> _minuteOptions = [
-    0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55,
   ];
 
   @override
@@ -74,10 +71,16 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
     );
     _currentMonth = DateTime(widget.initialDate.year, widget.initialDate.month);
     _selectedHour = widget.initialDate.hour;
-    // 把初始分钟吸附到最近的 5 分钟
-    final m = widget.initialDate.minute;
-    _selectedMinute = (m / 5).round() * 5;
-    if (_selectedMinute >= 60) _selectedMinute = 55;
+    _selectedMinute = widget.initialDate.minute.clamp(0, 59);
+    _minuteController = TextEditingController(
+      text: _selectedMinute.toString().padLeft(2, '0'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _minuteController.dispose();
+    super.dispose();
   }
 
   DateTime get _result => DateTime(
@@ -259,14 +262,89 @@ class _CalendarPickerContentState extends State<_CalendarPickerContent> {
           padding: EdgeInsets.symmetric(horizontal: 4),
           child: Text(':', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
         ),
-        // 分（下拉框，5 分钟一档）
-        _timeDropdown(
-          value: _selectedMinute,
-          items: _minuteOptions,
-          format: (v) => '${v.toString().padLeft(2, '0')} 分',
-          onChanged: (v) => setState(() => _selectedMinute = v),
+        // 分（可手动输入 + ▲▼ 步进）
+        _minuteInput(),
+      ],
+    );
+  }
+
+  void _commitMinuteInput() {
+    final v = int.tryParse(_minuteController.text.trim()) ?? 0;
+    final clamped = v.clamp(0, 59);
+    setState(() => _selectedMinute = clamped);
+    _minuteController.text = clamped.toString().padLeft(2, '0');
+    _minuteController.selection = TextSelection.collapsed(
+      offset: _minuteController.text.length,
+    );
+  }
+
+  void _stepMinute(int delta) {
+    final next = (_selectedMinute + delta) % 60;
+    setState(() => _selectedMinute = next < 0 ? next + 60 : next);
+    _minuteController.text = _selectedMinute.toString().padLeft(2, '0');
+  }
+
+  Widget _minuteInput() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 36,
+          width: 64,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.bgInput,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: TextField(
+            controller: _minuteController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            textAlign: TextAlign.center,
+            maxLength: 2,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+              counterText: '',
+            ),
+            style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+            onChanged: (v) {
+              final parsed = int.tryParse(v);
+              if (parsed != null && parsed >= 0 && parsed <= 59) {
+                setState(() => _selectedMinute = parsed);
+              }
+            },
+            onEditingComplete: _commitMinuteInput,
+            onTapOutside: (_) => _commitMinuteInput(),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _stepButton(Icons.keyboard_arrow_up, () => _stepMinute(1)),
+            const SizedBox(height: 2),
+            _stepButton(Icons.keyboard_arrow_down, () => _stepMinute(-1)),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _stepButton(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 24,
+        height: 16,
+        decoration: BoxDecoration(
+          color: AppTheme.bgInput,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Icon(icon, size: 14, color: AppTheme.textSecondary),
+      ),
     );
   }
 
