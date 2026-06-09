@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../services/local_data_service.dart';
@@ -24,12 +25,14 @@ class ProfilePage extends StatefulWidget {
   final AppDatabase? database;
   final TaskRepository? taskRepository;
   final ProjectRepository? projectRepository;
+  final ProjectGroupRepository? projectGroupRepository;
   final VoidCallback? onLogout;
   const ProfilePage({
     super.key,
     this.database,
     this.taskRepository,
     this.projectRepository,
+    this.projectGroupRepository,
     this.onLogout,
   });
 
@@ -318,6 +321,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   builder: (_) => TaskExportPage(
                     taskRepository: widget.taskRepository,
                     projectRepository: widget.projectRepository,
+                    projectGroupRepository: widget.projectGroupRepository,
                   ),
                 ),
               );

@@ -7,6 +7,7 @@ import '../../../core/utils/file_writer.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../core/utils/snackbar_helper.dart';
 import '../../../data/database/app_database.dart';
+import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../services/task_export_service.dart';
@@ -14,11 +15,13 @@ import '../../../services/task_export_service.dart';
 class TaskExportPage extends StatefulWidget {
   final TaskRepository? taskRepository;
   final ProjectRepository? projectRepository;
+  final ProjectGroupRepository? projectGroupRepository;
 
   const TaskExportPage({
     super.key,
     this.taskRepository,
     this.projectRepository,
+    this.projectGroupRepository,
   });
 
   @override
@@ -31,8 +34,10 @@ class _TaskExportPageState extends State<TaskExportPage> {
   final _priorityOptions = const [(5, '高'), (3, '中'), (1, '低'), (0, '无')];
 
   List<Project> _projects = const [];
+  List<ProjectGroup> _groups = const [];
   List<Task> _tasks = const [];
   Set<String> _selectedProjectIds = {};
+  final Set<String> _expandedGroupIds = {};
   Set<int> _selectedPriorities = {5, 3, 1, 0};
   DateTime? _startDate;
   DateTime? _endDate;
@@ -56,9 +61,11 @@ class _TaskExportPageState extends State<TaskExportPage> {
     }
     final projects = await widget.projectRepository!.getActive();
     final tasks = await widget.taskRepository!.getAll();
+    final groups = await widget.projectGroupRepository?.getAll() ?? [];
     if (!mounted) return;
     setState(() {
       _projects = projects;
+      _groups = groups;
       _tasks = tasks;
       _selectedProjectIds = projects.map((project) => project.id).toSet();
       _ready = true;
@@ -156,6 +163,9 @@ class _TaskExportPageState extends State<TaskExportPage> {
   Widget _buildProjectSection() {
     final allSelected =
         _projects.isNotEmpty && _selectedProjectIds.length == _projects.length;
+    final ungroupedProjects =
+        _projects.where((p) => p.groupId == null).toList();
+
     return _Section(
       title: '项目',
       child: Column(
@@ -174,10 +184,101 @@ class _TaskExportPageState extends State<TaskExportPage> {
             },
           ),
           const Divider(height: 1),
-          ..._projects.map((project) {
+          // Render each group as a collapsible section
+          ..._groups.map((group) {
+            final groupProjects =
+                _projects.where((p) => p.groupId == group.id).toList();
+            if (groupProjects.isEmpty) return const SizedBox.shrink();
+            final groupProjectIds = groupProjects.map((p) => p.id).toSet();
+            final selectedCount =
+                groupProjectIds.intersection(_selectedProjectIds).length;
+            final bool? groupValue = selectedCount == 0
+                ? false
+                : selectedCount == groupProjectIds.length
+                ? true
+                : null;
+            final isExpanded = _expandedGroupIds.contains(group.id);
+            return _buildGroupTile(
+              id: group.id,
+              name: group.name,
+              color: group.color,
+              projects: groupProjects,
+              groupValue: groupValue,
+              isExpanded: isExpanded,
+              onGroupChanged: (value) {
+                setState(() {
+                  final next = Set<String>.from(_selectedProjectIds);
+                  if (value == true || value == null) {
+                    next.addAll(groupProjectIds);
+                  } else {
+                    next.removeAll(groupProjectIds);
+                  }
+                  _selectedProjectIds = next;
+                });
+              },
+            );
+          }),
+          // Ungrouped section
+          if (ungroupedProjects.isNotEmpty) ...[
+            _buildUngroupedTile(ungroupedProjects),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupTile({
+    required String id,
+    required String name,
+    required String color,
+    required List<Project> projects,
+    required bool? groupValue,
+    required bool isExpanded,
+    required ValueChanged<bool?> onGroupChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
+                size: 18,
+                color: AppTheme.textSecondary,
+              ),
+              onPressed: () {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedGroupIds.remove(id);
+                  } else {
+                    _expandedGroupIds.add(id);
+                  }
+                });
+              },
+            ),
+            Expanded(
+              child: CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(name),
+                secondary: _ProjectDot(color: color),
+                tristate: true,
+                value: groupValue,
+                onChanged: onGroupChanged,
+              ),
+            ),
+          ],
+        ),
+        if (isExpanded)
+          ...projects.map((project) {
             return CheckboxListTile(
               dense: true,
-              contentPadding: EdgeInsets.zero,
+              contentPadding: const EdgeInsets.only(left: 32),
               title: Text(project.name),
               secondary: _ProjectDot(color: project.color),
               value: _selectedProjectIds.contains(project.id),
@@ -194,8 +295,89 @@ class _TaskExportPageState extends State<TaskExportPage> {
               },
             );
           }),
-        ],
-      ),
+      ],
+    );
+  }
+
+  Widget _buildUngroupedTile(List<Project> projects) {
+    const groupId = '__ungrouped__';
+    final projectIds = projects.map((p) => p.id).toSet();
+    final selectedCount = projectIds.intersection(_selectedProjectIds).length;
+    final bool? groupValue = selectedCount == 0
+        ? false
+        : selectedCount == projectIds.length
+        ? true
+        : null;
+    final isExpanded = _expandedGroupIds.contains(groupId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
+                size: 18,
+                color: AppTheme.textSecondary,
+              ),
+              onPressed: () {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedGroupIds.remove(groupId);
+                  } else {
+                    _expandedGroupIds.add(groupId);
+                  }
+                });
+              },
+            ),
+            Expanded(
+              child: CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('未分组'),
+                tristate: true,
+                value: groupValue,
+                onChanged: (value) {
+                  setState(() {
+                    final next = Set<String>.from(_selectedProjectIds);
+                    if (value == true || value == null) {
+                      next.addAll(projectIds);
+                    } else {
+                      next.removeAll(projectIds);
+                    }
+                    _selectedProjectIds = next;
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        if (isExpanded)
+          ...projects.map((project) {
+            return CheckboxListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.only(left: 32),
+              title: Text(project.name),
+              secondary: _ProjectDot(color: project.color),
+              value: _selectedProjectIds.contains(project.id),
+              onChanged: (value) {
+                setState(() {
+                  final next = Set<String>.from(_selectedProjectIds);
+                  if (value == true) {
+                    next.add(project.id);
+                  } else {
+                    next.remove(project.id);
+                  }
+                  _selectedProjectIds = next;
+                });
+              },
+            );
+          }),
+      ],
     );
   }
 
@@ -274,6 +456,7 @@ class _TaskExportPageState extends State<TaskExportPage> {
       final bytes = _exportService.exportTasksToExcel(
         tasks: _tasks,
         projects: _projects,
+        groups: _groups,
         startDate: _startDate,
         endDate: _endDate,
         projectIds: projectIdsForExport,

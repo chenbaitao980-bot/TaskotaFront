@@ -13,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/checklist_repository.dart';
+import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../services/local_storage_service.dart';
@@ -50,6 +51,7 @@ import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 class HomePage extends StatefulWidget {
   final AppDatabase? database;
   final ProjectRepository? projectRepository;
+  final ProjectGroupRepository? projectGroupRepository;
   final TaskRepository? taskRepository;
   final ChecklistRepository? checklistRepository;
 
@@ -57,6 +59,7 @@ class HomePage extends StatefulWidget {
     super.key,
     this.database,
     this.projectRepository,
+    this.projectGroupRepository,
     this.taskRepository,
     this.checklistRepository,
   });
@@ -162,6 +165,7 @@ class _HomePageState extends State<HomePage> {
           database: widget.database,
           taskRepository: widget.taskRepository,
           projectRepository: widget.projectRepository,
+          projectGroupRepository: widget.projectGroupRepository,
         ),
       ),
     ];
@@ -3696,6 +3700,7 @@ class _HomeContentState extends State<_HomeContent> {
                               : st.completedTime,
                           sortOrder: st.sortOrder,
                           deleted: st.deleted,
+                          archived: st.archived,
                           createdAt: st.createdAt,
                           updatedAt: DateTime.now().millisecondsSinceEpoch,
                           remindBeforeMinutes: st.remindBeforeMinutes,
@@ -4024,6 +4029,14 @@ class _HomeContentState extends State<_HomeContent> {
               onTap: () {
                 Navigator.pop(ctx);
                 _navigateToEdit(task);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.archive_outlined),
+              title: const Text('归档任务'),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.read<TaskNewBloc>().add(ArchiveTask(id: task.taskId));
               },
             ),
             const SizedBox(height: 8),

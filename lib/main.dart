@@ -261,6 +261,7 @@ class _MyAppState extends State<MyApp> {
                           return HomePage(
                             database: widget.database,
                             projectRepository: widget.projectRepository,
+                            projectGroupRepository: widget.projectGroupRepository,
                             taskRepository: widget.taskRepository,
                             checklistRepository: widget.checklistRepository,
                           );

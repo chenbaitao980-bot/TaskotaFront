@@ -7,6 +7,18 @@ import 'package:xml/xml.dart';
 import 'package:smart_assistant/data/database/app_database.dart';
 import 'package:smart_assistant/services/task_export_service.dart';
 
+ProjectGroup _projectGroup({required String id, required String name}) {
+  return ProjectGroup(
+    id: id,
+    name: name,
+    color: '#4772FA',
+    sortOrder: 0,
+    deleted: 0,
+    createdAt: 0,
+    updatedAt: 0,
+  );
+}
+
 void main() {
   final service = TaskExportService();
 
@@ -109,13 +121,30 @@ void main() {
         .whereType<String>();
     expect(values, contains('Orphan'));
   });
+
+  test('writes group name in column 1 when groups provided', () {
+    final bytes = service.exportTasksToExcel(
+      tasks: [_task(id: 'a', projectId: 'p1', title: '任务 A')],
+      projects: [_project(id: 'p1', name: '项目一', groupId: 'g1')],
+      groups: [_projectGroup(id: 'g1', name: '分组一')],
+      projectIds: {'p1'},
+      priorities: {0, 1, 3, 5},
+    );
+    final workbook = Excel.decodeBytes(bytes);
+    final sheet = workbook.tables['项目一']!;
+    // header row (index 3) col 1 should be '分组'
+    expect(sheet.rows[3][1]?.value.toString(), '分组');
+    // data row (index 4) col 1 should be '分组一'
+    expect(sheet.rows[4][1]?.value.toString(), '分组一');
+  });
 }
 
-Project _project({required String id, required String name}) {
+Project _project({required String id, required String name, String? groupId}) {
   return Project(
     id: id,
     name: name,
     color: '#4772FA',
+    groupId: groupId,
     sortOrder: 0,
     archived: 0,
     isTemplate: 0,
@@ -148,6 +177,7 @@ Task _task({
     isAllDay: 0,
     sortOrder: 0,
     deleted: 0,
+    archived: 0,
     createdAt: 0,
     updatedAt: 0,
     remindBeforeMinutes: 15,

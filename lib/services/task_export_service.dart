@@ -22,6 +22,7 @@ class TaskExportService {
   Uint8List exportTasksToExcel({
     required List<Task> tasks,
     required List<Project> projects,
+    List<ProjectGroup> groups = const [],
     DateTime? startDate,
     DateTime? endDate,
     Set<String> projectIds = const {},
@@ -43,6 +44,13 @@ class TaskExportService {
         projects.where((p) => selectedProjectIds.contains(p.id)).toList()
           ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
+    // Build projectId → groupName lookup
+    final groupIdToName = {for (final g in groups) g.id: g.name};
+    final projectGroupName = {
+      for (final p in projects)
+        p.id: p.groupId != null ? groupIdToName[p.groupId] ?? '' : '',
+    };
+
     final usedSheetNames = <String>{};
     var hasSheet = false;
     for (final project in projectsToExport) {
@@ -60,6 +68,7 @@ class TaskExportService {
         startDate: startDate,
         endDate: endDate,
         priorities: priorities,
+        groupName: projectGroupName[project.id] ?? '',
       );
       hasSheet = true;
     }
@@ -76,6 +85,7 @@ class TaskExportService {
         startDate: startDate,
         endDate: endDate,
         priorities: priorities,
+        groupName: '',
       );
       hasSheet = true;
     }
@@ -160,19 +170,20 @@ class TaskExportService {
     required DateTime? startDate,
     required DateTime? endDate,
     required Set<int> priorities,
+    required String groupName,
   }) {
     final title = project == null ? '未匹配项目任务导出' : '${project.name}任务导出';
     final summary =
         '时间：${_dateRangeLabel(startDate, endDate)}    重要级别：${_priorityFilterLabel(priorities)}    任务数：${rows.length}';
     _setupColumns(sheet);
-    _mergeWrite(sheet, 0, 0, 7, title, _titleStyle());
+    _mergeWrite(sheet, 0, 0, 8, title, _titleStyle());
     _writeCell(sheet, 1, 0, summary, _summaryStyle());
     sheet.merge(
       CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1),
-      CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 1),
+      CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: 1),
     );
 
-    final headers = ['层级', '任务标题', '重要级别', '状态', '开始时间', '截止时间', '完成时间', '描述'];
+    final headers = ['层级', '分组', '任务标题', '重要级别', '状态', '开始时间', '截止时间', '完成时间', '描述'];
     for (var col = 0; col < headers.length; col++) {
       _writeCell(sheet, 3, col, headers[col], _headerStyle());
     }
@@ -189,19 +200,20 @@ class TaskExportService {
         row.depth == 0 ? '根任务' : 'L${row.depth + 1}',
         rowStyle,
       );
-      _writeCell(sheet, rowIndex, 1, '$indent${task.title}', rowStyle);
+      _writeCell(sheet, rowIndex, 1, groupName, rowStyle);
+      _writeCell(sheet, rowIndex, 2, '$indent${task.title}', rowStyle);
       _writeCell(
         sheet,
         rowIndex,
-        2,
+        3,
         _priorityLabel(task.priority),
         _priorityStyle(task.priority),
       );
-      _writeCell(sheet, rowIndex, 3, _statusLabel(task.status), rowStyle);
-      _writeCell(sheet, rowIndex, 4, _formatMs(task.startDate), rowStyle);
-      _writeCell(sheet, rowIndex, 5, _formatMs(task.dueDate), rowStyle);
-      _writeCell(sheet, rowIndex, 6, _formatMs(task.completedTime), rowStyle);
-      _writeCell(sheet, rowIndex, 7, task.description, rowStyle);
+      _writeCell(sheet, rowIndex, 4, _statusLabel(task.status), rowStyle);
+      _writeCell(sheet, rowIndex, 5, _formatMs(task.startDate), rowStyle);
+      _writeCell(sheet, rowIndex, 6, _formatMs(task.dueDate), rowStyle);
+      _writeCell(sheet, rowIndex, 7, _formatMs(task.completedTime), rowStyle);
+      _writeCell(sheet, rowIndex, 8, task.description, rowStyle);
       rowIndex++;
     }
   }
@@ -213,7 +225,7 @@ class TaskExportService {
     Set<int> priorities,
   ) {
     _setupColumns(sheet);
-    _mergeWrite(sheet, 0, 0, 7, '任务导出', _titleStyle());
+    _mergeWrite(sheet, 0, 0, 8, '任务导出', _titleStyle());
     _writeCell(
       sheet,
       2,
@@ -223,12 +235,12 @@ class TaskExportService {
     );
     sheet.merge(
       CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2),
-      CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 2),
+      CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: 2),
     );
   }
 
   void _setupColumns(Sheet sheet) {
-    const widths = [10.0, 34.0, 12.0, 12.0, 18.0, 18.0, 18.0, 42.0];
+    const widths = [10.0, 14.0, 34.0, 12.0, 12.0, 18.0, 18.0, 18.0, 42.0];
     for (var i = 0; i < widths.length; i++) {
       sheet.setColumnWidth(i, widths[i]);
     }
