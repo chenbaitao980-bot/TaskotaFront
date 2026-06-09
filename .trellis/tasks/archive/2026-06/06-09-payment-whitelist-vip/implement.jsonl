@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Remote Dynamic Config Pattern — 白名单查询遵循与 MemberConfigService 相同的动态读取模式"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量规范，确保新增代码符合项目风格"}
