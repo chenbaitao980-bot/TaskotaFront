@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/constants/app_constants.dart';
 import '../core/utils/file_logger.dart';
 
 /// 会员类型配置
 class MemberTypeConfig {
   final String id;
   final String name;
+  final String plan; // 计划标识（如 vip_monthly, vip_yearly, free），用于与 user_subscriptions.plan 匹配
   final double price;
   final int durationDays;
   final bool aiDecompose;
@@ -22,6 +21,7 @@ class MemberTypeConfig {
   const MemberTypeConfig({
     required this.id,
     required this.name,
+    required this.plan,
     required this.price,
     required this.durationDays,
     this.aiDecompose = true,
@@ -38,6 +38,7 @@ class MemberTypeConfig {
     return MemberTypeConfig(
       id: json['id'] as String,
       name: json['name'] as String,
+      plan: json['plan'] as String? ?? '',
       price: (json['price'] as num).toDouble(),
       durationDays: json['duration_days'] as int,
       aiDecompose: json['ai_decompose'] as bool? ?? true,
@@ -154,10 +155,6 @@ class MemberConfigService {
   List<RechargeTierConfig> _rechargeTiers = [];
 
   bool _isLoaded = false;
-  DateTime? _lastFetchTime;
-
-  /// 缓存有效期（5分钟）
-  static const _cacheDuration = Duration(minutes: 5);
 
   /// 获取所有会员类型
   List<MemberTypeConfig> get memberTypes => List.unmodifiable(_memberTypes);
@@ -175,19 +172,11 @@ class MemberConfigService {
 
   /// 初始化并加载配置
   Future<void> init() async {
-    await _loadFromCache();
     await refresh();
   }
 
   /// 刷新配置
   Future<void> refresh() async {
-    // 检查缓存是否有效
-    if (_lastFetchTime != null &&
-        DateTime.now().difference(_lastFetchTime!) < _cacheDuration) {
-      flog('[MemberConfig] using cached config');
-      return;
-    }
-
     try {
       final response = await Supabase.instance.client
           .functions
@@ -209,8 +198,6 @@ class MemberConfigService {
             [];
 
         _isLoaded = true;
-        _lastFetchTime = DateTime.now();
-        await _saveToCache();
         flog(
             '[MemberConfig] refreshed: ${_memberTypes.length} types, ${_discountCodes.length} discounts, ${_rechargeTiers.length} tiers');
       } else {
@@ -232,11 +219,18 @@ class MemberConfigService {
 
   /// 根据 plan 值获取会员类型（兼容旧的 plan 值）
   MemberTypeConfig? getMemberTypeByPlan(String plan) {
-    // 尝试直接匹配 ID
+    // 1. 直接匹配 ID
     final byId = getMemberTypeById(plan);
     if (byId != null) return byId;
 
-    // 尝试匹配名称
+    // 2. 匹配 plan 字段（如 'vip_monthly', 'vip_yearly', 'free'）
+    try {
+      return _memberTypes.firstWhere((t) => t.plan == plan);
+    } catch (_) {
+      // not found
+    }
+
+    // 3. 匹配名称
     try {
       return _memberTypes.firstWhere(
         (t) => t.name.toLowerCase().contains(plan.toLowerCase()),
@@ -268,47 +262,11 @@ class MemberConfigService {
     return originalPrice * discount.discountRate;
   }
 
-  // --- 本地缓存 ---
-
-  static const _keyMemberTypes = 'member_config_types';
-  static const _keyDiscountCodes = 'member_config_discounts';
-  static const _keyRechargeTiers = 'member_config_tiers';
-  static const _keyLastFetch = 'member_config_last_fetch';
-
-  Future<void> _loadFromCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final lastFetchStr = prefs.getString(_keyLastFetch);
-
-      if (lastFetchStr != null) {
-        _lastFetchTime = DateTime.tryParse(lastFetchStr);
-      }
-
-      // 注意：这里简化处理，实际可以缓存 JSON 数据
-      // 为避免缓存过期问题，暂时不缓存详细数据
-    } catch (e) {
-      flog('[MemberConfig] loadFromCache failed: $e');
-    }
-  }
-
-  Future<void> _saveToCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (_lastFetchTime != null) {
-        await prefs.setString(
-            _keyLastFetch, _lastFetchTime!.toIso8601String());
-      }
-    } catch (e) {
-      flog('[MemberConfig] saveToCache failed: $e');
-    }
-  }
-
   /// 清除缓存
   void clearCache() {
     _memberTypes = [];
     _discountCodes = [];
     _rechargeTiers = [];
     _isLoaded = false;
-    _lastFetchTime = null;
   }
 }

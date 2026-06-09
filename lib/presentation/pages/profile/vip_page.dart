@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/file_logger.dart';
 import '../../../services/payment_service.dart';
 import '../../../services/subscription_service.dart';
+import '../../../services/member_config_service.dart';
 import '../../../models/entities/user_subscription.dart';
 
 class VipPage extends StatefulWidget {
@@ -17,11 +17,29 @@ class VipPage extends StatefulWidget {
 class _VipPageState extends State<VipPage> {
   SubscriptionPlan _selectedPlan = SubscriptionPlan.vipYearly;
   bool _isCreatingOrder = false;
+  String _monthlyPrice = '¥9.9/月';
+  String _yearlyPrice = '¥68/年';
 
   @override
   void initState() {
     super.initState();
     SubscriptionService.instance.refresh();
+    _loadPrices();
+  }
+
+  Future<void> _loadPrices() async {
+    await MemberConfigService.instance.init();
+    if (!mounted) return;
+    setState(() {
+      final monthlyType = MemberConfigService.instance.getMemberTypeByPlan('vip_monthly');
+      final yearlyType = MemberConfigService.instance.getMemberTypeByPlan('vip_yearly');
+      if (monthlyType != null) {
+        _monthlyPrice = monthlyType.priceDisplay;
+      }
+      if (yearlyType != null) {
+        _yearlyPrice = yearlyType.priceDisplay;
+      }
+    });
   }
 
   @override
@@ -166,7 +184,7 @@ class _VipPageState extends State<VipPage> {
         Expanded(
           child: _PlanCard(
             title: '月度VIP',
-            price: AppConstants.vipMonthlyPriceDisplay,
+            price: _monthlyPrice,
             selected: _selectedPlan == SubscriptionPlan.vipMonthly,
             onTap: () =>
                 setState(() => _selectedPlan = SubscriptionPlan.vipMonthly),
@@ -176,7 +194,7 @@ class _VipPageState extends State<VipPage> {
         Expanded(
           child: _PlanCard(
             title: '年度VIP',
-            price: AppConstants.vipYearlyPriceDisplay,
+            price: _yearlyPrice,
             badge: '推荐',
             selected: _selectedPlan == SubscriptionPlan.vipYearly,
             onTap: () =>
@@ -188,8 +206,10 @@ class _VipPageState extends State<VipPage> {
   }
 
   Widget _buildPayButton(ThemeData theme) {
-    final price =
-        _selectedPlan == SubscriptionPlan.vipMonthly ? '¥9.9' : '¥68';
+    final monthlyType = MemberConfigService.instance.getMemberTypeByPlan('vip_monthly');
+    final priceText = monthlyType != null
+        ? '¥${monthlyType.price.toStringAsFixed(monthlyType.price.truncateToDouble() == monthlyType.price ? 0 : 1)}'
+        : (_selectedPlan == SubscriptionPlan.vipMonthly ? '¥9.9' : '¥68');
     return FilledButton(
       onPressed: _isCreatingOrder ? null : _handlePay,
       style: FilledButton.styleFrom(
@@ -206,7 +226,7 @@ class _VipPageState extends State<VipPage> {
                   strokeWidth: 2, color: Colors.white),
             )
           : Text(
-              '支付宝扫码支付 $price',
+              '支付宝扫码支付 $priceText',
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
@@ -217,8 +237,22 @@ class _VipPageState extends State<VipPage> {
     setState(() => _isCreatingOrder = true);
 
     try {
+      // 使用配置服务中的 plan 标识创建订单
+      final monthlyType = MemberConfigService.instance.getMemberTypeByPlan('vip_monthly');
+      final yearlyType = MemberConfigService.instance.getMemberTypeByPlan('vip_yearly');
+      String planValue;
+      if (_selectedPlan == SubscriptionPlan.vipMonthly) {
+        planValue = monthlyType?.plan.isNotEmpty == true
+            ? monthlyType!.plan
+            : 'vip_monthly';
+      } else {
+        planValue = yearlyType?.plan.isNotEmpty == true
+            ? yearlyType!.plan
+            : 'vip_yearly';
+      }
+
       final order = await PaymentService.instance
-          .createOrder(_selectedPlan.value);
+          .createOrder(planValue);
 
       if (!mounted) return;
       setState(() => _isCreatingOrder = false);

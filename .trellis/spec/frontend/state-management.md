@@ -201,3 +201,73 @@ Use this pattern whenever:
 - A widget is conditionally shown/hidden (e.g., `IndexedStack` tabs, bottom nav pages)
 - The widget subscribes to a Bloc that other screens can mutate
 - Stale display after returning to the widget would be a visible bug
+
+---
+
+## Remote Dynamic Config Pattern (会员/付费配置)
+
+### Problem
+
+Hardcoding prices, plan limits, or feature flags ties the client to specific values. Changing prices requires a new release. This is especially dangerous for paid features (VIP plans, subscriptions).
+
+**Wrong** — hardcoded values scattered in code:
+```dart
+// ❌ Hardcoded prices — requires new release to change
+const vipMonthlyPriceCents = 990;  // 9.9元
+const vipYearlyPriceCents = 6800;  // 68元
+```
+
+### Fix: Remote Config Service
+
+Read VIP/member config from backend API at runtime. Fallback to safe defaults only when API is unavailable.
+
+**Architecture**:
+```
+Flutter app
+  → MemberConfigService (singleton, in-memory cache)
+    → GET /functions/v1/member-config  (Edge Function)
+      → SELECT FROM member_types  (Supabase)
+    → Cache for 5 min (memory only)
+```
+
+**Service skeleton**:
+```dart
+class MemberConfigService {
+  static final MemberConfigService instance = MemberConfigService._internal();
+  factory MemberConfigService() => instance;
+  
+  MemberConfigService._internal();
+  
+  List<MemberTypeConfig> _types = [];
+  DateTime? _lastFetchTime;
+  
+  Future<void> refresh() async {
+    // Fetch from Edge Function
+    // Update _types and _lastFetchTime
+  }
+  
+  MemberTypeConfig? getMemberTypeByPlan(String plan) {
+    return _types.firstWhereOrNull((t) => t.plan == plan);
+  }
+}
+```
+
+**UI Usage**:
+```dart
+// ✅ Correct: dynamic price from config service
+final config = MemberConfigService.instance.getMemberTypeByPlan('vip_monthly');
+final priceText = config?.priceDisplay ?? '¥9.9';
+```
+
+**Key rules**:
+1. **Never hardcode** VIP prices, feature limits, or plan names in `app_constants.dart`
+2. **Free tier limits** (`freeMaxProjects`, `freeMaxTasksPerProject`) are acceptable as constants — they are limits, not commercial values
+3. **Edge Function must exist** — the service fails gracefully if `member-config` returns 404 (return null, UI shows error)
+4. **Cache in memory only** — no SharedPreferences for config (config changes frequently enough that disk cache causes more issues than it solves)
+
+### When to Apply
+
+Use this pattern whenever:
+- Feature pricing or limits are stored in a backend config table
+- The values may change without a client release
+- Multiple clients (iOS, Android, Web) need the same config values

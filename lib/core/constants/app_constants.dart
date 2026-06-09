@@ -47,21 +47,9 @@ class AppConstants {
   static const int defaultFocusCapacity = 90; // minutes
   static const double defaultCompletionRate = 0.75;
 
-  // VIP 配额（默认值，当 API 不可用时使用）
+  // Free tier limits
   static const int freeMaxProjects = 3;
   static const int freeMaxTasksPerProject = 50;
-
-  // VIP 定价默认值（分，用于订单创建）
-  // 注意：这些值现在从 API 动态获取，这里仅作为后备
-  static const int vipMonthlyPriceCents = 990;
-  static const int vipYearlyPriceCents = 6800;
-  static const String vipMonthlyPriceDisplay = '¥9.9/月';
-  static const String vipYearlyPriceDisplay = '¥68/年';
-
-  // 会员类型 ID 映射（用于从 API 响应匹配旧的 plan 值）
-  // 实际 ID 从数据库获取，这里仅作为 fallback
-  static const String vipMonthlyTypeId = 'vip_monthly';
-  static const String vipYearlyTypeId = 'vip_yearly';
 
   // WxPusher 微信提醒
   static const String wxpusherAppToken = 'AT_jdaZaaj5CLY9HY4LUJwGTxoLskK5XIa3';
