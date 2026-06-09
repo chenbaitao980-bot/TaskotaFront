@@ -934,6 +934,13 @@ class _HomeContentState extends State<_HomeContent> {
 
   /// 消费通知点击留下的待定位任务 ID，定位到时间轴并选中。
   void _processPendingNotificationTask() {
+    // 优先处理"标记完成"请求
+    final markDoneTaskId = NotificationService.pendingMarkDoneTaskId;
+    if (markDoneTaskId != null) {
+      NotificationService.pendingMarkDoneTaskId = null;
+      context.read<TaskNewBloc>().add(ToggleTaskStatus(id: markDoneTaskId));
+    }
+
     final taskId = NotificationService.pendingTaskId;
     if (taskId == null) return;
     NotificationService.pendingTaskId = null;

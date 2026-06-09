@@ -21,6 +21,9 @@ class NotificationService {
 
   static String? pendingTaskId;
 
+  /// "标记完成"按钮触发的任务 ID，由 _HomeContentState 在数据加载后消费并清除。
+  static String? pendingMarkDoneTaskId;
+
   List<String> get diagnosticLog => const [];
   String get diagnosticSummary => '';
 

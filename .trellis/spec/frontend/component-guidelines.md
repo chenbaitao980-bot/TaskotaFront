@@ -217,6 +217,55 @@ int effectiveGroupSpan(String rootId) {
 
 ## Notification Service Patterns
 
+### Pattern: Persistent In-App Reminder Dialog (Desktop)
+
+When desktop notifications must not auto-dismiss, replace the OS Toast with a Flutter Dialog:
+
+**Foreground detection**:
+```dart
+bool _isAppInForeground() {
+  final hasContext = AppRouter.navigatorKey.currentContext != null;
+  final lifecycle = SchedulerBinding.instance.lifecycleState;
+  // Desktop apps often report null lifecycle when active (not paused/detached)
+  return hasContext && (lifecycle == AppLifecycleState.resumed || lifecycle == null);
+}
+```
+
+**Dialog queue** (prevents stacking when multiple notifications fire at once):
+```dart
+final Queue<_PendingDialog> _dialogQueue = Queue();
+bool _dialogShowing = false;
+
+void _showInAppReminderDialog(int id, String title, String body, String? payload) {
+  _dialogQueue.add(_PendingDialog(id: id, title: title, body: body, payload: payload));
+  if (!_dialogShowing) _processDialogQueue();
+}
+
+void _processDialogQueue() {
+  if (_dialogQueue.isEmpty) { _dialogShowing = false; return; }
+  _dialogShowing = true;
+  final item = _dialogQueue.removeFirst();
+  final ctx = AppRouter.navigatorKey.currentContext;
+  if (ctx == null) { _showOsNotificationFallback(item); _processDialogQueue(); return; }
+  showDialog(
+    context: ctx,
+    barrierDismissible: false,  // MUST be false — user must confirm
+    builder: (_) => ReminderDialog(...),
+  ).whenComplete(_processDialogQueue);
+}
+```
+
+**Rule**: `barrierDismissible` MUST be `false`. Never use `true` for reminder dialogs — the whole point is to prevent accidental dismissal.
+
+**Snooze re-scheduling**:
+```dart
+void _rescheduleNotification(int id, String title, String body, String? payload, Duration delay) {
+  Timer(delay, () => _showDesktopNativeNotification(id, title, body, payload: payload));
+}
+```
+
+---
+
 ### Pattern: `pendingTaskId` — Cross-Widget Navigation from Notifications
 
 When a notification is tapped, the app may not be running or the home widget may not be mounted yet. Use the static `pendingTaskId` field on `NotificationService` as a rendezvous point:
@@ -244,6 +293,22 @@ void _processPendingNotificationTask() {
 
 **Reserved payloads**:
 - `'overdue_navigate'` — navigate to the earliest overdue task in the timeline
+
+**`pendingMarkDoneTaskId`** — companion field for mark-done from reminder dialog:
+```dart
+// In ReminderDialog's "标记完成" callback:
+NotificationService.pendingMarkDoneTaskId = taskId;
+AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil('/', ...);
+
+// In home widget (after data loaded):
+final markDoneId = NotificationService.pendingMarkDoneTaskId;
+if (markDoneId != null) {
+  NotificationService.pendingMarkDoneTaskId = null;  // consume once
+  context.read<TaskNewBloc>().add(ToggleTaskStatus(taskId: markDoneId));
+}
+```
+
+> **Gotcha**: Both `pendingTaskId` and `pendingMarkDoneTaskId` are static fields on `NotificationService`. If the project uses a web stub (`notification_service_web.dart`), any new static field added to the native file **must also be added to the web stub**. The `trellis-check` sub-agent caught this — see platform-compatibility.md for the stub-sync rule.
 
 ---
 

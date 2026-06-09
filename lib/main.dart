@@ -39,6 +39,7 @@ import 'services/task_attachment_service.dart';
 import 'services/task_sync_service.dart';
 import 'services/node_template_sync_service.dart';
 import 'services/subscription_service.dart';
+import 'services/member_config_service.dart';
 
 void main() async {
   runZonedGuarded(() async {
@@ -137,6 +138,7 @@ Future<_AppDeps> _initServices() async {
     database,
     syncService: NodeTemplateSyncService.instance,
   );
+  await MemberConfigService.instance.init();
   await SubscriptionService.instance.init();
 
   TaskSyncService.instance.bind(taskRepository);

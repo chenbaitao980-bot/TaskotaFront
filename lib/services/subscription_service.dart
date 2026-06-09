@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/file_logger.dart';
 import '../models/entities/user_subscription.dart';
+import 'member_config_service.dart';
 
 class SubscriptionService {
   static final SubscriptionService _instance = SubscriptionService._();
@@ -37,6 +38,12 @@ class SubscriptionService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// 获取当前会员类型的配置
+  MemberTypeConfig? get currentMemberConfig {
+    if (!isVip || _cached == null) return null;
+    return MemberConfigService.instance.getMemberTypeByPlan(_cached!.plan.value);
   }
 
   Future<void> init() async {
@@ -98,17 +105,37 @@ class SubscriptionService {
 
   // --- 权限检查 ---
 
-  bool canUseAiDecompose() => isVip;
+  bool canUseAiDecompose() {
+    if (!isVip) return false;
+    final config = currentMemberConfig;
+    if (config == null) return true; // 默认允许 VIP 使用
+    return config.aiDecompose;
+  }
 
-  bool canExportData() => isVip;
+  bool canExportData() {
+    if (!isVip) return false;
+    final config = currentMemberConfig;
+    if (config == null) return true; // 默认允许 VIP 使用
+    return config.dataExport;
+  }
 
   Future<bool> canCreateProject(int currentActiveCount) async {
-    if (isVip) return true;
+    if (isVip) {
+      final config = currentMemberConfig;
+      if (config == null) return true; // 默认允许 VIP 创建
+      if (config.maxProjects == -1) return true; // 无限制
+      return currentActiveCount < config.maxProjects;
+    }
     return currentActiveCount < AppConstants.freeMaxProjects;
   }
 
   Future<bool> canCreateTask(int currentTaskCountInProject) async {
-    if (isVip) return true;
+    if (isVip) {
+      final config = currentMemberConfig;
+      if (config == null) return true; // 默认允许 VIP 创建
+      if (config.maxTasks == -1) return true; // 无限制
+      return currentTaskCountInProject < config.maxTasks;
+    }
     return currentTaskCountInProject < AppConstants.freeMaxTasksPerProject;
   }
 

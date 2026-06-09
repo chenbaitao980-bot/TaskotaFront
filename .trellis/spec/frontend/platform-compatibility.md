@@ -328,3 +328,31 @@ class AlarmService {
   Future<void> set(DateTime time) async {} // silent no-op on web
 }
 ```
+
+---
+
+### ❌ Adding a static field to the native file but forgetting the web stub
+
+When a service uses the conditional export pattern (`notification_service.dart` → `_io.dart` / `_web.dart`), any **static field** added to the native file must also be added to the web stub with a matching type and default value. Otherwise the project compiles on native but fails on web.
+
+```dart
+// WRONG — added to notification_service_io.dart only
+class NotificationService {
+  static String? pendingMarkDoneTaskId;
+}
+// notification_service_web.dart has no such field → web compilation error
+```
+
+```dart
+// ✅ Correct — both files declare the field
+// notification_service_io.dart
+class NotificationService {
+  static String? pendingMarkDoneTaskId;
+}
+// notification_service_web.dart
+class NotificationService {
+  static String? pendingMarkDoneTaskId;  // stub — same signature, same default
+}
+```
+
+**Rule**: After adding any public static field or method to a native `_io.dart` service, immediately mirror it in the `_web.dart` stub.

@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io' show Directory, File, Platform, Process;
+import 'package:flutter/material.dart' show showDialog;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -10,6 +14,7 @@ import '../core/router/app_router.dart';
 import '../data/database/app_database.dart' show Task;
 import '../models/entities/schedule.dart';
 import '../models/entities/task_breakdown.dart';
+import '../presentation/widgets/reminder_dialog.dart';
 import 'alarm_service.dart';
 import 'local_storage_service.dart';
 import '../core/utils/file_logger.dart';
@@ -32,6 +37,20 @@ class _MobilePermResult {
   const _MobilePermResult(this.notificationsGranted, this.exactAlarmGranted);
 }
 
+class _PendingDialog {
+  final int id;
+  final String title;
+  final String body;
+  final String? payload;
+
+  _PendingDialog({
+    required this.id,
+    required this.title,
+    required this.body,
+    this.payload,
+  });
+}
+
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -39,6 +58,9 @@ class NotificationService {
 
   /// 通知点击后待跳转的任务 ID，由 _HomeContentState 在数据加载后消费并清除。
   static String? pendingTaskId;
+
+  /// "标记完成"按钮触发的任务 ID，由 _HomeContentState 在数据加载后消费并清除。
+  static String? pendingMarkDoneTaskId;
 
   FlutterLocalNotificationsPlugin? _plugin;
   FlutterLocalNotificationsWindows? _windowsPlugin;
@@ -48,6 +70,10 @@ class NotificationService {
   bool _initialized = false;
   bool _useOsNotifications = false;
   bool _useNativeWindowsNotifications = false;
+
+  // 应用内提醒弹窗队列（桌面端前台时使用）
+  final Queue<_PendingDialog> _dialogQueue = Queue();
+  bool _dialogShowing = false;
 
   List<String> get diagnosticLog => List.unmodifiable(_diagnosticLog);
   String get diagnosticSummary => _diagnosticLog.join('\n');
@@ -342,6 +368,21 @@ class NotificationService {
     }
   }
 
+  /// 应用是否处于前台（桌面端：窗口可见即算前台，含失焦 inactive 状态）
+  bool _isAppInForeground() {
+    final ctx = AppRouter.navigatorKey.currentContext;
+    if (ctx == null) return false;
+    final lifecycle = SchedulerBinding.instance.lifecycleState;
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      // 桌面端：resumed（有焦点）/ inactive（失焦但可见）/ null（未初始化）均弹 in-app dialog
+      // 只有 paused / hidden / detached（最小化/隐藏）才降级为 OS 通知
+      return lifecycle == AppLifecycleState.resumed ||
+          lifecycle == AppLifecycleState.inactive ||
+          lifecycle == null;
+    }
+    return lifecycle == AppLifecycleState.resumed || lifecycle == null;
+  }
+
   void _showDesktopNativeNotification(
     int id,
     String title,
@@ -349,6 +390,12 @@ class NotificationService {
     String? payload,
   }) {
     try {
+      // 前台时使用应用内 Dialog，后台时使用 OS 通知
+      if (_isAppInForeground()) {
+        _showInAppReminderDialog(id, title, body, payload);
+        return;
+      }
+
       final channel = resolveDesktopNotificationChannel(
         isWindows: Platform.isWindows,
         hasNativeWindowsPlugin: _useNativeWindowsNotifications,
@@ -369,6 +416,95 @@ class NotificationService {
     }
   }
 
+  /// 将提醒加入队列，若当前没有弹窗则立即弹出
+  void _showInAppReminderDialog(
+    int id,
+    String title,
+    String body,
+    String? payload,
+  ) {
+    _dialogQueue.add(
+      _PendingDialog(id: id, title: title, body: body, payload: payload),
+    );
+    if (!_dialogShowing) {
+      _processDialogQueue();
+    }
+  }
+
+  void _processDialogQueue() {
+    if (_dialogQueue.isEmpty) {
+      _dialogShowing = false;
+      return;
+    }
+    final ctx = AppRouter.navigatorKey.currentContext;
+    if (ctx == null) {
+      // context 不可用，降级为 OS 通知
+      _dialogShowing = false;
+      while (_dialogQueue.isNotEmpty) {
+        final item = _dialogQueue.removeFirst();
+        _showOsNotificationFallback(item.id, item.title, item.body);
+      }
+      return;
+    }
+    _dialogShowing = true;
+    final item = _dialogQueue.removeFirst();
+    showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => ReminderDialog(
+        title: item.title,
+        body: item.body,
+        onMarkDone: () => _handleMarkDone(item.payload),
+        onSnooze: (delay) =>
+            _rescheduleNotification(item.id, item.title, item.body, item.payload, delay),
+      ),
+    ).whenComplete(_processDialogQueue);
+  }
+
+  void _showOsNotificationFallback(int id, String title, String body) {
+    try {
+      final channel = resolveDesktopNotificationChannel(
+        isWindows: Platform.isWindows,
+        hasNativeWindowsPlugin: _useNativeWindowsNotifications,
+      );
+      if (channel == DesktopNotificationChannel.nativePlugin) {
+        unawaited(_showWindowsPluginNotification(id, title, body));
+      } else if (channel == DesktopNotificationChannel.windowsScript) {
+        _showWindowsNotification(title, body);
+      } else if (Platform.isMacOS) {
+        _showMacOSNotification(title, body);
+      } else if (Platform.isLinux) {
+        _showLinuxNotification(title, body);
+      }
+    } catch (_) {}
+  }
+
+  /// 解析 payload 中的 taskId 并标记任务完成
+  /// payload 格式：taskId 字符串（来自 scheduleReminderForSchedule 的 scheduleId）
+  void _handleMarkDone(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    if (payload == 'overdue_navigate') return;
+    // 通过 pendingMarkDoneTaskId 通知首页执行 ToggleTaskStatus
+    _log('[Notif] markDone payload=$payload (via pendingMarkDoneTaskId)');
+    NotificationService.pendingMarkDoneTaskId = payload;
+  }
+
+  /// 在指定延迟后重新触发提醒
+  void _rescheduleNotification(
+    int id,
+    String title,
+    String body,
+    String? payload,
+    Duration delay,
+  ) {
+    _timers[id]?.cancel();
+    _timers[id] = Timer(
+      delay,
+      () => _showDesktopNativeNotification(id, title, body, payload: payload),
+    );
+    _log('[Notif] snooze id=$id delay=${delay.inMinutes}min');
+  }
+
   Future<void> _showWindowsPluginNotification(
     int id,
     String title,
@@ -386,7 +522,7 @@ class NotificationService {
         title,
         body,
         details: WindowsNotificationDetails(
-          duration: WindowsNotificationDuration.short,
+          duration: WindowsNotificationDuration.long,
           images: [
             WindowsImage(
               WindowsImage.getAssetUri('assets/icons/app_icon_1024.png'),
