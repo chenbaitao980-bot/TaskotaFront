@@ -13,8 +13,7 @@ class SubscriptionService {
 
   UserSubscription? _cached;
   RealtimeChannel? _realtimeChannel;
-
-  static const _vipWhitelist = {'574658218@qq.com'};
+  bool _isWhitelisted = false;
 
   String? get _currentUserEmail {
     try {
@@ -25,7 +24,7 @@ class SubscriptionService {
   }
 
   bool get isVip {
-    if (_vipWhitelist.contains(_currentUserEmail)) return true;
+    if (_isWhitelisted) return true;
     return _cached?.isVip ?? false;
   }
 
@@ -42,7 +41,9 @@ class SubscriptionService {
 
   /// 获取当前会员类型的配置
   MemberTypeConfig? get currentMemberConfig {
-    if (!isVip || _cached == null) return null;
+    if (!isVip) return null;
+    if (_isWhitelisted && (_cached == null || !_cached!.isVip)) return null; // 白名单用户走默认允许
+    if (_cached == null) return null;
     return MemberConfigService.instance.getMemberTypeByPlan(_cached!.plan.value);
   }
 
@@ -71,6 +72,22 @@ class SubscriptionService {
       flog('[Subscription] refreshed: plan=${_cached!.plan.value}, isVip=$isVip');
     } catch (e) {
       flog('[Subscription] refresh failed: $e');
+    }
+
+    // 查询白名单（独立 try-catch，失败不影响订阅查询结果）
+    try {
+      final email = _currentUserEmail;
+      if (email != null) {
+        final whitelistResp = await Supabase.instance.client
+            .from('vip_whitelist')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+        _isWhitelisted = whitelistResp != null;
+        flog('[Subscription] whitelist check: email=$email, isWhitelisted=$_isWhitelisted');
+      }
+    } catch (e) {
+      flog('[Subscription] whitelist check failed: $e');
     }
   }
 
@@ -184,6 +201,7 @@ class SubscriptionService {
 
   void clearCache() async {
     _cached = null;
+    _isWhitelisted = false;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyPlan);
