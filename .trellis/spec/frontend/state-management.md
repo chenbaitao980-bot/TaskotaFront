@@ -140,11 +140,95 @@ Future<Set<String>> searchTaskIds(String keyword) async {
 
 ---
 
+## Permanent Global Exclusion Filter Pattern
+
+Some fields must be **always excluded** from all normal queries — they are not user-controlled filters but hard system guards. The `archived` and `deleted` fields follow this pattern.
+
+### Rule
+
+**Never add permanent exclusions as BLoC-level filters.** Apply them directly in every `TaskRepository` method.
+
+```dart
+// ✅ Correct — exclusion at DB layer, always enforced
+Future<List<Task>> getAll(...) async {
+  final query = _db.select(_db.tasks)
+    ..where((t) => t.deleted.equals(0) & t.archived.equals(0));
+  ...
+}
+
+// ❌ Wrong — Bloc-level filter, easy to forget in new query paths
+tasks.where((t) => t.archived == 0).toList();
+```
+
+### Checklist when adding a new permanent exclusion field
+
+- [ ] Add `field.equals(0)` to **every** existing query method in `TaskRepository` (getAll, getRootTasks, getActiveCountForProject, getByProject, getToday, getImportant, getSubTasks, searchTaskIds)
+- [ ] Verify progress calculator (`task_progress_calculator.dart`) also excludes the field
+- [ ] Supabase sync push/pull both handle the field
+
+---
+
+## Archive View Toggle Pattern
+
+The "archived tasks" view is a mutually exclusive mode within the task module — it's not a stacked filter. It uses a boolean flag in `TaskNewLoaded` state.
+
+### State field
+
+```dart
+class TaskNewLoaded extends TaskNewState {
+  final bool showArchivedView;  // true = show only archived; false = normal task list
+  ...
+}
+```
+
+### Events
+
+```dart
+class LoadArchivedTasks extends TaskNewEvent {}   // switch to archive view
+class UnarchiveTask extends TaskNewEvent {         // restore single task (self only)
+  final String id;
+}
+class ArchiveTask extends TaskNewEvent {           // archive task (recursive)
+  final String id;
+}
+```
+
+### Archive / Restore Behavior (Design Decision)
+
+| Operation | Scope | Behavior |
+|-----------|-------|----------|
+| `ArchiveTask` | Parent + all descendants recursively | Sets `archived=1` on every descendant before archiving parent |
+| `UnarchiveTask` | **Self only** | Restores only the target task; subtasks remain in their current archived state |
+
+**Why self-only restore**: If parent is restored but children are still archived, they disappear from the parent's subtask list — which is intentional. Each archived task can be individually restored from the archive view. Bulk restore would surface tasks the user may have intentionally archived.
+
+### Guard: block archive when subtasks incomplete
+
+Before archiving, `ArchiveTask` handler calls `allDescendantsCompleted(id)`:
+
+```dart
+Future<bool> allDescendantsCompleted(String taskId) async {
+  final children = await getSubTasksIncludingArchived(taskId);
+  for (final child in children) {
+    if (child.archived == 1) continue;     // already archived — skip
+    if (child.status != 2) return false;   // incomplete — block
+    if (!await allDescendantsCompleted(child.id)) return false;
+  }
+  return true;
+}
+```
+
+If incomplete subtasks exist → emit `TaskNewError("子任务未完成，无法归档")` → listener shows snackbar → calls `LoadTasks()` to recover state.
+
+---
+
 ## Common Mistakes
 
 - **Forgetting to apply new filter in `refreshTasks`**: A filter added in `_onLoadTasks` but not in `refreshTasks` will be lost after mutations (create/update/delete).
 - **Not preserving existing filter values**: When `LoadTasks` is emitted without explicit filter values, the handler should read preserved values from current state.
 - **Failing to clear search on close**: The `_TaskSearchDelegate` must emit `SetSearchQuery(null)` when closing, otherwise stale search state persists.
+- **Adding permanent exclusions only to `_onLoadTasks`**: Fields like `archived`/`deleted` must be filtered at the DB (Repository) level, not the BLoC level — BLoC-only filtering is bypassed by any new query path.
+- **`clearCache()` missing derived fields**: Any cached flag derived from a remote query (e.g., `_isWhitelisted`) must be reset in `clearCache()`. Omitting it causes stale state to bleed into the next login session.
 
 ---
 
@@ -271,3 +355,65 @@ Use this pattern whenever:
 - Feature pricing or limits are stored in a backend config table
 - The values may change without a client release
 - Multiple clients (iOS, Android, Web) need the same config values
+
+---
+
+## VIP Override via Whitelist Pattern (白名单豁免)
+
+### Problem
+
+Whitelist users have `isVip=true` (via whitelist check) but their `_cached` subscription is `free` (no real payment record). If `currentMemberConfig` uses `_cached.plan` to look up feature limits, it returns the **free plan config**, blocking VIP features like export.
+
+```dart
+// ❌ Bug: whitelist user has _cached.plan='free', config.dataExport=false
+MemberTypeConfig? get currentMemberConfig {
+  if (!isVip || _cached == null) return null;
+  return MemberConfigService.instance.getMemberTypeByPlan(_cached!.plan.value);
+  // Returns FREE config for whitelist users → all VIP features blocked
+}
+```
+
+### Fix: Guard Against Mismatched isVip Source
+
+When `isVip` is granted by whitelist (not a real paid subscription), `currentMemberConfig` must return `null` to trigger the "default allow" branch in all permission checks.
+
+```dart
+// ✅ Correct: whitelist users bypass plan-based config
+MemberTypeConfig? get currentMemberConfig {
+  if (!isVip) return null;
+  if (_isWhitelisted && (_cached == null || !_cached!.isVip)) return null; // walk default-allow
+  if (_cached == null) return null;
+  return MemberConfigService.instance.getMemberTypeByPlan(_cached!.plan.value);
+}
+
+bool canExportData() {
+  if (!isVip) return false;
+  final config = currentMemberConfig;
+  if (config == null) return true; // default allow when no config (whitelist users land here)
+  return config.dataExport;
+}
+```
+
+### Key Rule
+
+> When `isVip` can be true from **multiple sources** (paid subscription OR whitelist OR future promo), `currentMemberConfig` must only look up plan config when `_cached` is the source of truth for that VIP grant. Otherwise, return `null` and let the permission methods apply their safe default.
+
+### Independent Query for Whitelist
+
+The whitelist check in `refresh()` runs in its own `try-catch` so it never disrupts the subscription query:
+
+```dart
+// subscription query
+try {
+  final response = await supabase.from('user_subscriptions')...;
+  _cached = ...;
+} catch (e) { ... }
+
+// whitelist query — independent, non-blocking
+try {
+  final resp = await supabase.from('vip_whitelist').select('email').eq('email', email).maybeSingle();
+  _isWhitelisted = resp != null;
+} catch (e) {
+  // silently fails; _isWhitelisted stays false
+}
+```
