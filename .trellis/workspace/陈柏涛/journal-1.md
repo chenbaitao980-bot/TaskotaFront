@@ -867,3 +867,36 @@ taskora-website: 修复所有 admin 页面右侧留白（Starlight right-sidebar
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: fix: archive bugs - flashback, view switch, search/filter
+
+**Date**: 2026-06-10
+**Task**: fix: archive bugs - flashback, view switch, search/filter
+**Branch**: `master`
+
+### Summary
+
+修复归档功能三个bug: 1) 归档视图闪退 - _onLoadTasks保留showArchivedView, 外部触发点检查归档状态; 2) 视图切换失效 - 归档body支持mindmap/list切换; 3) 搜索/筛选不生效 - LoadArchivedTasks新增searchKeyword/dateFrom/dateTo, repo支持过滤
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7fd448f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
