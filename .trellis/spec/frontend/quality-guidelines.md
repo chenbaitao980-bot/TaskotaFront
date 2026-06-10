@@ -228,6 +228,43 @@ Future<void> _flushOffsets() async {
 
 ---
 
+### 首屏数据本地优先（Local-First），网络后合入
+
+任何影响首屏/首批数据展示的网络请求，必须遵循：先用本地缓存立即上屏，后台拉取云端数据，有差异时静默合并。
+
+```dart
+// ❌ 错误：首屏数据等网络返回才上屏
+if (state is! TaskNewLoaded) {
+  final localPrefs = _storage.getTaskFilterState();
+  final cloudPrefs = await supabaseService?.fetchPreferences(); // 网络阻塞
+  final prefs = cloudPrefs ?? localPrefs;
+  // ... 用 prefs 继续加载
+}
+final allTasks = (await taskRepository.getAll())...; // 首发数据被上面网络请求卡住
+
+// ✅ 正确：本地数据立即上屏，云端后台拉取
+if (state is! TaskNewLoaded) {
+  final localPrefs = _storage.getTaskFilterState();
+  if (localPrefs != null) {
+    // 立即用本地偏好继续（不 await 网络）
+    preservedFilter = localPrefs['selectedFilter'] as String? ?? 'all';
+    // ...
+  }
+  unawaited(_syncCloudPrefsAfterLoad(localPrefs)); // 后台同步
+}
+final allTasks = (await taskRepository.getAll())...; // 首发数据不依赖网络
+```
+
+**适用场景**：
+- 启动时恢复用户偏好/筛选状态
+- 会员配置、订阅状态（`init()` 只 `_loadFromCache()`，`refresh()` 放首帧后）
+- 任何"云端有当然好，没有本地也能跑"的数据
+
+**核心原则**：用户打开 App 的体感 = 本地 I/O 延迟；绝不能 = 网络 RTT。
+
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->
