@@ -257,6 +257,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             actions: [
               IconButton(
+                icon: const Icon(Icons.archive_outlined),
+                tooltip: '归档',
+                onPressed: _archiveTask,
+              ),
+              IconButton(
                 icon: Icon(Icons.delete_outlined, color: AppTheme.error),
                 onPressed: _deleteTask,
               ),
@@ -1346,6 +1351,52 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     if (confirm == true && mounted) {
       _autoSaveTimer?.cancel();
       context.read<TaskNewBloc>().add(DeleteTask(id: widget.task.id));
+      setState(() => _allowPop = true);
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _archiveTask() async {
+    // 先检查是否有未完成子任务
+    final repo = context.read<TaskNewBloc>().taskRepository;
+    final allDone = await repo.allDescendantsCompleted(widget.task.id);
+    if (!mounted) return;
+    if (!allDone) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('无法归档'),
+          content: const Text('该任务还有未完成的子任务，请先完成所有子任务后再归档。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('归档任务'),
+        content: Text('确定要归档"${_titleController.text}"吗？归档后可在「已归档」区查看和恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('归档'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      _autoSaveTimer?.cancel();
+      context.read<TaskNewBloc>().add(ArchiveTask(id: widget.task.id));
       setState(() => _allowPop = true);
       Navigator.pop(context);
     }

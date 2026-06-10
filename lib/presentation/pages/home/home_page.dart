@@ -119,7 +119,13 @@ class _HomePageState extends State<HomePage> {
     _loadTasksDebounce?.cancel();
     _loadTasksDebounce = Timer(const Duration(milliseconds: 500), () {
       if (mounted) {
-        context.read<TaskNewBloc>().add(LoadTasks());
+        final bloc = context.read<TaskNewBloc>();
+        final state = bloc.state;
+        if (state is TaskNewLoaded && state.showArchivedView) {
+          bloc.add(LoadArchivedTasks(statusFilter: state.selectedStatusFilter));
+        } else {
+          bloc.add(LoadTasks());
+        }
       }
     });
   }

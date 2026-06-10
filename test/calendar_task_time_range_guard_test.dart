@@ -102,6 +102,7 @@ Task _task(
     isAllDay: 0,
     sortOrder: 0,
     deleted: deleted,
+    archived: 0,
     createdAt: 0,
     updatedAt: 0,
     remindBeforeMinutes: 15,

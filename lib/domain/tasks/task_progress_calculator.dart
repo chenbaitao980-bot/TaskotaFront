@@ -18,8 +18,10 @@ class TaskProgressCalculator {
     required List<ChecklistItem> checklistItems,
     List<Project> projects = const [],
   }) {
+    // 进度计算排除已归档任务
+    final activeTasks = tasks.where((t) => t.archived == 0).toList();
     final childrenByParent = <String, List<Task>>{};
-    for (final task in tasks) {
+    for (final task in activeTasks) {
       final parentId = task.parentId;
       if (parentId == null) continue;
       childrenByParent.putIfAbsent(parentId, () => []).add(task);
@@ -50,13 +52,13 @@ class TaskProgressCalculator {
     }
 
     final taskProgress = <String, int>{};
-    for (final task in tasks) {
+    for (final task in activeTasks) {
       taskProgress[task.id] = tallyForTask(task, <String>{}).percent;
     }
 
     // 项目进度：只累加根任务，每个根任务贡献其递归进度（已含子任务聚合）
     final projectTotals = <String, _ProgressTally>{};
-    for (final task in tasks) {
+    for (final task in activeTasks) {
       if (task.parentId != null) continue; // 跳过子任务，避免重复计入
       projectTotals[task.projectId] =
           (projectTotals[task.projectId] ?? const _ProgressTally(0, 0)) +

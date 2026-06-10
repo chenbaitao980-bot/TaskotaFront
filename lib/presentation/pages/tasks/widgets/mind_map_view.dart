@@ -1845,6 +1845,16 @@ class _MindMapNodeCard extends StatelessWidget {
           ),
         ),
         const PopupMenuItem(
+          value: 'archive',
+          child: Row(
+            children: [
+              Icon(Icons.archive_outlined, size: 18),
+              SizedBox(width: 8),
+              Text('归档'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
           value: 'delete',
           child: Row(
             children: [
@@ -1857,6 +1867,9 @@ class _MindMapNodeCard extends StatelessWidget {
       ],
     ).then((value) {
       if (value == 'edit') onTap();
+      if (value == 'archive') {
+        context.read<TaskNewBloc>().add(ArchiveTask(id: node.task.id));
+      }
       if (value == 'delete') onDelete();
     });
   }

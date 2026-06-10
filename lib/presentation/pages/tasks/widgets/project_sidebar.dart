@@ -25,6 +25,8 @@ class ProjectSidebar extends StatelessWidget {
   final void Function(ProjectGroup)? onDeleteGroup;
   final void Function(ProjectGroup)? onCreateProjectInGroup;
   final bool isTemplateMode;
+  final VoidCallback? onShowArchived;
+  final bool showArchivedView;
 
   const ProjectSidebar({
     super.key,
@@ -50,6 +52,8 @@ class ProjectSidebar extends StatelessWidget {
     this.onDeleteGroup,
     this.onCreateProjectInGroup,
     this.isTemplateMode = false,
+    this.onShowArchived,
+    this.showArchivedView = false,
   });
 
   @override
@@ -211,6 +215,30 @@ class ProjectSidebar extends StatelessWidget {
                     )
                   : _buildGroupedProjects(),
             ),
+            if (!isTemplateMode) ...[
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: Icon(
+                  Icons.inventory_2_outlined,
+                  color: showArchivedView ? AppTheme.primaryColor : AppTheme.textHint,
+                  size: 22,
+                ),
+                title: Text(
+                  '已归档',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: showArchivedView ? FontWeight.w600 : FontWeight.normal,
+                    color: showArchivedView ? AppTheme.primaryColor : AppTheme.textPrimary,
+                  ),
+                ),
+                dense: true,
+                onTap: onShowArchived,
+                selected: showArchivedView,
+                selectedTileColor: AppTheme.primaryColor.withValues(alpha: 0.06),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              const SizedBox(height: 8),
+            ],
           ],
         ),
       ),

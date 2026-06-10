@@ -34,6 +34,7 @@ class TaskNewLoaded extends TaskNewState {
   final String? focusTaskId;
   final int? focusRequestToken;
   final String? searchKeyword;
+  final bool showArchivedView;
 
   TaskNewLoaded({
     this.projects = const [],
@@ -58,6 +59,7 @@ class TaskNewLoaded extends TaskNewState {
     this.focusTaskId,
     this.focusRequestToken,
     this.searchKeyword,
+    this.showArchivedView = false,
   }) : selectedProjectIds = selectedProjectIds.isNotEmpty
            ? selectedProjectIds
            : (selectedProjectId == null ? const {} : {selectedProjectId});
@@ -87,6 +89,7 @@ class TaskNewLoaded extends TaskNewState {
     String? focusTaskId,
     int? focusRequestToken,
     String? searchKeyword,
+    bool? showArchivedView,
   }) {
     return TaskNewLoaded(
       projects: projects ?? this.projects,
@@ -116,6 +119,7 @@ class TaskNewLoaded extends TaskNewState {
       focusTaskId: focusTaskId ?? this.focusTaskId,
       focusRequestToken: focusRequestToken ?? this.focusRequestToken,
       searchKeyword: searchKeyword ?? this.searchKeyword,
+      showArchivedView: showArchivedView ?? this.showArchivedView,
     );
   }
 
@@ -142,6 +146,7 @@ class TaskNewLoaded extends TaskNewState {
     focusTaskId,
     focusRequestToken,
     searchKeyword,
+    showArchivedView,
   ];
 }
 

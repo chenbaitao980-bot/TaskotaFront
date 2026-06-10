@@ -819,6 +819,19 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _archivedMeta = const VerificationMeta(
+    'archived',
+  );
+  @override
+  late final GeneratedColumn<int> archived = GeneratedColumn<int>(
+    'archived',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -839,6 +852,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     remindBeforeMinutes,
     reminderEnabled,
     estimatedMinutes,
+    archived,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -982,6 +996,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         ),
       );
     }
+    if (data.containsKey('archived')) {
+      context.handle(
+        _archivedMeta,
+        archived.isAcceptableOrUnknown(data['archived']!, _archivedMeta),
+      );
+    }
     return context;
   }
 
@@ -1063,6 +1083,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.int,
         data['${effectivePrefix}estimated_minutes'],
       ),
+      archived: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}archived'],
+      )!,
     );
   }
 
@@ -1091,6 +1115,7 @@ class Task extends DataClass implements Insertable<Task> {
   final int remindBeforeMinutes;
   final int reminderEnabled;
   final int? estimatedMinutes;
+  final int archived;
   const Task({
     required this.id,
     required this.projectId,
@@ -1110,6 +1135,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.remindBeforeMinutes,
     required this.reminderEnabled,
     this.estimatedMinutes,
+    required this.archived,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1142,6 +1168,7 @@ class Task extends DataClass implements Insertable<Task> {
     if (!nullToAbsent || estimatedMinutes != null) {
       map['estimated_minutes'] = Variable<int>(estimatedMinutes);
     }
+    map['archived'] = Variable<int>(archived);
     return map;
   }
 
@@ -1175,6 +1202,7 @@ class Task extends DataClass implements Insertable<Task> {
       estimatedMinutes: estimatedMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(estimatedMinutes),
+      archived: Value(archived),
     );
   }
 
@@ -1204,6 +1232,7 @@ class Task extends DataClass implements Insertable<Task> {
       ),
       reminderEnabled: serializer.fromJson<int>(json['reminderEnabled']),
       estimatedMinutes: serializer.fromJson<int?>(json['estimatedMinutes']),
+      archived: serializer.fromJson<int>(json['archived']),
     );
   }
   @override
@@ -1228,6 +1257,7 @@ class Task extends DataClass implements Insertable<Task> {
       'remindBeforeMinutes': serializer.toJson<int>(remindBeforeMinutes),
       'reminderEnabled': serializer.toJson<int>(reminderEnabled),
       'estimatedMinutes': serializer.toJson<int?>(estimatedMinutes),
+      'archived': serializer.toJson<int>(archived),
     };
   }
 
@@ -1250,6 +1280,7 @@ class Task extends DataClass implements Insertable<Task> {
     int? remindBeforeMinutes,
     int? reminderEnabled,
     Value<int?> estimatedMinutes = const Value.absent(),
+    int? archived,
   }) => Task(
     id: id ?? this.id,
     projectId: projectId ?? this.projectId,
@@ -1273,6 +1304,7 @@ class Task extends DataClass implements Insertable<Task> {
     estimatedMinutes: estimatedMinutes.present
         ? estimatedMinutes.value
         : this.estimatedMinutes,
+    archived: archived ?? this.archived,
   );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -1304,6 +1336,7 @@ class Task extends DataClass implements Insertable<Task> {
       estimatedMinutes: data.estimatedMinutes.present
           ? data.estimatedMinutes.value
           : this.estimatedMinutes,
+      archived: data.archived.present ? data.archived.value : this.archived,
     );
   }
 
@@ -1327,7 +1360,8 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('updatedAt: $updatedAt, ')
           ..write('remindBeforeMinutes: $remindBeforeMinutes, ')
           ..write('reminderEnabled: $reminderEnabled, ')
-          ..write('estimatedMinutes: $estimatedMinutes')
+          ..write('estimatedMinutes: $estimatedMinutes, ')
+          ..write('archived: $archived')
           ..write(')'))
         .toString();
   }
@@ -1352,6 +1386,7 @@ class Task extends DataClass implements Insertable<Task> {
     remindBeforeMinutes,
     reminderEnabled,
     estimatedMinutes,
+    archived,
   );
   @override
   bool operator ==(Object other) =>
@@ -1374,7 +1409,8 @@ class Task extends DataClass implements Insertable<Task> {
           other.updatedAt == this.updatedAt &&
           other.remindBeforeMinutes == this.remindBeforeMinutes &&
           other.reminderEnabled == this.reminderEnabled &&
-          other.estimatedMinutes == this.estimatedMinutes);
+          other.estimatedMinutes == this.estimatedMinutes &&
+          other.archived == this.archived);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -1396,6 +1432,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<int> remindBeforeMinutes;
   final Value<int> reminderEnabled;
   final Value<int?> estimatedMinutes;
+  final Value<int> archived;
   final Value<int> rowid;
   const TasksCompanion({
     this.id = const Value.absent(),
@@ -1416,6 +1453,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.remindBeforeMinutes = const Value.absent(),
     this.reminderEnabled = const Value.absent(),
     this.estimatedMinutes = const Value.absent(),
+    this.archived = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TasksCompanion.insert({
@@ -1437,6 +1475,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.remindBeforeMinutes = const Value.absent(),
     this.reminderEnabled = const Value.absent(),
     this.estimatedMinutes = const Value.absent(),
+    this.archived = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        projectId = Value(projectId),
@@ -1462,6 +1501,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<int>? remindBeforeMinutes,
     Expression<int>? reminderEnabled,
     Expression<int>? estimatedMinutes,
+    Expression<int>? archived,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1484,6 +1524,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
         'remind_before_minutes': remindBeforeMinutes,
       if (reminderEnabled != null) 'reminder_enabled': reminderEnabled,
       if (estimatedMinutes != null) 'estimated_minutes': estimatedMinutes,
+      if (archived != null) 'archived': archived,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1507,6 +1548,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<int>? remindBeforeMinutes,
     Value<int>? reminderEnabled,
     Value<int?>? estimatedMinutes,
+    Value<int>? archived,
     Value<int>? rowid,
   }) {
     return TasksCompanion(
@@ -1528,6 +1570,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       remindBeforeMinutes: remindBeforeMinutes ?? this.remindBeforeMinutes,
       reminderEnabled: reminderEnabled ?? this.reminderEnabled,
       estimatedMinutes: estimatedMinutes ?? this.estimatedMinutes,
+      archived: archived ?? this.archived,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1589,6 +1632,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (estimatedMinutes.present) {
       map['estimated_minutes'] = Variable<int>(estimatedMinutes.value);
     }
+    if (archived.present) {
+      map['archived'] = Variable<int>(archived.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1616,6 +1662,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('remindBeforeMinutes: $remindBeforeMinutes, ')
           ..write('reminderEnabled: $reminderEnabled, ')
           ..write('estimatedMinutes: $estimatedMinutes, ')
+          ..write('archived: $archived, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4353,6 +4400,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<int> remindBeforeMinutes,
       Value<int> reminderEnabled,
       Value<int?> estimatedMinutes,
+      Value<int> archived,
       Value<int> rowid,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
@@ -4375,6 +4423,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<int> remindBeforeMinutes,
       Value<int> reminderEnabled,
       Value<int?> estimatedMinutes,
+      Value<int> archived,
       Value<int> rowid,
     });
 
@@ -4508,6 +4557,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<int> get estimatedMinutes => $composableBuilder(
     column: $table.estimatedMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get archived => $composableBuilder(
+    column: $table.archived,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4654,6 +4708,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get archived => $composableBuilder(
+    column: $table.archived,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProjectsTableOrderingComposer get projectId {
     final $$ProjectsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4747,6 +4806,9 @@ class $$TasksTableAnnotationComposer
     column: $table.estimatedMinutes,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get archived =>
+      $composableBuilder(column: $table.archived, builder: (column) => column);
 
   $$ProjectsTableAnnotationComposer get projectId {
     final $$ProjectsTableAnnotationComposer composer = $composerBuilder(
@@ -4843,6 +4905,7 @@ class $$TasksTableTableManager
                 Value<int> remindBeforeMinutes = const Value.absent(),
                 Value<int> reminderEnabled = const Value.absent(),
                 Value<int?> estimatedMinutes = const Value.absent(),
+                Value<int> archived = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
@@ -4863,6 +4926,7 @@ class $$TasksTableTableManager
                 remindBeforeMinutes: remindBeforeMinutes,
                 reminderEnabled: reminderEnabled,
                 estimatedMinutes: estimatedMinutes,
+                archived: archived,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4885,6 +4949,7 @@ class $$TasksTableTableManager
                 Value<int> remindBeforeMinutes = const Value.absent(),
                 Value<int> reminderEnabled = const Value.absent(),
                 Value<int?> estimatedMinutes = const Value.absent(),
+                Value<int> archived = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
@@ -4905,6 +4970,7 @@ class $$TasksTableTableManager
                 remindBeforeMinutes: remindBeforeMinutes,
                 reminderEnabled: reminderEnabled,
                 estimatedMinutes: estimatedMinutes,
+                archived: archived,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

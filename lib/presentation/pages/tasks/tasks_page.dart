@@ -115,7 +115,25 @@ class _TasksPageState extends State<TasksPage> {
         }
         if (state is TaskNewError && state.isQuotaExceeded) {
           UpgradeDialog.show(context, message: state.message);
-          context.read<TaskNewBloc>().add(LoadTasks());
+          if (_lastLoaded?.showArchivedView == true) {
+            context.read<TaskNewBloc>().add(
+              LoadArchivedTasks(statusFilter: _lastLoaded?.selectedStatusFilter ?? 'all'),
+            );
+          } else {
+            context.read<TaskNewBloc>().add(LoadTasks());
+          }
+        } else if (state is TaskNewError && !state.isQuotaExceeded) {
+          showAppSnackBar(context, state.message);
+          // 恢复到上一次加载的视图（归档/普通），避免错误后闪回正常页面
+          if (_lastLoaded?.showArchivedView == true) {
+            context.read<TaskNewBloc>().add(
+              LoadArchivedTasks(
+                statusFilter: _lastLoaded?.selectedStatusFilter ?? 'all',
+              ),
+            );
+          } else {
+            context.read<TaskNewBloc>().add(LoadTasks());
+          }
         }
       },
       builder: (context, state) {
@@ -220,7 +238,6 @@ class _TasksPageState extends State<TasksPage> {
                           delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
                         );
                         if (taskId != null && context.mounted) {
-                          // 清除搜索状态
                           context.read<TaskNewBloc>().add(SetSearchQuery(null));
                           final st = context.read<TaskNewBloc>().state;
                           if (st is TaskNewLoaded) {
@@ -230,12 +247,6 @@ class _TasksPageState extends State<TasksPage> {
                       },
                     ),
                     _buildStatusFilterButton(effective),
-                    // 模板节点功能暂时隐藏
-                    // IconButton(
-                    //   tooltip: '模板节点',
-                    //   icon: const Icon(Icons.dashboard_customize_outlined),
-                    //   onPressed: () => _openNodeTemplatesPage(context),
-                    // ),
                     IconButton(
                       tooltip: '排除项目',
                       icon: Icon(
@@ -301,8 +312,15 @@ class _TasksPageState extends State<TasksPage> {
                 _showEditProjectDialog(context, project),
             onDeleteProject: (project) =>
                 _confirmDeleteProject(context, project),
+            showArchivedView: effective.showArchivedView,
+            onShowArchived: () {
+              Navigator.pop(context);
+              context.read<TaskNewBloc>().add(LoadArchivedTasks());
+            },
           ),
-          body: effective.viewMode == 'mindmap'
+          body: effective.showArchivedView
+              ? _buildArchivedView(context, effective)
+              : effective.viewMode == 'mindmap'
               ? MindMapView(
                   tasks: effective.tasks,
                   userId: _getUserId(),
@@ -358,6 +376,82 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
+  Widget _buildArchivedView(BuildContext context, TaskNewLoaded state) {
+    final tasks = state.tasks;
+    if (tasks.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.textHint),
+            const SizedBox(height: 16),
+            Text('暂无归档任务', style: TextStyle(color: AppTheme.textHint, fontSize: 16)),
+          ],
+        ),
+      );
+    }
+    final projectNames = <String, String>{
+      for (final p in state.projects) p.id: p.name,
+    };
+
+    if (state.viewMode == 'mindmap') {
+      return MindMapView(
+        tasks: tasks,
+        userId: _getUserId(),
+        projectNames: projectNames,
+        projects: state.projects,
+        taskProgress: state.taskProgress,
+        selectedFilter: state.selectedFilter,
+        selectedProjectId: state.selectedProjectId,
+        focusTaskId: state.focusTaskId,
+        focusRequestToken: state.focusRequestToken,
+        expandedIds: state.expandedNodes['main_tree'] ?? {},
+        onTaskTap: (id) => _openTaskDetail(id, state),
+        onTaskToggle: (id) => _handleToggleTaskStatus(id, state),
+        onTaskDelete: (id) => _confirmDeleteTask(id),
+        onToggleExpand: (id) => context.read<TaskNewBloc>().add(
+          ToggleTaskExpand(taskId: id),
+        ),
+        onMoveToParent: (taskId, newParentId) => _handleMoveToParent(
+          taskId,
+          newParentId,
+          state.selectedProjectId,
+        ),
+        onAddSubtask: (parentId) =>
+            _showCreateTaskSheet(context, parentId: parentId),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: tasks.length,
+      itemBuilder: (context, index) {
+        final task = tasks[index];
+        return ListTile(
+          leading: const Icon(Icons.inventory_2_outlined),
+          title: Text(
+            task.title,
+            style: TextStyle(
+              decoration: task.status == 2 ? TextDecoration.lineThrough : null,
+              color: task.status == 2 ? AppTheme.textHint : AppTheme.textPrimary,
+            ),
+          ),
+          subtitle: Text(
+            projectNames[task.projectId] ?? task.projectId,
+            style: TextStyle(fontSize: 12, color: AppTheme.textHint),
+          ),
+          trailing: TextButton.icon(
+            icon: const Icon(Icons.unarchive_outlined, size: 16),
+            label: const Text('恢复'),
+            onPressed: () {
+              context.read<TaskNewBloc>().add(UnarchiveTask(id: task.id));
+            },
+          ),
+        );
+      },
+    );
+  }
+
   String _getUserId() {
     final authState = context.read<AuthBloc>().state;
     if (authState is Authenticated) return authState.user.id;
@@ -366,6 +460,7 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   String _getTitle(TaskNewLoaded state) {
+    if (state.showArchivedView) return '已归档';
     if (state.isTemplateMode) return '模板节点';
     if (state.selectedFilter == 'today') return '今天';
     if (state.selectedFilter == 'important') return '重要';
@@ -393,15 +488,22 @@ class _TasksPageState extends State<TasksPage> {
       ),
       tooltip: '任务状态',
       onSelected: (value) {
-        context.read<TaskNewBloc>().add(
-          LoadTasks(
-            projectIds: state.selectedProjectIds,
-            filter: state.selectedFilter,
-            statusFilter: value,
-            dateFrom: state.dateFrom,
-            dateTo: state.dateTo,
-          ),
-        );
+        // 读取最新 bloc 状态，避免闭包捕获旧快照导致判断错误
+        final cur = context.read<TaskNewBloc>().state;
+        final isArchived = cur is TaskNewLoaded && cur.showArchivedView;
+        if (isArchived) {
+          context.read<TaskNewBloc>().add(LoadArchivedTasks(statusFilter: value));
+        } else {
+          context.read<TaskNewBloc>().add(
+            LoadTasks(
+              projectIds: state.selectedProjectIds,
+              filter: state.selectedFilter,
+              statusFilter: value,
+              dateFrom: state.dateFrom,
+              dateTo: state.dateTo,
+            ),
+          );
+        }
       },
       itemBuilder: (context) => filters.map((value) {
         final isSelected = value == selected;
@@ -455,6 +557,13 @@ class _TasksPageState extends State<TasksPage> {
       ),
       tooltip: hasFilter ? '清除日期筛选' : '按日期筛选',
       onPressed: () async {
+        if (state.showArchivedView) {
+          // 归档视图下日期筛选无意义，保持归档视图不跳转
+          context.read<TaskNewBloc>().add(
+            LoadArchivedTasks(statusFilter: state.selectedStatusFilter),
+          );
+          return;
+        }
         if (hasFilter) {
           context.read<TaskNewBloc>().add(
             LoadTasks(
@@ -540,17 +649,23 @@ class _TasksPageState extends State<TasksPage> {
         ),
       ),
     );
-    // 从详情页返回后刷新列表
+    // 从详情页返回后刷新列表，归档视图保持归档视图
     if (mounted) {
-      context.read<TaskNewBloc>().add(
-        LoadTasks(
-          projectIds: state.selectedProjectIds,
-          filter: state.selectedFilter,
-          statusFilter: state.selectedStatusFilter,
-          dateFrom: state.dateFrom,
-          dateTo: state.dateTo,
-        ),
-      );
+      if (state.showArchivedView) {
+        context.read<TaskNewBloc>().add(
+          LoadArchivedTasks(statusFilter: state.selectedStatusFilter),
+        );
+      } else {
+        context.read<TaskNewBloc>().add(
+          LoadTasks(
+            projectIds: state.selectedProjectIds,
+            filter: state.selectedFilter,
+            statusFilter: state.selectedStatusFilter,
+            dateFrom: state.dateFrom,
+            dateTo: state.dateTo,
+          ),
+        );
+      }
     }
   }
 
@@ -637,12 +752,18 @@ class _TasksPageState extends State<TasksPage> {
     await _storage.setExcludedProjectIds(result);
     if (!mounted) return;
     setState(() => _excludedProjectIds = result);
-    context.read<TaskNewBloc>().add(
-      LoadTasks(
-        projectIds: state.selectedProjectIds.difference(result),
-        filter: state.selectedFilter,
-      ),
-    );
+    if (state.showArchivedView) {
+      context.read<TaskNewBloc>().add(
+        LoadArchivedTasks(statusFilter: state.selectedStatusFilter),
+      );
+    } else {
+      context.read<TaskNewBloc>().add(
+        LoadTasks(
+          projectIds: state.selectedProjectIds.difference(result),
+          filter: state.selectedFilter,
+        ),
+      );
+    }
   }
 
   Future<void> _showProjectFilterDialog(
@@ -696,9 +817,15 @@ class _TasksPageState extends State<TasksPage> {
       ),
     );
     if (result == null || !mounted) return;
-    context.read<TaskNewBloc>().add(
-      LoadTasks(projectIds: result, filter: state.selectedFilter),
-    );
+    if (state.showArchivedView) {
+      context.read<TaskNewBloc>().add(
+        LoadArchivedTasks(statusFilter: state.selectedStatusFilter),
+      );
+    } else {
+      context.read<TaskNewBloc>().add(
+        LoadTasks(projectIds: result, filter: state.selectedFilter),
+      );
+    }
   }
 
   void _confirmDeleteTask(String id) {

@@ -18,7 +18,7 @@ class TaskRepository {
     int? priority,
   }) async {
     final query = _db.select(_db.tasks)
-      ..where((t) => t.deleted.equals(0))
+      ..where((t) => t.deleted.equals(0) & t.archived.equals(0))
       ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]);
     if (projectId != null) {
       query.where((t) => t.projectId.equals(projectId));
@@ -34,7 +34,7 @@ class TaskRepository {
 
   Future<List<Task>> getRootTasks({String? projectId, int? status}) async {
     final query = _db.select(_db.tasks)
-      ..where((t) => t.parentId.isNull() & t.deleted.equals(0))
+      ..where((t) => t.parentId.isNull() & t.deleted.equals(0) & t.archived.equals(0))
       ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]);
     if (projectId != null) {
       query.where((t) => t.projectId.equals(projectId));
@@ -48,14 +48,14 @@ class TaskRepository {
   Future<int> getActiveCountForProject(String projectId) async {
     final result = await (_db.select(_db.tasks)
           ..where(
-              (t) => t.projectId.equals(projectId) & t.deleted.equals(0)))
+              (t) => t.projectId.equals(projectId) & t.deleted.equals(0) & t.archived.equals(0)))
         .get();
     return result.length;
   }
 
   Future<List<Task>> getByProject(String projectId, {int? status}) async {
     final query = _db.select(_db.tasks)
-      ..where((t) => t.projectId.equals(projectId) & t.deleted.equals(0))
+      ..where((t) => t.projectId.equals(projectId) & t.deleted.equals(0) & t.archived.equals(0))
       ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]);
     if (status != null) {
       query.where((t) => t.status.equals(status));
@@ -74,7 +74,8 @@ class TaskRepository {
                   Variable(startOfDay.millisecondsSinceEpoch),
                   Variable(endOfDay.millisecondsSinceEpoch),
                 ) &
-                t.deleted.equals(0),
+                t.deleted.equals(0) &
+                t.archived.equals(0),
           )
           ..orderBy([
             (t) =>
@@ -87,10 +88,82 @@ class TaskRepository {
     return (_db.select(_db.tasks)
           ..where(
             (t) =>
-                t.priority.equals(5) & t.status.equals(0) & t.deleted.equals(0),
+                t.priority.equals(5) & t.status.equals(0) & t.deleted.equals(0) & t.archived.equals(0),
           )
           ..orderBy([(t) => OrderingTerm(expression: t.dueDate)]))
         .get();
+  }
+
+  /// 获取所有已归档任务（未删除），支持搜索关键词和日期区间过滤
+  Future<List<Task>> getArchived({String? searchKeyword, int? dateFrom, int? dateTo}) async {
+    final query = _db.select(_db.tasks);
+    if (searchKeyword != null && searchKeyword.isNotEmpty) {
+      final pattern = '%$searchKeyword%';
+      query.where((t) =>
+          t.archived.equals(1) &
+          t.deleted.equals(0) &
+          (t.title.like(pattern) | t.description.like(pattern)));
+    } else {
+      query.where((t) => t.archived.equals(1) & t.deleted.equals(0));
+    }
+    query.orderBy([(t) => OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)]);
+
+    var result = await query.get();
+
+    // 日期区间过滤：任务的 [startDate, dueDate] 与 [dateFrom, dateTo] 有交集
+    if (dateFrom != null && dateTo != null) {
+      result = result.where((t) {
+        final s = t.startDate ?? t.dueDate;
+        final d = t.dueDate ?? t.startDate;
+        if (s == null && d == null) return false;
+        final taskStart = s ?? d!;
+        final taskEnd = d ?? s!;
+        return taskStart <= dateTo && taskEnd >= dateFrom;
+      }).toList();
+    }
+
+    return result;
+  }
+
+  /// 归档任务（递归将所有后代也设为 archived=1）
+  Future<void> archiveTask(String id, {bool syncImmediately = true}) async {
+    final descendants = await getDescendants(id);
+    final ids = <String>[id, ...descendants.map((d) => d.id)];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (final tid in ids) {
+        batch.update(
+          _db.tasks,
+          TasksCompanion(archived: const Value(1), updatedAt: Value(now)),
+          where: (t) => t.id.equals(tid),
+        );
+      }
+    });
+    if (syncImmediately) {
+      for (final tid in ids) {
+        final updated = await _getRaw(tid);
+        if (updated != null) _syncService?.push(updated);
+      }
+    }
+  }
+
+  /// 取消归档（仅恢复自身，子任务保持各自归档状态）
+  Future<void> unarchiveTask(String id, {bool syncImmediately = true}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (_db.update(_db.tasks)..where((t) => t.id.equals(id))).write(
+      TasksCompanion(archived: const Value(0), updatedAt: Value(now)),
+    );
+    if (syncImmediately) {
+      final updated = await _getRaw(id);
+      if (updated != null) _syncService?.push(updated);
+    }
+  }
+
+  /// 检查任务的所有后代是否都已完成（status==2），用于归档前拦截
+  Future<bool> allDescendantsCompleted(String id) async {
+    final descendants = await getDescendants(id);
+    if (descendants.isEmpty) return true;
+    return descendants.every((t) => t.status == 2);
   }
 
   /// Search task IDs matching keyword in title, description, or checklist item titles.
@@ -101,6 +174,7 @@ class TaskRepository {
     final tasksMatch = await (_db.select(_db.tasks)
       ..where((t) =>
           t.deleted.equals(0) &
+          t.archived.equals(0) &
           (t.title.like(pattern) | t.description.like(pattern)))
     ).get();
     final matchedIds = tasksMatch.map((t) => t.id).toSet();
@@ -122,6 +196,14 @@ class TaskRepository {
   // --- 子任务树 ---
 
   Future<List<Task>> getSubTasks(String parentId) async {
+    return (_db.select(_db.tasks)
+          ..where((t) => t.parentId.equals(parentId) & t.deleted.equals(0) & t.archived.equals(0))
+          ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
+        .get();
+  }
+
+  /// 获取子任务（含归档），用于归档前递归检查
+  Future<List<Task>> getSubTasksIncludingArchived(String parentId) async {
     return (_db.select(_db.tasks)
           ..where((t) => t.parentId.equals(parentId) & t.deleted.equals(0))
           ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
@@ -583,6 +665,7 @@ class TaskRepository {
       estimatedMinutes: json['estimatedMinutes'] != null
           ? Value(json['estimatedMinutes'] as int)
           : const Value.absent(),
+      archived: Value(json['archived'] as int? ?? 0),
       updatedAt: Value(remoteUpdated),
     );
 
@@ -664,6 +747,7 @@ class TaskRepository {
               estimatedMinutes: json['estimatedMinutes'] != null
                   ? Value(json['estimatedMinutes'] as int)
                   : const Value.absent(),
+              archived: Value(json['archived'] as int? ?? 0),
               completedTime: json['completedTime'] != null
                   ? Value(json['completedTime'] as int)
                   : const Value.absent(),

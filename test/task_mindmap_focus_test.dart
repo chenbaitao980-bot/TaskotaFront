@@ -421,6 +421,7 @@ Task _task(String id, {String? parentId}) {
     isAllDay: 0,
     sortOrder: 0,
     deleted: 0,
+    archived: 0,
     createdAt: 0,
     updatedAt: 0,
     remindBeforeMinutes: 15,

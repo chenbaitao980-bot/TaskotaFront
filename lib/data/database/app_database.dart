@@ -59,6 +59,7 @@ class Tasks extends Table {
   IntColumn get reminderEnabled =>
       integer().customConstraint('NOT NULL DEFAULT 1')();
   IntColumn? get estimatedMinutes => integer().nullable()();
+  IntColumn get archived => integer().customConstraint('NOT NULL DEFAULT 0')();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -132,7 +133,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration {
@@ -195,6 +196,9 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id ON task_attachments (task_id)');
           await customStatement('CREATE INDEX IF NOT EXISTS idx_projects_deleted ON projects (deleted)');
           await customStatement('CREATE INDEX IF NOT EXISTS idx_projects_group_id ON projects (group_id)');
+        }
+        if (from < 11) {
+          await m.addColumn(tasks, tasks.archived);
         }
       },
     );
