@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
+- **Total Sessions**: 26
 - **Last Active**: 2026-06-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~902 | Active |
+| `journal-1.md` | ~935 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-06-10 | 修复归档页面切换与自动定位 | `f7fc52e` | `master` |
 | 25 | 2026-06-10 | fix: archive bugs - flashback, view switch, search/filter | `7fd448f` | `master` |
 | 24 | 2026-06-10 | 修复后台右侧留白 + 首页 Hero 布局 | - | `master` |
 | 23 | 2026-06-10 | 导出页分组多选 + Excel 分组列 | `0101c1c`, `d0528f7` | `master` |

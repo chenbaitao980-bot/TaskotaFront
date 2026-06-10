@@ -900,3 +900,36 @@ taskora-website: 修复所有 admin 页面右侧留白（Starlight right-sidebar
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: 修复归档页面切换与自动定位
+
+**Date**: 2026-06-10
+**Task**: 修复归档页面切换与自动定位
+**Branch**: `master`
+
+### Summary
+
+修复两个归档视图bug：(1) 进入归档后无法切换回正常页面 — 在onShowArchived中判断当前状态，已归档时再次点击则切回所有任务；(2) 切换到归档后不会自动定位到最近任务 — 在_onLoadArchivedTasks中设置focusTaskId为列表第一个任务并更新focusRequestToken
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f7fc52e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
