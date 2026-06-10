@@ -40,6 +40,7 @@ import 'services/task_sync_service.dart';
 import 'services/node_template_sync_service.dart';
 import 'services/subscription_service.dart';
 import 'services/member_config_service.dart';
+import 'services/app_config_service.dart';
 
 void main() async {
   runZonedGuarded(() async {
@@ -115,6 +116,7 @@ Future<void> _initDeferredServices() async {
   }
   unawaited(AliyunPushService().init());
   unawaited(MemberConfigService.instance.init());
+  unawaited(AppConfigService.instance.init());
   unawaited(SubscriptionService.instance.refresh());
 }
 

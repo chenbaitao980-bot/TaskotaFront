@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../services/app_config_service.dart';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
@@ -9,11 +10,15 @@ class AboutPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 每次 build 从单例读取最新配置（Local-First：缓存优先，无缓存时回退到硬编码默认值）
+    final sections = loadAboutContent();
+
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
         children: [
+          // 品牌卡片（保持固定，不纳入动态配置）
           Container(
             decoration: BoxDecoration(
               color: AppTheme.bgCard,
@@ -54,32 +59,11 @@ class AboutPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const _AboutSection(
-            title: '核心能力',
-            items: [
-              '把目标拆成可执行的任务、子任务和检查项。',
-              '支持日历视图、任务排期、提醒和重复提醒。',
-              '支持附件、Obsidian 链接、项目分组和多主题切换。',
-            ],
-          ),
-          SizedBox(height: 14),
-          const _AboutSection(
-            title: '数据与同步',
-            items: [
-              '未登录时，任务和偏好设置主要保存在本机。',
-              '登录后，任务、项目、检查项和附件元数据会通过 Supabase 同步。',
-              '本地数据以设备应用数据目录为准，卸载或清理应用数据会影响本地记录。',
-            ],
-          ),
-          SizedBox(height: 14),
-          const _AboutSection(
-            title: '隐私与权限',
-            items: [
-              '通知权限用于任务和日程提醒。',
-              '文件访问只在用户主动选择或打开附件时使用。',
-              'AI 拆解会处理用户主动提交的任务标题、描述和相关附件文本。',
-            ],
-          ),
+          // 动态内容区
+          for (final section in sections) ...[
+            _AboutSection(title: section.title, items: section.items),
+            const SizedBox(height: 14),
+          ],
         ],
       ),
     );

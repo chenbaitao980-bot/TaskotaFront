@@ -19,7 +19,6 @@ import 'task_export_page.dart';
 import 'theme_settings_page.dart';
 import 'vip_page.dart';
 import '../../../data/database/app_database.dart';
-import 'admin_ops_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final AppDatabase? database;
@@ -330,19 +329,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ? null
                   : const VipLockIcon(),
             ),
-            Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
-            _buildMenuItem(Icons.admin_panel_settings_rounded, '运维后台', () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AdminOpsPage(
-                    database: widget.database,
-                    taskRepository: widget.taskRepository,
-                    projectRepository: widget.projectRepository,
-                  ),
-                ),
-              );
-            }),
             Divider(height: 0.5, indent: 52, color: AppTheme.borderSubtle),
             _buildMenuItem(Icons.help_outline_rounded, '帮助与反馈', () {
               Navigator.push(
