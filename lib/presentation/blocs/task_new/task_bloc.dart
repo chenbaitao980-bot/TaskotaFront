@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'task_event.dart';
@@ -322,22 +323,22 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           ? templateProjects
           : await projectRepository.getActive();
       await _storage.init();
-      // 首次加载时从本地/云端恢复筛选状态
+      // W4: 首次加载本地优先立即可用，云端偏好后台拉取不阻塞首批数据
       if (state is! TaskNewLoaded) {
         final localPrefs = _storage.getTaskFilterState();
-        final cloudPrefs = await supabaseService?.fetchPreferences();
-        final prefs = cloudPrefs ?? localPrefs;
-        if (prefs != null) {
-          preservedFilter = prefs['selectedFilter'] as String? ?? 'all';
+        if (localPrefs != null) {
+          preservedFilter = localPrefs['selectedFilter'] as String? ?? 'all';
           preservedStatusFilter =
-              prefs['selectedStatusFilter'] as String? ?? 'all';
-          preservedViewMode = prefs['viewMode'] as String? ?? 'mindmap';
-          preservedProjectIds = (prefs['projectIds'] as List<dynamic>? ?? [])
+              localPrefs['selectedStatusFilter'] as String? ?? 'all';
+          preservedViewMode = localPrefs['viewMode'] as String? ?? 'mindmap';
+          preservedProjectIds = (localPrefs['projectIds'] as List<dynamic>? ?? [])
               .cast<String>()
               .toSet();
-          preservedDateFrom = prefs['dateFrom'] as int?;
-          preservedDateTo = prefs['dateTo'] as int?;
+          preservedDateFrom = localPrefs['dateFrom'] as int?;
+          preservedDateTo = localPrefs['dateTo'] as int?;
         }
+        // 后台拉取云端偏好，不 await
+        unawaited(_syncCloudPrefsAfterLoad(localPrefs));
       }
       final excludedProjectIds = _storage.excludedProjectIds;
       final templateProjIds = templateProjects.map((p) => p.id).toSet();
@@ -419,10 +420,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       // 榛樿灞曞紑鎵€鏈夋湁瀛愯妭鐐圭殑浠诲姟
       final newExpanded = Map<String, Set<String>>.from(preservedExpanded);
       if (!newExpanded.containsKey('main_tree')) {
-        final allParentIds = tasks
-            .where((t) => tasks.any((c) => c.parentId == t.id))
-            .map((t) => t.id)
-            .toSet();
+        // M6: parentIdSet O(n) 替代嵌套 any O(n²)
+        final parentIdSet = tasks.map((t) => t.parentId).whereType<String>().toSet();
+        final allParentIds = tasks.where((t) => parentIdSet.contains(t.id)).map((t) => t.id).toSet();
         newExpanded['main_tree'] = allParentIds;
       }
       if (event.focusTaskId != null) {
@@ -493,6 +493,19 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     supabaseService?.syncPreferences(data);
   }
 
+  /// W4: 后台拉取云端偏好，与本地不一致时静默更新（下次 LoadTasks 或筛选变更时生效）
+  Future<void> _syncCloudPrefsAfterLoad(Map<String, dynamic>? localPrefs) async {
+    try {
+      final cloudPrefs = await supabaseService?.fetchPreferences();
+      if (cloudPrefs != null && cloudPrefs != localPrefs) {
+        // 云端偏好已变更，写入本地并同步筛选状态
+        await _storage.saveTaskFilterState(cloudPrefs);
+      }
+    } catch (_) {
+      // 网络失败静默，本地偏好已足够
+    }
+  }
+
   Set<String> _ancestorIds(String taskId, List<Task> tasks) {
     final byId = {for (final task in tasks) task.id: task};
     final ancestors = <String>{};
@@ -538,11 +551,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     try {
       await action();
       await _emitTaskSnapshot(previous, emit, adjustSnapshot: adjustSnapshot);
-      try {
-        await TaskSyncService.instance.syncAll(rethrowErrors: true);
-      } catch (e) {
+      // W1: syncAll 改为后台执行，不阻塞用户后续操作（失败由下次对账兜底）
+      unawaited(TaskSyncService.instance.syncAll().catchError((e) {
         flog('[TaskBloc] syncAll failed (non-fatal): $e');
-      }
+      }));
     } on QuotaExceededException catch (e) {
       emit(TaskNewError(e.toString(), isQuotaExceeded: true));
     } catch (e) {
@@ -1099,12 +1111,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     if (state is TaskNewLoaded) {
       final loaded = state as TaskNewLoaded;
       for (final entry in loaded.subTrees.entries) {
+        // M7: subTrees 以 rootId 为 key，命中即直接返回，无需再次全量扫描
         if (entry.key == taskId || entry.value.any((t) => t.id == taskId)) {
-          for (final rootKey in loaded.subTrees.keys) {
-            if (rootKey == taskId) return rootKey;
-            final tree = loaded.subTrees[rootKey] ?? [];
-            if (tree.any((t) => t.id == taskId)) return rootKey;
-          }
+          return entry.key;
         }
       }
     }
@@ -1229,10 +1238,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
-      final allParentIds = current.tasks
-          .where((t) => current.tasks.any((c) => c.parentId == t.id))
-          .map((t) => t.id)
-          .toSet();
+      // M6: parentIdSet O(n) 替代嵌套 any O(n²)
+      final parentIdSet = current.tasks.map((t) => t.parentId).whereType<String>().toSet();
+      final allParentIds = current.tasks.where((t) => parentIdSet.contains(t.id)).map((t) => t.id).toSet();
       newExpanded['main_tree'] = allParentIds;
       emit(current.copyWith(expandedNodes: newExpanded));
     }

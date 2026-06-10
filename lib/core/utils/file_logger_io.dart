@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 class FileLogger {
@@ -80,5 +81,8 @@ class FileLogger {
 
 void flog(String message) {
   FileLogger.instance.log(message);
-  print(message);
+  if (!kReleaseMode) {
+    // ignore: avoid_print
+    print(message);
+  }
 }

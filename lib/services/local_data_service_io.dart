@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -87,10 +88,33 @@ class LocalDataService {
     await prefs.setString(dataDirectoryPrefKey, targetDir.path);
   }
 
+  // 快照落盘防抖：2 秒内多次小改动合并为一次全量写入
+  static Timer? _snapshotTimer;
+  static bool _snapshotPending = false;
+
   Future<void> persistPreferencesSnapshot() async {
-    await _writePreferencesSnapshot(
-      File(p.join(await activeDataDirectoryPath(), preferencesFileName)),
-    );
+    _snapshotPending = true;
+    _snapshotTimer ??= Timer(const Duration(seconds: 2), () {
+      _snapshotTimer = null;
+      _flushSnapshot();
+    });
+  }
+
+  /// 立即落盘（退出 / 显式保存路径调用），合并掉尚未触发的防抖写入
+  Future<void> flushNow() async {
+    _snapshotTimer?.cancel();
+    _snapshotTimer = null;
+    if (!_snapshotPending) return;
+    await _flushSnapshot();
+  }
+
+  Future<void> _flushSnapshot() async {
+    _snapshotPending = false;
+    try {
+      await _writePreferencesSnapshot(
+        File(p.join(await activeDataDirectoryPath(), preferencesFileName)),
+      );
+    } catch (_) {}
   }
 
   Future<String?> exportBackup() async {

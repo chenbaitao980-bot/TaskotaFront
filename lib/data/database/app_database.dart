@@ -133,7 +133,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration {
@@ -199,6 +199,9 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 11) {
           await m.addColumn(tasks, tasks.archived);
+        }
+        if (from < 12) {
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks (deleted, archived)');
         }
       },
     );

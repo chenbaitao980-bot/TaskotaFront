@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart'
     show AppLifecycleState, OverlayEntry, Positioned;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/data/latest_10y.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/desktop/desktop_runtime.dart';
@@ -68,7 +68,7 @@ class NotificationService {
   final Map<int, Timer> _timers = {};
   final List<PendingNotification> _pendingNotifications = [];
   final List<String> _diagnosticLog = [];
-  bool _initialized = false;
+  Future<void>? _initFuture;
   bool _useOsNotifications = false;
   bool _useNativeWindowsNotifications = false;
 
@@ -117,10 +117,11 @@ class NotificationService {
     return !startTime.isBefore(now ?? DateTime.now());
   }
 
-  Future<void> init() async {
-    if (_initialized) return;
-    _initialized = true;
+  /// 幂等初始化：并发/提前调用共享同一 Future，
+  /// 保证 init 完成前的调度调用会先等待初始化完成而不是跳过。
+  Future<void> init() => _initFuture ??= _doInit();
 
+  Future<void> _doInit() async {
     tz.initializeTimeZones();
     await _configureLocalTimezone();
     _log('[Notif] init tz.local=${tz.local}');
@@ -286,7 +287,7 @@ class NotificationService {
     required DateTime scheduledDate,
     String? payload,
   }) async {
-    if (!_initialized) await init();
+    await init();
     final now = DateTime.now();
     if (scheduledDate.isBefore(now)) return;
 
@@ -373,7 +374,7 @@ class NotificationService {
     required DateTime firstFireAt,
     required int intervalMs,
   }) async {
-    if (!_initialized) await init();
+    await init();
     final now = DateTime.now();
     _timers[id]?.cancel();
     _timers.remove(id);
@@ -707,7 +708,7 @@ class NotificationService {
   /// On permission transition from denied to granted, consumes pending
   /// notifications (caller should re-schedule reminders).
   Future<bool> requestMobilePermissions() async {
-    if (!_initialized) await init();
+    await init();
     final wasGranted = await checkMobilePermissions();
     await _ensureMobileNotificationPermissions();
     final isGranted = await checkMobilePermissions();
@@ -720,7 +721,7 @@ class NotificationService {
   /// Immediately show a test notification (fires ~1 second from now).
   /// Returns true if scheduling succeeded, false otherwise.
   Future<bool> showImmediateTestNotification() async {
-    if (!_initialized) await init();
+    await init();
     if (!Platform.isAndroid && !Platform.isIOS) {
       _log('[Notif] test: not a mobile platform');
       return false;
@@ -805,7 +806,7 @@ class NotificationService {
     bool isRepeating = false,
     int? repeatInterval,
   }) async {
-    if (!_initialized) await init();
+    await init();
     final now = DateTime.now();
     final remindAt = startTime.subtract(Duration(minutes: remindBeforeMinutes));
 
@@ -874,7 +875,7 @@ class NotificationService {
 
     final title = '你有 $count 个过期任务未完成';
     const body = '点击查看详情';
-    if (!_initialized) await init();
+    await init();
 
     if (Platform.isAndroid || Platform.isIOS) {
       if (_useOsNotifications && _plugin != null) {

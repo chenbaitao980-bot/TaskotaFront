@@ -50,19 +50,26 @@ void main() async {
       flog('[FlutterError] ${details.exceptionAsString()}');
     };
 
-    await FileLogger.instance.clear();
-    final logPath = await FileLogger.instance.filePath;
-    print('Log path: $logPath');
+    // 日志清理为磁盘 IO，可延后，不阻塞首帧（W9）
+    unawaited(FileLogger.instance.clear());
+    unawaited(FileLogger.instance.filePath.then((p) => print('Log path: $p')));
     flog('[App] ===== 应用启动 =====');
 
     if (!kIsWeb && isDesktop) {
       await _initWindowManager();
     }
 
-    await themeController.load();
-
-    // 先检查隐私协议是否已同意
-    final privacyAccepted = await PrivacyConsentPage.isAccepted();
+    // 主题 / 隐私标记 / Supabase 会话恢复互不依赖，并行执行（W8+W15）
+    // Supabase.initialize 必须在 runApp 前完成（首屏 auth 状态依赖）
+    var privacyAccepted = false;
+    await Future.wait<void>([
+      themeController.load(),
+      PrivacyConsentPage.isAccepted().then((v) => privacyAccepted = v),
+      Supabase.initialize(
+        url: AppConstants.supabaseUrl,
+        anonKey: AppConstants.supabaseAnonKey,
+      ),
+    ]);
 
     // 始终只调用一次 runApp，由 MyApp 内部决定展示隐私页还是主界面
     final deps = await _initServices();
@@ -77,12 +84,38 @@ void main() async {
       nodeTemplateRepository: deps.nodeTemplateRepository,
     ));
 
-    if (!kIsWeb && isDesktop) {
-      await initTray();
-    }
+    // 首帧后再做托盘 / 通知 / 推送 / 会员配置等非首屏必需初始化（W1/W2/W3/W7/W13/W14）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!kIsWeb && isDesktop) {
+        unawaited(initTray());
+      }
+      if (kIsWeb) {
+        // Web 端预热 wasm 数据库，让下载/编译与首帧并行（W13）
+        unawaited(deps.database.customSelect('select 1').get());
+      }
+      unawaited(_initDeferredServices());
+    });
   }, (error, stack) {
     flog('[UncaughtError] $error\n$stack');
   });
+}
+
+/// 首帧后初始化的服务：均不影响首屏渲染与首批数据。
+/// NotificationService → AlarmService 保持原有先后顺序串行；其余并行。
+Future<void> _initDeferredServices() async {
+  try {
+    await NotificationService().init();
+  } catch (e) {
+    flog('[App] NotificationService init failed: $e');
+  }
+  try {
+    await AlarmService().init();
+  } catch (e) {
+    flog('[App] AlarmService init failed: $e');
+  }
+  unawaited(AliyunPushService().init());
+  unawaited(MemberConfigService.instance.init());
+  unawaited(SubscriptionService.instance.refresh());
 }
 
 Future<void> _initWindowManager() async {
@@ -111,15 +144,6 @@ class _AppDeps {
 }
 
 Future<_AppDeps> _initServices() async {
-  await Supabase.initialize(
-    url: AppConstants.supabaseUrl,
-    anonKey: AppConstants.supabaseAnonKey,
-  );
-
-  await NotificationService().init();
-  await AlarmService().init();
-  await AliyunPushService().init();
-
   final database = AppDatabase();
   final projectRepository = ProjectRepository(
     database,
@@ -141,7 +165,7 @@ Future<_AppDeps> _initServices() async {
     database,
     syncService: NodeTemplateSyncService.instance,
   );
-  await MemberConfigService.instance.init();
+  // 订阅服务仅加载本地缓存（首屏 isVip 够用），网络 refresh 在首帧后执行（W2）
   await SubscriptionService.instance.init();
 
   TaskSyncService.instance.bind(taskRepository);

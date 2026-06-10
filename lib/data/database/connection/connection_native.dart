@@ -8,6 +8,7 @@ QueryExecutor openConnection() {
     if (!await file.parent.exists()) {
       await file.parent.create(recursive: true);
     }
-    return NativeDatabase(file);
+    // 后台 isolate 执行 SQL，避免迁移/全表查询阻塞 UI isolate（W6）
+    return NativeDatabase.createInBackground(file);
   });
 }

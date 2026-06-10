@@ -47,21 +47,32 @@ class SubscriptionService {
     return MemberConfigService.instance.getMemberTypeByPlan(_cached!.plan.value);
   }
 
+  /// 启动时仅加载本地缓存（首屏 isVip 够用）；网络 refresh 由首帧后/登录后调用。
   Future<void> init() async {
     await _loadFromCache();
-    await refresh();
   }
+
+  static const _refreshTimeout = Duration(seconds: 3);
 
   Future<void> refresh() async {
     final userId = _currentUserId;
     if (userId == null) return;
 
+    // 订阅与白名单两个查询并行，各自独立超时/容错
+    await Future.wait([
+      _refreshSubscription(userId),
+      _refreshWhitelist(),
+    ]);
+  }
+
+  Future<void> _refreshSubscription(String userId) async {
     try {
       final response = await Supabase.instance.client
           .from('user_subscriptions')
           .select()
           .eq('user_id', userId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(_refreshTimeout);
 
       if (response != null) {
         _cached = UserSubscription.fromJson(response);
@@ -73,7 +84,9 @@ class SubscriptionService {
     } catch (e) {
       flog('[Subscription] refresh failed: $e');
     }
+  }
 
+  Future<void> _refreshWhitelist() async {
     // 查询白名单（独立 try-catch，失败不影响订阅查询结果）
     try {
       final email = _currentUserEmail;
@@ -82,7 +95,8 @@ class SubscriptionService {
             .from('vip_whitelist')
             .select('email')
             .eq('email', email)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(_refreshTimeout);
         _isWhitelisted = whitelistResp != null;
         flog('[Subscription] whitelist check: email=$email, isWhitelisted=$_isWhitelisted');
       }

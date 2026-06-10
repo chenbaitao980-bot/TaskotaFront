@@ -22,14 +22,17 @@ class AliyunPushService {
   static const String _channelId = 'schedule_reminders';
   static const String _channelName = 'Schedule Reminders';
 
-  bool _initialized = false;
+  Future<void>? _initFuture;
   final _plugin = AliyunPush();
 
-  Future<void> init() async {
-    if (_initialized) return;
-    if (!Platform.isAndroid && !Platform.isIOS) return;
-    _initialized = true;
+  /// 幂等初始化：并发调用共享同一 Future。
+  /// 现已延迟到首帧后执行，不阻塞首屏（W3）。
+  Future<void> init() {
+    if (!Platform.isAndroid && !Platform.isIOS) return Future.value();
+    return _initFuture ??= _doInit();
+  }
 
+  Future<void> _doInit() async {
     try {
       final result = await _plugin.initPush(
         appKey: _appKey,
@@ -110,6 +113,8 @@ class AliyunPushService {
   /// 登录成功后调用，确保 deviceId 上传到服务端
   Future<void> onUserLoggedIn() async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    // init 已延迟到首帧后，登录可能先发生：先确保 SDK 初始化完成再补传
+    await init();
     await _tryUploadDeviceId();
   }
 

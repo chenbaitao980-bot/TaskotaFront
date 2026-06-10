@@ -109,6 +109,20 @@ class _TasksPageState extends State<TasksPage> {
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<TaskNewBloc, TaskNewState>(
+      buildWhen: (prev, curr) {
+        // M5: 仅当任务页面相关内容变化时才重建，避免任意 Bloc emission（勾选/进度/checklist等）全页重建
+        if (prev is! TaskNewLoaded || curr is! TaskNewLoaded) return true;
+        return prev.tasks != curr.tasks ||
+            prev.viewMode != curr.viewMode ||
+            prev.expandedNodes != curr.expandedNodes ||
+            prev.selectedFilter != curr.selectedFilter ||
+            prev.selectedStatusFilter != curr.selectedStatusFilter ||
+            prev.selectedProjectIds != curr.selectedProjectIds ||
+            prev.searchKeyword != curr.searchKeyword ||
+            prev.showArchivedView != curr.showArchivedView ||
+            prev.dateFrom != curr.dateFrom ||
+            prev.dateTo != curr.dateTo;
+      },
       listener: (context, state) {
         if (state is TaskNewLoaded && state.syncRollbackMessage != null) {
           showAppSnackBar(context, state.syncRollbackMessage!);

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/utils/file_logger.dart';
 
@@ -174,23 +176,30 @@ class MemberConfigService {
   /// 是否已加载配置
   bool get isLoaded => _isLoaded;
 
-  /// 初始化并加载配置
+  /// 初始化并加载配置：先读本地缓存（离线/弱网立即可用），再后台刷新
   Future<void> init() async {
+    await _loadFromCache();
     await refresh();
   }
 
+  static const _queryTimeout = Duration(seconds: 3);
+
   /// 刷新配置（直接调用 REST API，无需 Edge Function）
+  /// 每个查询带 3s 超时降级；成功后写入 SharedPreferences 缓存
   Future<void> refresh() async {
     try {
       final client = Supabase.instance.client;
 
-      // 并发请求三张表
-      final typesFuture = client.from('member_types').select();
+      // 并发请求三张表（各自超时降级）
+      final typesFuture =
+          client.from('member_types').select().timeout(_queryTimeout);
       final codesFuture = client
           .from('member_discount_codes')
           .select()
-          .eq('active', true);
-      final tiersFuture = client.from('member_recharge_tiers').select();
+          .eq('active', true)
+          .timeout(_queryTimeout);
+      final tiersFuture =
+          client.from('member_recharge_tiers').select().timeout(_queryTimeout);
 
       final results = await Future.wait([typesFuture, codesFuture, tiersFuture]);
 
@@ -207,8 +216,63 @@ class MemberConfigService {
       _isLoaded = true;
       flog(
           '[MemberConfig] refreshed: ${_memberTypes.length} types, ${_discountCodes.length} discounts, ${_rechargeTiers.length} tiers');
+
+      await _saveToCache(
+        types: results[0] as List,
+        codes: results[1] as List,
+        tiers: results[2] as List,
+      );
     } catch (e) {
       flog('[MemberConfig] refresh failed: $e');
+    }
+  }
+
+  // --- 本地缓存 ---
+
+  static const _keyTypes = 'member_config_types';
+  static const _keyCodes = 'member_config_codes';
+  static const _keyTiers = 'member_config_tiers';
+
+  Future<void> _loadFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final typesJson = prefs.getString(_keyTypes);
+      final codesJson = prefs.getString(_keyCodes);
+      final tiersJson = prefs.getString(_keyTiers);
+      if (typesJson == null) return;
+
+      _memberTypes = (jsonDecode(typesJson) as List)
+          .map((e) => MemberTypeConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+      if (codesJson != null) {
+        _discountCodes = (jsonDecode(codesJson) as List)
+            .map((e) => DiscountCodeConfig.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      if (tiersJson != null) {
+        _rechargeTiers = (jsonDecode(tiersJson) as List)
+            .map((e) => RechargeTierConfig.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      _isLoaded = true;
+      flog('[MemberConfig] loaded from cache: ${_memberTypes.length} types');
+    } catch (e) {
+      flog('[MemberConfig] loadFromCache failed: $e');
+    }
+  }
+
+  Future<void> _saveToCache({
+    required List types,
+    required List codes,
+    required List tiers,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyTypes, jsonEncode(types));
+      await prefs.setString(_keyCodes, jsonEncode(codes));
+      await prefs.setString(_keyTiers, jsonEncode(tiers));
+    } catch (e) {
+      flog('[MemberConfig] saveToCache failed: $e');
     }
   }
 

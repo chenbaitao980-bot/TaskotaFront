@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 import 'package:drift/wasm.dart';
 
+import '../../../core/utils/file_logger.dart';
+
 QueryExecutor openConnection() {
   return LazyDatabase(() async {
     final result = await WasmDatabase.open(
@@ -10,7 +12,7 @@ QueryExecutor openConnection() {
     );
 
     if (result.missingFeatures.isNotEmpty) {
-      print('Drift web: degraded mode: ${result.missingFeatures}');
+      flog('[DriftWeb] degraded mode: ${result.missingFeatures}');
     }
 
     return result.resolvedExecutor;

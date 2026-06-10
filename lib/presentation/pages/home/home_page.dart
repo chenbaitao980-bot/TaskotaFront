@@ -684,7 +684,9 @@ class _HomeContent extends StatefulWidget {
 
 class _HomeContentState extends State<_HomeContent> {
   static const double _dayWidth = 72.0;
-  double _hourWidth = 120.0;
+  // H6: 双指缩放高频写入，用 ValueNotifier 只重建时间轴网格子树
+  final ValueNotifier<double> _hourWidthNotifier = ValueNotifier<double>(120.0);
+  double get _hourWidth => _hourWidthNotifier.value;
   static const double _hourWidthMin = 60.0;
   static const double _hourWidthMax = 300.0;
   static const int _daysBefore = 180;
@@ -726,8 +728,13 @@ class _HomeContentState extends State<_HomeContent> {
   _TimelineTask? _selectedTask;
   String? _draggingTimelineTaskId;
   double _timelineDragRawDx = 0;
-  double _timelineDragDx = 0;
-  int _timelineDragHourShift = 0;
+  // H4: 拖拽偏移/小时偏移高频写入，用 ValueNotifier 只重建 Transform 子树
+  final ValueNotifier<double> _timelineDragDxNotifier = ValueNotifier<double>(0);
+  double get _timelineDragDx => _timelineDragDxNotifier.value;
+  final ValueNotifier<int> _timelineDragHourShiftNotifier = ValueNotifier<int>(0);
+  int get _timelineDragHourShift => _timelineDragHourShiftNotifier.value;
+  // H5: 时间轴高度由滚动后 lane 数决定，用 ValueNotifier 只重建 SizedBox
+  final ValueNotifier<double> _timelineHeightNotifier = ValueNotifier<double>(80.0);
   Timer? _descriptionSaveDebounce;
 
   static const double _timelineDragHitWidth = 56;
@@ -739,10 +746,10 @@ class _HomeContentState extends State<_HomeContent> {
     super.initState();
     _timelineController = ScrollController()
       ..addListener(() {
-        // 滚动时 debounce 触发高度重算
+        // H5: 滚动后只更新高度 notifier，不整页 setState
         _timelineScrollDebounce?.cancel();
         _timelineScrollDebounce = Timer(const Duration(milliseconds: 120), () {
-          if (mounted) setState(() {});
+          if (mounted) _timelineHeightNotifier.value = _computeTimelineHeight();
         });
       });
     _visible = widget.visibleTabIndex.value == 0;
@@ -768,6 +775,10 @@ class _HomeContentState extends State<_HomeContent> {
     _descriptionSaveDebounce?.cancel();
     widget.visibleTabIndex.removeListener(_onVisibleTabChanged);
     _timelineController.dispose();
+    _hourWidthNotifier.dispose();
+    _timelineDragDxNotifier.dispose();
+    _timelineDragHourShiftNotifier.dispose();
+    _timelineHeightNotifier.dispose();
     super.dispose();
   }
 
@@ -906,7 +917,7 @@ class _HomeContentState extends State<_HomeContent> {
       }
       final cloudHourWidth = cloudPrefs?['timelineHourWidth'];
       if (cloudHourWidth is num) {
-        _hourWidth = cloudHourWidth.toDouble().clamp(_hourWidthMin, _hourWidthMax);
+        _hourWidthNotifier.value = cloudHourWidth.toDouble().clamp(_hourWidthMin, _hourWidthMax);
       }
     }
 
@@ -933,7 +944,10 @@ class _HomeContentState extends State<_HomeContent> {
       _subtaskCache.remove(staleTaskId);
     }
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      _timelineHeightNotifier.value = _computeTimelineHeight();
+      setState(() {});
+    }
 
     // Auto-scroll to nearest task after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1909,7 +1923,8 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   /// 任务按同一时间轴坐标分配 lane，长任务画为跨列条。
-  double _timelineHeight() {
+  /// H5: 纯计算，不触发 setState，由 _timelineHeightNotifier 消费
+  double _computeTimelineHeight() {
     final laneCount = _timelineRenderItems().fold<int>(
       0,
       (maxLane, item) => max(maxLane, item.lane + 1),
@@ -1987,42 +2002,60 @@ class _HomeContentState extends State<_HomeContent> {
                     onScaleUpdate: _timelineMode == 'hour'
                         ? (details) {
                             if (details.pointerCount < 2) return;
-                            setState(() {
-                              _hourWidth =
-                                  ((_scaleStartHourWidth ?? _hourWidth) *
-                                          details.scale)
-                                      .clamp(_hourWidthMin, _hourWidthMax);
-                            });
+                            // H6: 只更新 notifier，不 setState
+                            _hourWidthNotifier.value =
+                                ((_scaleStartHourWidth ?? _hourWidth) *
+                                        details.scale)
+                                    .clamp(_hourWidthMin, _hourWidthMax);
                             _syncHourWidth();
                           }
                         : null,
                     child: LayoutBuilder(
                       builder: (ctx, _) {
-                        final timelineHeight = _timelineHeight();
-                        final timelineWidth = itemCount * itemExtent;
-                        return SizedBox(
-                          height: timelineHeight,
-                          child: SingleChildScrollView(
-                            controller: _timelineController,
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(
-                              width: timelineWidth,
-                              height: timelineHeight,
-                              child: Stack(
-                                children: [
-                                  for (var i = 0; i < itemCount; i++)
-                                    Positioned(
-                                      left: i * itemExtent,
-                                      top: 0,
-                                      width: itemExtent,
+                        // H5+H6: hourWidth 与 timelineHeight 均为 ValueNotifier，
+                        // 用 VLB 只重建时间轴区域，不重建整页
+                        return ValueListenableBuilder<double>(
+                          valueListenable: _hourWidthNotifier,
+                          builder: (context, hourWidth, _) {
+                            final effectiveExtent = _timelineMode == 'hour' ? hourWidth : _dayWidth;
+                            final timelineWidth = itemCount * effectiveExtent;
+                            return ValueListenableBuilder<double>(
+                              valueListenable: _timelineHeightNotifier,
+                              builder: (context, timelineHeight, _) {
+                                return SizedBox(
+                                  height: timelineHeight,
+                                  child: SingleChildScrollView(
+                                    controller: _timelineController,
+                                    scrollDirection: Axis.horizontal,
+                                    child: SizedBox(
+                                      width: timelineWidth,
                                       height: timelineHeight,
-                                      child: itemBuilder(ctx, i),
+                                      child: Stack(
+                                        children: [
+                                          for (var i = 0; i < itemCount; i++)
+                                            Positioned(
+                                              left: i * effectiveExtent,
+                                              top: 0,
+                                              width: effectiveExtent,
+                                              height: timelineHeight,
+                                              child: _timelineMode == 'hour'
+                                                  ? _buildHourColumn(i, showTasks: false)
+                                                  : _buildDayColumn(
+                                                      baseDate.add(Duration(days: i)),
+                                                      _isSameDayDate(baseDate.add(Duration(days: i)), today),
+                                                      i,
+                                                      showTasks: false,
+                                                    ),
+                                            ),
+                                          ..._buildTimelineTaskOverlays(),
+                                        ],
+                                      ),
                                     ),
-                                  ..._buildTimelineTaskOverlays(),
-                                ],
-                              ),
-                            ),
-                          ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         );
                       },
                     ),
@@ -2091,21 +2124,17 @@ class _HomeContentState extends State<_HomeContent> {
           if (_timelineMode == 'hour') ...[
             const SizedBox(width: 6),
             _buildZoomButton(Icons.remove, () {
-              setState(() {
-                _hourWidth = (_hourWidth - 20).clamp(
-                  _hourWidthMin,
-                  _hourWidthMax,
-                );
-              });
+              _hourWidthNotifier.value = (_hourWidth - 20).clamp(
+                _hourWidthMin,
+                _hourWidthMax,
+              );
               _syncHourWidth();
             }),
             _buildZoomButton(Icons.add, () {
-              setState(() {
-                _hourWidth = (_hourWidth + 20).clamp(
-                  _hourWidthMin,
-                  _hourWidthMax,
-                );
-              });
+              _hourWidthNotifier.value = (_hourWidth + 20).clamp(
+                _hourWidthMin,
+                _hourWidthMax,
+              );
               _syncHourWidth();
             }),
           ],
@@ -2491,14 +2520,28 @@ class _HomeContentState extends State<_HomeContent> {
       top: hitTop,
       width: hitWidth,
       height: hitHeight,
-      child: Transform.translate(
-        offset: Offset(isDragging ? _timelineDragDx : 0, 0),
-        child: _buildTimelineDragSurface(
-          task: task,
-          canDrag: canDrag,
-          child: Center(child: visual),
-        ),
-      ),
+      // H4: isDragging 时用 VLB 只重建偏移，不重建整个 overlay
+      child: isDragging
+          ? ValueListenableBuilder<double>(
+              valueListenable: _timelineDragDxNotifier,
+              builder: (context, dragDx, child) => Transform.translate(
+                offset: Offset(dragDx, 0),
+                child: child,
+              ),
+              child: _buildTimelineDragSurface(
+                task: task,
+                canDrag: canDrag,
+                child: Center(child: visual),
+              ),
+            )
+          : Transform.translate(
+              offset: Offset.zero,
+              child: _buildTimelineDragSurface(
+                task: task,
+                canDrag: canDrag,
+                child: Center(child: visual),
+              ),
+            ),
     );
   }
 
@@ -2649,12 +2692,10 @@ class _HomeContentState extends State<_HomeContent> {
 
   void _startTimelineHourDrag(_TimelineTask task) {
     if (!_canDragHourTimelineTask(task)) return;
-    setState(() {
-      _draggingTimelineTaskId = task.id;
-      _timelineDragRawDx = 0;
-      _timelineDragDx = 0;
-      _timelineDragHourShift = 0;
-    });
+    _draggingTimelineTaskId = task.id;
+    _timelineDragRawDx = 0;
+    _timelineDragDxNotifier.value = 0;
+    _timelineDragHourShiftNotifier.value = 0;
   }
 
   void _updateTimelineHourDrag(_TimelineTask task, double deltaDx) {
@@ -2663,21 +2704,18 @@ class _HomeContentState extends State<_HomeContent> {
     }
     _timelineDragRawDx += deltaDx;
     final shift = _clampedHourShift(task, _timelineDragRawDx);
-    setState(() {
-      _timelineDragDx = shift * _hourWidth;
-      _timelineDragHourShift = shift;
-    });
+    // H4: 只更新 notifier，不 setState
+    _timelineDragDxNotifier.value = shift * _hourWidth;
+    _timelineDragHourShiftNotifier.value = shift;
   }
 
   void _endTimelineHourDrag(_TimelineTask task) {
     if (_draggingTimelineTaskId != task.id) return;
     final shift = _timelineDragHourShift;
-    setState(() {
-      _draggingTimelineTaskId = null;
-      _timelineDragRawDx = 0;
-      _timelineDragDx = 0;
-      _timelineDragHourShift = 0;
-    });
+    _draggingTimelineTaskId = null;
+    _timelineDragRawDx = 0;
+    _timelineDragDxNotifier.value = 0;
+    _timelineDragHourShiftNotifier.value = 0;
     if (shift == 0 || !_canDragHourTimelineTask(task)) return;
 
     final newStart = task.date.add(Duration(hours: shift));
@@ -2914,18 +2952,36 @@ class _HomeContentState extends State<_HomeContent> {
             );
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: Transform.translate(
-                offset: Offset(isDragging ? _timelineDragDx : 0, 0),
-                child: SizedBox(
-                  width: _timelineDragHitWidth,
-                  height: _timelineDragHitHeight,
-                  child: _buildTimelineDragSurface(
-                    task: task,
-                    canDrag: canDrag,
-                    child: Center(child: point),
-                  ),
-                ),
-              ),
+              // H4: isDragging 时用 VLB 只重建偏移
+              child: isDragging
+                  ? ValueListenableBuilder<double>(
+                      valueListenable: _timelineDragDxNotifier,
+                      builder: (context, dragDx, child) => Transform.translate(
+                        offset: Offset(dragDx, 0),
+                        child: child,
+                      ),
+                      child: SizedBox(
+                        width: _timelineDragHitWidth,
+                        height: _timelineDragHitHeight,
+                        child: _buildTimelineDragSurface(
+                          task: task,
+                          canDrag: canDrag,
+                          child: Center(child: point),
+                        ),
+                      ),
+                    )
+                  : Transform.translate(
+                      offset: Offset.zero,
+                      child: SizedBox(
+                        width: _timelineDragHitWidth,
+                        height: _timelineDragHitHeight,
+                        child: _buildTimelineDragSurface(
+                          task: task,
+                          canDrag: canDrag,
+                          child: Center(child: point),
+                        ),
+                      ),
+                    ),
             );
           }).toList(),
         ),

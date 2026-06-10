@@ -22,6 +22,8 @@ class LocalDataService {
 
   Future<void> persistPreferencesSnapshot() async {}
 
+  Future<void> flushNow() async {}
+
   Future<String?> exportBackup() async => null;
 
   Future<void> writeBackup(dynamic output) async {}

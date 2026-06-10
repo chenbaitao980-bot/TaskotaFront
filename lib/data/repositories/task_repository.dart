@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
@@ -46,11 +48,14 @@ class TaskRepository {
   }
 
   Future<int> getActiveCountForProject(String projectId) async {
-    final result = await (_db.select(_db.tasks)
-          ..where(
-              (t) => t.projectId.equals(projectId) & t.deleted.equals(0) & t.archived.equals(0)))
-        .get();
-    return result.length;
+    final countExp = countAll();
+    final query = _db.selectOnly(_db.tasks)
+      ..addColumns([countExp])
+      ..where(_db.tasks.projectId.equals(projectId) &
+          _db.tasks.deleted.equals(0) &
+          _db.tasks.archived.equals(0));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
   }
 
   Future<List<Task>> getByProject(String projectId, {int? status}) async {
@@ -108,21 +113,18 @@ class TaskRepository {
     }
     query.orderBy([(t) => OrderingTerm(expression: t.updatedAt, mode: OrderingMode.desc)]);
 
-    var result = await query.get();
-
-    // 日期区间过滤：任务的 [startDate, dueDate] 与 [dateFrom, dateTo] 有交集
+    // 日期区间过滤下推为 SQL：任务的 [startDate, dueDate] 与 [dateFrom, dateTo] 有交集
+    // coalesce 两列均为 NULL 时条件求值为 NULL（不命中），与原内存过滤的 return false 等价
     if (dateFrom != null && dateTo != null) {
-      result = result.where((t) {
-        final s = t.startDate ?? t.dueDate;
-        final d = t.dueDate ?? t.startDate;
-        if (s == null && d == null) return false;
-        final taskStart = s ?? d!;
-        final taskEnd = d ?? s!;
-        return taskStart <= dateTo && taskEnd >= dateFrom;
-      }).toList();
+      query.where((t) {
+        final taskStart = coalesce<int>([t.startDate, t.dueDate]);
+        final taskEnd = coalesce<int>([t.dueDate, t.startDate]);
+        return taskStart.isSmallerOrEqualValue(dateTo) &
+            taskEnd.isBiggerOrEqualValue(dateFrom);
+      });
     }
 
-    return result;
+    return query.get();
   }
 
   /// 归档任务（递归将所有后代也设为 archived=1）
@@ -140,9 +142,9 @@ class TaskRepository {
       }
     });
     if (syncImmediately) {
-      for (final tid in ids) {
-        final updated = await _getRaw(tid);
-        if (updated != null) _syncService?.push(updated);
+      final rows = await _getRawByIds(ids);
+      for (final row in rows) {
+        _syncService?.push(row);
       }
     }
   }
@@ -278,17 +280,56 @@ class TaskRepository {
   }
 
   Future<List<Task>> getDescendants(String taskId) async {
+    // 一次 SELECT 取全部活动行（未删除、未归档，按 sortOrder 排序），
+    // 内存建 parentId → children 索引后 BFS，保持与逐层查询相同的返回顺序
+    final allActive = await (_db.select(_db.tasks)
+          ..where((t) => t.deleted.equals(0) & t.archived.equals(0))
+          ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
+        .get();
+    final childrenMap = <String, List<Task>>{};
+    for (final task in allActive) {
+      final pid = task.parentId;
+      if (pid != null) {
+        (childrenMap[pid] ??= <Task>[]).add(task);
+      }
+    }
     final result = <Task>[];
     final queue = <String>[taskId];
-    while (queue.isNotEmpty) {
-      final current = queue.removeAt(0);
-      final children = await getSubTasks(current);
+    var head = 0;
+    while (head < queue.length) {
+      final current = queue[head++];
+      final children = childrenMap[current] ?? const [];
       for (final child in children) {
         result.add(child);
         queue.add(child.id);
       }
     }
     return result;
+  }
+
+  /// 按 ids 一次批量回读（不过滤墓石），保持入参顺序
+  Future<List<Task>> _getRawByIds(List<String> ids) async {
+    if (ids.isEmpty) return [];
+    final rows =
+        await (_db.select(_db.tasks)..where((t) => t.id.isIn(ids))).get();
+    final byId = {for (final r in rows) r.id: r};
+    return [
+      for (final id in ids)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
+  /// 按 ids 一次批量回读（过滤墓石 deleted=0），保持入参顺序
+  Future<List<Task>> _getLiveByIds(List<String> ids) async {
+    if (ids.isEmpty) return [];
+    final rows = await (_db.select(_db.tasks)
+          ..where((t) => t.id.isIn(ids) & t.deleted.equals(0)))
+        .get();
+    final byId = {for (final r in rows) r.id: r};
+    return [
+      for (final id in ids)
+        if (byId[id] != null) byId[id]!,
+    ];
   }
 
   Future<Map<String?, List<Task>>> getTreeMap(String rootTaskId) async {
@@ -331,20 +372,20 @@ class TaskRepository {
     List<String> orderedIds, {
     bool syncImmediately = true,
   }) async {
-    for (var i = 0; i < orderedIds.length; i++) {
-      await (_db.update(
-        _db.tasks,
-      )..where((t) => t.id.equals(orderedIds[i]))).write(
-        TasksCompanion(
-          sortOrder: Value(i),
-          updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
-        ),
-      );
-    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (var i = 0; i < orderedIds.length; i++) {
+        batch.update(
+          _db.tasks,
+          TasksCompanion(sortOrder: Value(i), updatedAt: Value(now)),
+          where: (t) => t.id.equals(orderedIds[i]),
+        );
+      }
+    });
     if (syncImmediately) {
-      for (final id in orderedIds) {
-        final updated = await get(id);
-        if (updated != null) _syncService?.push(updated);
+      final rows = await _getLiveByIds(orderedIds);
+      for (final row in rows) {
+        _syncService?.push(row);
       }
     }
   }
@@ -405,10 +446,10 @@ class TaskRepository {
       _db.tasks,
     )..where((t) => t.id.equals(id))).get();
     final task = result.first;
-    print(
-      '[TaskRepo.create] id=${task.id}, parentId=${task.parentId}, projectId=${task.projectId}, deleted=${task.deleted}',
-    );
-    if (syncImmediately) await _syncService?.push(task);
+    if (syncImmediately) {
+      // fire-and-forget：本地写完立即返回，推送失败由全量对账兜底
+      unawaited(_syncService?.push(task));
+    }
     return task;
   }
 
@@ -482,10 +523,15 @@ class TaskRepository {
         );
       }
     });
-    for (final d in descendants) {
-      if (d.projectId == newProjectId) continue;
-      final updated = await get(d.id);
-      if (syncImmediately && updated != null) _syncService?.push(updated);
+    if (syncImmediately) {
+      final changedIds = [
+        for (final d in descendants)
+          if (d.projectId != newProjectId) d.id,
+      ];
+      final rows = await _getLiveByIds(changedIds);
+      for (final row in rows) {
+        _syncService?.push(row);
+      }
     }
   }
 
@@ -515,9 +561,11 @@ class TaskRepository {
         );
       }
     });
-    for (final tid in ids) {
-      final row = await _getRaw(tid);
-      if (syncImmediately && row != null) _syncService?.push(row);
+    if (syncImmediately) {
+      final rows = await _getRawByIds(ids);
+      for (final row in rows) {
+        _syncService?.push(row);
+      }
     }
   }
 
@@ -588,9 +636,9 @@ class TaskRepository {
       }
     });
     if (syncImmediately) {
-      for (final taskId in ids) {
-        final updated = await get(taskId);
-        if (updated != null) _syncService?.push(updated);
+      final rows = await _getLiveByIds(ids);
+      for (final row in rows) {
+        _syncService?.push(row);
       }
     }
     if (status == 2) {
@@ -758,16 +806,156 @@ class TaskRepository {
     }
   }
 
-  Future<void> reorder(String projectId, List<String> orderedIds) async {
-    for (var i = 0; i < orderedIds.length; i++) {
-      await (_db.update(
-        _db.tasks,
-      )..where((t) => t.id.equals(orderedIds[i]))).write(
-        TasksCompanion(
-          sortOrder: Value(i),
-          updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
-        ),
-      );
+  /// 批量版 syncFromJson：一次取本地全部行建 Map 做 LWW 判断，
+  /// 胜出行统一 batch 写入并整体包事务。LWW/墓石保护逻辑与 syncFromJson 完全一致。
+  Future<void> syncManyFromJson(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return;
+    // 同 id 多行去重：保留 updatedAt 最大者（与逐条顺序应用结果一致）
+    final byId = <String, Map<String, dynamic>>{};
+    for (final json in rows) {
+      final id = json['id'] as String;
+      final prev = byId[id];
+      if (prev == null ||
+          (json['updatedAt'] as int? ?? 0) >= (prev['updatedAt'] as int? ?? 0)) {
+        byId[id] = json;
+      }
     }
+
+    final localRows = await getAllRaw();
+    final localMap = {for (final t in localRows) t.id: t};
+
+    final inserts = <TasksCompanion>[];
+    final updates = <String, TasksCompanion>{};
+    var skipped = 0;
+
+    for (final json in byId.values) {
+      final id = json['id'] as String;
+      final remoteUpdated = json['updatedAt'] as int? ?? 0;
+      final remoteDeleted = json['deleted'] as int? ?? 0;
+      final existing = localMap[id];
+
+      if (existing != null) {
+        // 墓石保护：本地已删除且时间戳>=远端，不被远端未删除状态覆盖
+        if (existing.deleted == 1 &&
+            remoteDeleted == 0 &&
+            existing.updatedAt >= remoteUpdated) {
+          skipped++;
+          continue;
+        }
+        // 反向保护：本地未删除(活任务)不被远端墓石覆盖
+        if (existing.deleted == 0 &&
+            remoteDeleted == 1 &&
+            existing.updatedAt > remoteUpdated) {
+          skipped++;
+          continue;
+        }
+        // 仅当云端版本更新时才更新
+        if (remoteUpdated > existing.updatedAt) {
+          updates[id] = TasksCompanion(
+            projectId: Value(json['projectId'] as String),
+            title: Value(json['title'] as String),
+            deleted: Value(remoteDeleted),
+            description: Value(json['description'] as String? ?? ''),
+            priority: Value(json['priority'] as int? ?? 0),
+            status: Value(json['status'] as int? ?? 0),
+            startDate: json['startDate'] != null
+                ? Value(json['startDate'] as int)
+                : const Value.absent(),
+            dueDate: json['dueDate'] != null
+                ? Value(json['dueDate'] as int)
+                : const Value.absent(),
+            isAllDay: Value(json['isAllDay'] as int? ?? 0),
+            sortOrder: Value(json['sortOrder'] as int? ?? 0),
+            parentId: json['parentId'] != null
+                ? Value(json['parentId'] as String)
+                : const Value.absent(),
+            remindBeforeMinutes: json['remindBeforeMinutes'] != null
+                ? Value(json['remindBeforeMinutes'] as int)
+                : const Value.absent(),
+            reminderEnabled: json['reminderEnabled'] != null
+                ? Value(json['reminderEnabled'] as int)
+                : const Value.absent(),
+            estimatedMinutes: json['estimatedMinutes'] != null
+                ? Value(json['estimatedMinutes'] as int)
+                : const Value.absent(),
+            archived: Value(json['archived'] as int? ?? 0),
+            updatedAt: Value(remoteUpdated),
+          );
+        } else {
+          skipped++;
+        }
+      } else {
+        inserts.add(
+          TasksCompanion(
+            id: Value(id),
+            projectId: Value(json['projectId'] as String),
+            title: Value(json['title'] as String),
+            deleted: Value(remoteDeleted),
+            description: Value(json['description'] as String? ?? ''),
+            priority: Value(json['priority'] as int? ?? 0),
+            status: Value(json['status'] as int? ?? 0),
+            startDate: json['startDate'] != null
+                ? Value(json['startDate'] as int)
+                : const Value.absent(),
+            dueDate: json['dueDate'] != null
+                ? Value(json['dueDate'] as int)
+                : const Value.absent(),
+            isAllDay: Value(json['isAllDay'] as int? ?? 0),
+            sortOrder: Value(json['sortOrder'] as int? ?? 0),
+            parentId: json['parentId'] != null
+                ? Value(json['parentId'] as String)
+                : const Value.absent(),
+            remindBeforeMinutes: json['remindBeforeMinutes'] != null
+                ? Value(json['remindBeforeMinutes'] as int)
+                : const Value.absent(),
+            reminderEnabled: json['reminderEnabled'] != null
+                ? Value(json['reminderEnabled'] as int)
+                : const Value.absent(),
+            estimatedMinutes: json['estimatedMinutes'] != null
+                ? Value(json['estimatedMinutes'] as int)
+                : const Value.absent(),
+            archived: Value(json['archived'] as int? ?? 0),
+            completedTime: json['completedTime'] != null
+                ? Value(json['completedTime'] as int)
+                : const Value.absent(),
+            createdAt: Value(json['createdAt'] as int? ?? remoteUpdated),
+            updatedAt: Value(remoteUpdated),
+          ),
+        );
+      }
+    }
+
+    if (inserts.isNotEmpty || updates.isNotEmpty) {
+      await _db.transaction(() async {
+        await _db.batch((batch) {
+          for (final companion in inserts) {
+            batch.insert(_db.tasks, companion);
+          }
+          for (final entry in updates.entries) {
+            batch.update(
+              _db.tasks,
+              entry.value,
+              where: (t) => t.id.equals(entry.key),
+            );
+          }
+        });
+      });
+    }
+    flog(
+      '[syncManyFromJson] tasks 批量合并: 共${byId.length}行, 新增${inserts.length}, 更新${updates.length}, 跳过$skipped',
+    );
+  }
+
+  Future<void> reorder(String projectId, List<String> orderedIds) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (var i = 0; i < orderedIds.length; i++) {
+        batch.update(
+          _db.tasks,
+          TasksCompanion(sortOrder: Value(i), updatedAt: Value(now)),
+          where: (t) => t.id.equals(orderedIds[i]),
+        );
+      }
+    });
   }
 }

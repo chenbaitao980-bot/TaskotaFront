@@ -42,13 +42,14 @@ class ProjectRepository {
   }
 
   Future<int> getActiveNonTemplateCount() async {
-    final result = await (_db.select(_db.projects)
-          ..where((p) =>
-              p.deleted.equals(0) &
-              p.archived.equals(0) &
-              p.isTemplate.equals(0)))
-        .get();
-    return result.length;
+    final countExp = countAll();
+    final query = _db.selectOnly(_db.projects)
+      ..addColumns([countExp])
+      ..where(_db.projects.deleted.equals(0) &
+          _db.projects.archived.equals(0) &
+          _db.projects.isTemplate.equals(0));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
   }
 
   Future<Project> create({

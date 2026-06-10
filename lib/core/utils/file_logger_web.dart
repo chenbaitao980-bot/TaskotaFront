@@ -1,10 +1,15 @@
+import 'package:flutter/foundation.dart';
+
 class FileLogger {
   static FileLogger? _instance;
   static FileLogger get instance => _instance ??= FileLogger._();
   FileLogger._();
 
   Future<void> log(String message) async {
-    print(message);
+    if (!kReleaseMode) {
+      // ignore: avoid_print
+      print(message);
+    }
   }
 
   Future<void> clear() async {}
@@ -13,5 +18,8 @@ class FileLogger {
 }
 
 void flog(String message) {
-  print(message);
+  if (!kReleaseMode) {
+    // ignore: avoid_print
+    print(message);
+  }
 }

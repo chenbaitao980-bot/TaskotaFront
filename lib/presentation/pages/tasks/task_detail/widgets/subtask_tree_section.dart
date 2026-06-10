@@ -141,6 +141,8 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
                           rootId,
                           0,
                           context,
+                          // M8: 一次性构建 childrenByParent Map，O(n) 替代每节点 O(n) where+any
+                          _buildChildrenByParent(descendants),
                         ),
                       ),
                     ),
@@ -153,6 +155,17 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
     );
   }
 
+  /// M8: 一次性构建 parentId → children 索引，O(n)，替代每层 O(n) where+any
+  Map<String, List<Task>> _buildChildrenByParent(List<Task> tasks) {
+    final map = <String, List<Task>>{};
+    for (final t in tasks) {
+      if (t.parentId != null) {
+        map.putIfAbsent(t.parentId!, () => []).add(t);
+      }
+    }
+    return map;
+  }
+
   List<Widget> _buildTree(
     List<Task> allTasks,
     String rootId,
@@ -160,13 +173,15 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
     String parentId,
     int depth,
     BuildContext context,
+    Map<String, List<Task>> childrenByParent,
   ) {
-    final children = allTasks.where((t) => t.parentId == parentId).toList();
+    final children = childrenByParent[parentId] ?? [];
     children.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
     final widgets = <Widget>[];
     for (final child in children) {
-      final hasChildren = allTasks.any((t) => t.parentId == child.id);
+      final subChildren = childrenByParent[child.id];
+      final hasChildren = subChildren != null && subChildren.isNotEmpty;
       final isExpanded = expandedNodes.contains(child.id);
 
       widgets.add(
@@ -189,6 +204,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
             child.id,
             depth + 1,
             context,
+            childrenByParent,
           ),
         );
       }

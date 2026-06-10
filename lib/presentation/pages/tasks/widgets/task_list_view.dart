@@ -57,12 +57,33 @@ class TaskListView extends StatefulWidget {
 }
 
 class _TaskListViewState extends State<TaskListView> {
-  /// 构建树形扁平列表（DFS序）
+  // H7: 缓存标识，tasks identity + expandedIds 未变时复用扁平树
+  List<Task>? _lastTasks;
+  Set<String>? _lastExpandedIds;
+  List<_TreeNodeData>? _cachedPendingTree;
+  List<_TreeNodeData>? _cachedCompletedTree;
+
+  /// H7: 一次性构建 parentId → children 索引，O(n)，替代每节点 O(n) where
+  Map<String, List<Task>> _buildChildrenByParent(List<Task> tasks) {
+    final map = <String, List<Task>>{};
+    for (final t in tasks) {
+      final pid = t.parentId;
+      if (pid != null) map.putIfAbsent(pid, () => []).add(t);
+    }
+    // 预排序，避免递归中每层 sort
+    for (final list in map.values) {
+      list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    }
+    return map;
+  }
+
+  /// 构建树形扁平列表（DFS序），使用 childrenByParent 实现 O(n) 而非 O(n²)
   List<_TreeNodeData> _buildFlatTree(
     List<Task> allTasks,
     Set<String> expandedIds,
   ) {
     final result = <_TreeNodeData>[];
+    final childrenByParent = _buildChildrenByParent(allTasks);
     final taskIds = allTasks.map((t) => t.id).toSet();
     final rootTasks = allTasks.where((t) {
       final parentId = t.parentId;
@@ -71,7 +92,7 @@ class _TaskListViewState extends State<TaskListView> {
 
     for (var i = 0; i < rootTasks.length; i++) {
       _addNode(
-        rootTasks[i], 0, allTasks, expandedIds, result,
+        rootTasks[i], 0, childrenByParent, expandedIds, result,
         ancestorIsLast: const [],
         isLastSibling: i == rootTasks.length - 1,
       );
@@ -82,14 +103,13 @@ class _TaskListViewState extends State<TaskListView> {
   void _addNode(
     Task task,
     int depth,
-    List<Task> allTasks,
+    Map<String, List<Task>> childrenByParent,
     Set<String> expandedIds,
     List<_TreeNodeData> result, {
     required List<bool> ancestorIsLast,
     required bool isLastSibling,
   }) {
-    final children = allTasks.where((t) => t.parentId == task.id).toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final children = childrenByParent[task.id] ?? []; // O(1) lookup
 
     final hasChildren = children.isNotEmpty;
     final isExpanded = expandedIds.contains(task.id);
@@ -109,7 +129,7 @@ class _TaskListViewState extends State<TaskListView> {
       final childAncestorIsLast = [...ancestorIsLast, isLastSibling];
       for (var i = 0; i < children.length; i++) {
         _addNode(
-          children[i], depth + 1, allTasks, expandedIds, result,
+          children[i], depth + 1, childrenByParent, expandedIds, result,
           ancestorIsLast: childAncestorIsLast,
           isLastSibling: i == children.length - 1,
         );
@@ -123,7 +143,18 @@ class _TaskListViewState extends State<TaskListView> {
     final completedTasks = widget.tasks.where((t) => t.status == 2).toList();
 
     if (pendingTasks.isEmpty && completedTasks.isEmpty) {
+      _cachedPendingTree = null;
+      _cachedCompletedTree = null;
       return _buildEmptyState(context);
+    }
+
+    // H7: 仅在 tasks/expandedIds 变化时重建树，避免每次 build 都 O(n²) 重算
+    final tasksChanged = _lastTasks != widget.tasks || _lastExpandedIds != widget.expandedIds;
+    if (tasksChanged) {
+      _lastTasks = widget.tasks;
+      _lastExpandedIds = widget.expandedIds;
+      _cachedPendingTree = _buildFlatTree(pendingTasks, widget.expandedIds);
+      _cachedCompletedTree = _buildFlatTree(completedTasks, widget.expandedIds);
     }
 
     return ListView(
@@ -131,9 +162,8 @@ class _TaskListViewState extends State<TaskListView> {
       children: [
         if (pendingTasks.isNotEmpty) ...[
           _buildSectionHeader(context, '待完成', pendingTasks.length),
-          // 根级拖放区
           _buildRootDropZone(context),
-          ..._buildTreeNodes(pendingTasks),
+          ...(_cachedPendingTree ?? []).map((node) => _buildTreeNode(node)),
         ],
         if (completedTasks.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -208,15 +238,8 @@ class _TaskListViewState extends State<TaskListView> {
     );
   }
 
-  /// 构建所有树节点
-  List<Widget> _buildTreeNodes(List<Task> pendingTasks) {
-    final treeNodes = _buildFlatTree(pendingTasks, widget.expandedIds);
-    return treeNodes.map((node) => _buildTreeNode(node)).toList();
-  }
-
   List<Widget> _buildCompletedTreeNodes(List<Task> completedTasks) {
-    final treeNodes = _buildFlatTree(completedTasks, widget.expandedIds);
-    return treeNodes.map((node) {
+    return (_cachedCompletedTree ?? []).map((node) {
       return TaskCard(
         task: node.task,
         projectName: widget.projectNames[node.task.projectId],

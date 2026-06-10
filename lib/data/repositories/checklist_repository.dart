@@ -125,35 +125,45 @@ class ChecklistRepository {
 
   Future<void> reorderItems(String taskId, List<String> orderedIds) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    for (var i = 0; i < orderedIds.length; i++) {
-      await (_db.update(_db.checklistItems)
-            ..where((c) => c.id.equals(orderedIds[i])))
-          .write(ChecklistItemsCompanion(
-            sortOrder: Value(i),
-            updatedAt: Value(now),
-          ));
-    }
+    await _db.batch((batch) {
+      for (var i = 0; i < orderedIds.length; i++) {
+        batch.update(
+          _db.checklistItems,
+          ChecklistItemsCompanion(sortOrder: Value(i), updatedAt: Value(now)),
+          where: (c) => c.id.equals(orderedIds[i]),
+        );
+      }
+    });
+    // 一次批量回读后逐条推送（按 orderedIds 原顺序）
+    final rows = await (_db.select(_db.checklistItems)
+          ..where((c) => c.id.isIn(orderedIds)))
+        .get();
+    final byId = {for (final r in rows) r.id: r};
     for (final id in orderedIds) {
-      await _push(id);
+      final row = byId[id];
+      if (row != null) _syncService?.push(row);
     }
   }
 
   Future<int> getCompletedCount(String taskId) async {
-    final result = await (_db.select(
-      _db.checklistItems,
-    )..where((c) =>
-            c.taskId.equals(taskId) &
-            c.status.equals(1) &
-            c.deleted.equals(0)))
-        .get();
-    return result.length;
+    final countExp = countAll();
+    final query = _db.selectOnly(_db.checklistItems)
+      ..addColumns([countExp])
+      ..where(_db.checklistItems.taskId.equals(taskId) &
+          _db.checklistItems.status.equals(1) &
+          _db.checklistItems.deleted.equals(0));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
   }
 
   Future<int> getTotalCount(String taskId) async {
-    final result = await (_db.select(
-      _db.checklistItems,
-    )..where((c) => c.taskId.equals(taskId) & c.deleted.equals(0))).get();
-    return result.length;
+    final countExp = countAll();
+    final query = _db.selectOnly(_db.checklistItems)
+      ..addColumns([countExp])
+      ..where(_db.checklistItems.taskId.equals(taskId) &
+          _db.checklistItems.deleted.equals(0));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
   }
 
   /// 从云端同步导入清单项（插入或更新，保留原始 ID，LWW）
@@ -186,5 +196,73 @@ class ChecklistRepository {
             .write(companion);
       }
     }
+  }
+
+  /// 批量版 syncFromJson：一次取本地全部行建 Map 做 LWW 判断，
+  /// 胜出行统一 batch 写入并整体包事务。LWW 逻辑与 syncFromJson 完全一致。
+  Future<void> syncManyFromJson(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return;
+    // 同 id 多行去重：保留 updatedAt 最大者（与逐条顺序应用结果一致）
+    final byId = <String, Map<String, dynamic>>{};
+    for (final json in rows) {
+      final id = json['id'] as String;
+      final prev = byId[id];
+      if (prev == null ||
+          (json['updatedAt'] as int? ?? 0) >= (prev['updatedAt'] as int? ?? 0)) {
+        byId[id] = json;
+      }
+    }
+
+    final localRows = await getAllRaw();
+    final localMap = {for (final c in localRows) c.id: c};
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    final inserts = <ChecklistItemsCompanion>[];
+    final updates = <String, ChecklistItemsCompanion>{};
+
+    for (final json in byId.values) {
+      final id = json['id'] as String;
+      final existing = localMap[id];
+      final companion = ChecklistItemsCompanion(
+        id: Value(id),
+        taskId: Value(json['taskId'] as String),
+        title: Value(json['title'] as String? ?? ''),
+        status: Value(json['status'] as int? ?? 0),
+        sortOrder: Value(json['sortOrder'] as int? ?? 0),
+        obsidianUri: json['obsidianUri'] != null
+            ? Value(json['obsidianUri'] as String)
+            : const Value(null),
+        completedTime: json['completedTime'] != null
+            ? Value(json['completedTime'] as int)
+            : const Value(null),
+        deleted: Value(json['deleted'] as int? ?? 0),
+        createdAt: Value(json['createdAt'] as int? ?? now),
+        updatedAt: Value(json['updatedAt'] as int? ?? now),
+      );
+      if (existing == null) {
+        inserts.add(companion);
+      } else {
+        final remoteUpdated = json['updatedAt'] as int? ?? 0;
+        if (remoteUpdated > existing.updatedAt) {
+          updates[id] = companion;
+        }
+      }
+    }
+
+    if (inserts.isEmpty && updates.isEmpty) return;
+    await _db.transaction(() async {
+      await _db.batch((batch) {
+        for (final companion in inserts) {
+          batch.insert(_db.checklistItems, companion);
+        }
+        for (final entry in updates.entries) {
+          batch.update(
+            _db.checklistItems,
+            entry.value,
+            where: (c) => c.id.equals(entry.key),
+          );
+        }
+      });
+    });
   }
 }

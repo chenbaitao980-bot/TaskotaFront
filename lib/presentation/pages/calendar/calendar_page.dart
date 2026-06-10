@@ -41,7 +41,9 @@ class _CalendarPageState extends State<CalendarPage> {
   final ScrollController _weekScrollController = ScrollController();
   bool _didAutoScrollWeek = false;
   int _displayDayCount = isMobile ? 3 : 7;
-  double _hourHeight = 80;
+  // H6: 双指缩放高频写入，用 ValueNotifier 只重建周视图网格子树
+  final ValueNotifier<double> _hourHeightNotifier = ValueNotifier<double>(80);
+  double get _hourHeight => _hourHeightNotifier.value;
   static const double _timeColumnWidth = 48;
   static const double _minHourHeight = 32;
   static const double _maxHourHeight = 120;
@@ -51,15 +53,21 @@ class _CalendarPageState extends State<CalendarPage> {
   double? _pinchBaseDistance;
   double? _pinchBaseHourHeight;
   final GlobalKey _timelineListenerKey = GlobalKey();
-  double _dragOffset = 0;
+  // H1: 翻周拖拽偏移高频写入，用 ValueNotifier 只重建 Transform.translate 子树
+  final ValueNotifier<double> _dragOffset = ValueNotifier<double>(0);
   double _cachedDayWidth = 100;
-  bool _isTaskDragging = false;
+  // H3: 拖拽开关铁律，禁止 setState
+  final ValueNotifier<bool> _isTaskDragging = ValueNotifier<bool>(false);
   bool _dragSkipped = false; // onPointerMove 因拖拽任务跳过时置 true，阻止 onPointerUp 翻页
   double? _dragStartX;
   final Set<String> _collapsedMultiDayGroups = {};
 
   DateTime? _lastReloadTime;
   List<Task> _allTasks = [];
+  // H2: parentId 集合，随 _allTasks 装载重建，_hasChildren O(1) 查询
+  Set<String> _parentIdSet = const {};
+  // M1/M2: 任务按天分桶缓存，数据源/筛选变化时置空失效
+  Map<DateTime, List<Task>>? _tasksByDayCache;
   List<Project> _allProjects = [];
   List<ProjectGroup> _allGroups = [];
   final Set<String> _selectedProjectIds = {};
@@ -148,6 +156,9 @@ class _CalendarPageState extends State<CalendarPage> {
           _allTasks = tasks;
           _allProjects = projects;
           _allGroups = groups;
+          _parentIdSet =
+              tasks.map((t) => t.parentId).whereType<String>().toSet();
+          _tasksByDayCache = null;
           _initialized = true;
         });
       }
@@ -165,6 +176,9 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void dispose() {
     _weekScrollController.dispose();
+    _hourHeightNotifier.dispose();
+    _dragOffset.dispose();
+    _isTaskDragging.dispose();
     super.dispose();
   }
 
@@ -208,7 +222,33 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   bool _hasChildren(Task task) {
-    return _allTasks.any((t) => t.parentId == task.id);
+    return _parentIdSet.contains(task.id);
+  }
+
+  /// M1/M2: 已筛选任务按天分桶（键为当天零点），懒计算 + 数据变化时失效
+  Map<DateTime, List<Task>> get _tasksByDay =>
+      _tasksByDayCache ??= _bucketTasksByDay(_filteredTasks());
+
+  Map<DateTime, List<Task>> _bucketTasksByDay(List<Task> tasks) {
+    final map = <DateTime, List<Task>>{};
+    for (final task in tasks) {
+      final s = task.startDate;
+      final d = task.dueDate;
+      if (s == null && d == null) continue;
+      final start = s != null
+          ? DateTime.fromMillisecondsSinceEpoch(s)
+          : DateTime.fromMillisecondsSinceEpoch(d!);
+      final end = d != null
+          ? DateTime.fromMillisecondsSinceEpoch(d)
+          : start.add(const Duration(hours: 1));
+      // 与 _taskOverlapsDay 同语义：start < dayEnd && end > dayStart
+      var day = DateTime(start.year, start.month, start.day);
+      while (day.isBefore(end)) {
+        map.putIfAbsent(day, () => []).add(task);
+        day = DateTime(day.year, day.month, day.day + 1);
+      }
+    }
+    return map;
   }
 
 
@@ -352,7 +392,7 @@ class _CalendarPageState extends State<CalendarPage> {
     } else {
       anchorHour = null;
     }
-    setState(() => _hourHeight = nextHeight);
+    _hourHeightNotifier.value = nextHeight; // H6: 只重建周视图网格 VLB 子树
     if (anchorHour == null) return;
     final capturedAnchor = anchorHour;
     final capturedFocal = focalPointOffset;
@@ -504,6 +544,7 @@ class _CalendarPageState extends State<CalendarPage> {
     if (shouldCascade) {
       final affectedIds = {task.id, ..._allTasks.where((t) => t.parentId == task.id).map((t) => t.id)};
       setState(() {
+        _tasksByDayCache = null;
         for (var i = 0; i < _allTasks.length; i++) {
           if (affectedIds.contains(_allTasks[i].id)) {
             _allTasks[i] = _allTasks[i].copyWith(status: 2);
@@ -516,6 +557,7 @@ class _CalendarPageState extends State<CalendarPage> {
       });
     } else {
       setState(() {
+        _tasksByDayCache = null;
         final idx = _allTasks.indexWhere((t) => t.id == task.id);
         if (idx != -1) {
           _allTasks[idx] = _allTasks[idx].copyWith(status: newStatus);
@@ -612,6 +654,7 @@ class _CalendarPageState extends State<CalendarPage> {
       newStart.add(duration).millisecondsSinceEpoch,
     );
     setState(() {
+      _tasksByDayCache = null;
       final idx = _allTasks.indexWhere((t) => t.id == task.id);
       if (idx != -1) {
         _allTasks[idx] = task.copyWith(
@@ -647,6 +690,7 @@ class _CalendarPageState extends State<CalendarPage> {
       d.millisecondsSinceEpoch,
     );
     setState(() {
+      _tasksByDayCache = null;
       final idx = _allTasks.indexWhere((t) => t.id == task.id);
       if (idx != -1) {
         _allTasks[idx] = task.copyWith(
@@ -679,6 +723,7 @@ class _CalendarPageState extends State<CalendarPage> {
       newEnd.millisecondsSinceEpoch,
     );
     setState(() {
+      _tasksByDayCache = null;
       final idx = _allTasks.indexWhere((t) => t.id == task.id);
       if (idx != -1) {
         _allTasks[idx] = task.copyWith(
@@ -980,6 +1025,7 @@ class _CalendarPageState extends State<CalendarPage> {
       _selectedProjectIds
         ..clear()
         ..addAll(result);
+      _tasksByDayCache = null;
     });
   }
 
@@ -1064,7 +1110,7 @@ class _CalendarPageState extends State<CalendarPage> {
       },
       onPageChanged: _onFocusedDayChanged,
       eventLoader: (day) =>
-          tasks.where((t) => _taskOverlapsDay(t, day)).toList(),
+          _tasksByDay[DateTime(day.year, day.month, day.day)] ?? const <Task>[],
       calendarBuilders: CalendarBuilders(
         defaultBuilder: (context, day, focusedDay) =>
             _buildMonthDayCell(day, focusedDay),
@@ -1348,9 +1394,14 @@ class _CalendarPageState extends State<CalendarPage> {
           ),
         ),
         // 星期 + 日期行（跟随 _dragOffset 与下方网格同步平移）
+        // H1: VLB 只重建 Transform，日期条内容作 child 传入不重建
         ClipRect(
-          child: Transform.translate(
-            offset: Offset(_dragOffset, 0),
+          child: ValueListenableBuilder<double>(
+            valueListenable: _dragOffset,
+            builder: (context, dragOffset, child) => Transform.translate(
+              offset: Offset(dragOffset, 0),
+              child: child,
+            ),
             child: Container(
               decoration: BoxDecoration(
                 border: Border(
@@ -1364,7 +1415,10 @@ class _CalendarPageState extends State<CalendarPage> {
                     final isToday = _isSameDate(day, today);
                     final isSelected =
                         _selectedDay != null && _isSameDate(day, _selectedDay!);
-                    final hasTasks = tasks.any((t) => _taskOverlapsDay(t, day));
+                    final hasTasks =
+                        (_tasksByDay[DateTime(day.year, day.month, day.day)] ??
+                                const <Task>[])
+                            .isNotEmpty;
                     final holiday = _holidayDisplayFor(day);
                     return Expanded(
                       child: GestureDetector(
@@ -1521,7 +1575,6 @@ class _CalendarPageState extends State<CalendarPage> {
         if (mounted) _loadHolidaysForYears(missingHolidayYears);
       });
     }
-    final totalHeight = _hourHeight * 24;
     final tasks = _filteredTasks();
 
     final weekEndExclusive = weekStart.add(Duration(days: _displayDayCount));
@@ -1545,6 +1598,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   (constraints.maxWidth - _timeColumnWidth).clamp(320, 2400) /
                   _displayDayCount;
               _cachedDayWidth = dayWidth;
+              final totalHeight = _hourHeight * 24;
               // Listener 绕过手势竞技场；内层任务块设 _isTaskDragging=true 时跳过翻周
               return Listener(
                 onPointerDown: (e) {
@@ -1552,17 +1606,18 @@ class _CalendarPageState extends State<CalendarPage> {
                   _dragSkipped = false;
                 },
                 onPointerMove: (e) {
-                  if (_isTaskDragging || _editingTaskId != null) {
+                  // H3: 直接读 .value，不触发重建
+                  if (_isTaskDragging.value || _editingTaskId != null) {
                     _dragSkipped = true;
                     return;
                   }
                   if (_dragStartX == null) return;
-                  _dragOffset = e.position.dx - _dragStartX!;
-                  setState(() {});
+                  // H1: 只驱动 VLB 包裹的 Transform.translate，不再整页 setState
+                  _dragOffset.value = e.position.dx - _dragStartX!;
                 },
                 onPointerUp: (e) {
                   if (_dragSkipped || _editingTaskId != null) {
-                    _dragOffset = 0;
+                    _dragOffset.value = 0;
                     _dragStartX = null;
                     _dragSkipped = false;
                     return;
@@ -1571,26 +1626,32 @@ class _CalendarPageState extends State<CalendarPage> {
                   final dx = e.position.dx - _dragStartX!;
                   _dragStartX = null;
                   if (dx.abs() < 2) {
-                    _dragOffset = 0;
-                    setState(() {});
+                    _dragOffset.value = 0;
                     return;
                   }
                   final daysToShift = -(dx / _cachedDayWidth).round();
+                  _dragOffset.value = 0;
                   if (daysToShift != 0) {
-                    _focusedDay = _focusedDay.add(Duration(days: daysToShift));
-                    _didAutoScrollWeek = false;
+                    // 翻周确实需要整页重建（天数列表变化）
+                    setState(() {
+                      _focusedDay =
+                          _focusedDay.add(Duration(days: daysToShift));
+                      _didAutoScrollWeek = false;
+                    });
                   }
-                  _dragOffset = 0;
-                  setState(() {});
                 },
                 onPointerCancel: (e) {
-                  _dragOffset = 0;
+                  _dragOffset.value = 0;
                   _dragStartX = null;
                   _dragSkipped = false;
-                  setState(() {});
                 },
-                child: Transform.translate(
-                  offset: Offset(_dragOffset, 0),
+                // H1: VLB 只重建 Transform，网格整列作 child 传入不重建
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _dragOffset,
+                  builder: (context, dragOffset, child) => Transform.translate(
+                    offset: Offset(dragOffset, 0),
+                    child: child,
+                  ),
                   child: Column(
                     children: [
                       _buildMultiDayLane(days, dayWidth, multiDayTasks),
@@ -1605,10 +1666,10 @@ class _CalendarPageState extends State<CalendarPage> {
                             onPointerCancel: _onPointerCancel,
                             child: NotificationListener<ScrollNotification>(
                               onNotification: (_) =>
-                                  _isTaskDragging || _editingTaskId != null,
+                                  _isTaskDragging.value || _editingTaskId != null,
                               child: SingleChildScrollView(
                               controller: _weekScrollController,
-                              physics: _editingTaskId != null || _isTaskDragging
+                              physics: _editingTaskId != null || _isTaskDragging.value
                                   ? const NeverScrollableScrollPhysics()
                                   : null,
                               child: SizedBox(
@@ -1915,9 +1976,9 @@ class _CalendarPageState extends State<CalendarPage> {
         : _priorityColor(task.priority);
 
     final bar = Listener(
-      onPointerDown: (_) => setState(() => _isTaskDragging = true),
-      onPointerUp: (_) => setState(() => _isTaskDragging = false),
-      onPointerCancel: (_) => setState(() => _isTaskDragging = false),
+      onPointerDown: (_) => _isTaskDragging.value = true,
+      onPointerUp: (_) => _isTaskDragging.value = false,
+      onPointerCancel: (_) => _isTaskDragging.value = false,
       child: _EditableMultiDayBar(
         task: task,
         color: color,
@@ -1997,6 +2058,7 @@ class _CalendarPageState extends State<CalendarPage> {
       dueDate: newEnd.millisecondsSinceEpoch,
     );
     setState(() {
+      _tasksByDayCache = null;
       final idx = _allTasks.indexWhere((t) => t.id == task.id);
       if (idx != -1) {
         _allTasks[idx] = task.copyWith(
@@ -2095,9 +2157,9 @@ class _CalendarPageState extends State<CalendarPage> {
     double dayWidth,
   ) {
     return Listener(
-      onPointerDown: (_) => setState(() => _isTaskDragging = true),
-      onPointerUp: (_) => setState(() => _isTaskDragging = false),
-      onPointerCancel: (_) => setState(() => _isTaskDragging = false),
+      onPointerDown: (_) => _isTaskDragging.value = true,
+      onPointerUp: (_) => _isTaskDragging.value = false,
+      onPointerCancel: (_) => _isTaskDragging.value = false,
       child: _ResizableTaskBlock(
       task: task,
       start: start,
