@@ -302,6 +302,7 @@ class TaskSyncService {
       'remind_before_minutes': t.remindBeforeMinutes,
       'reminder_enabled': t.reminderEnabled,
       'estimated_minutes': t.estimatedMinutes,
+      'archived': t.archived,
       'created_at': t.createdAt,
       'updated_at': t.updatedAt,
     };
@@ -329,6 +330,7 @@ class TaskSyncService {
       'remindBeforeMinutes': row['remind_before_minutes'] ?? 15,
       'reminderEnabled': row['reminder_enabled'] ?? 1,
       'estimatedMinutes': row['estimated_minutes'],
+      'archived': row['archived'] ?? 0,
       'createdAt': row['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
       'updatedAt': row['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
     };

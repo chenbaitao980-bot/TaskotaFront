@@ -472,6 +472,11 @@ class _CalendarPageState extends State<CalendarPage> {
               onTap: () => Navigator.pop(context, 'edit'),
             ),
             ListTile(
+              leading: const Icon(Icons.archive_outlined),
+              title: const Text('归档'),
+              onTap: () => Navigator.pop(context, 'archive'),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('删除', style: TextStyle(color: Colors.red)),
               onTap: () => Navigator.pop(context, 'delete'),
@@ -483,6 +488,9 @@ class _CalendarPageState extends State<CalendarPage> {
     if (!mounted) return;
     if (action == 'mindmap') _jumpToMindMap(task);
     if (action == 'edit') await _openTaskDetail(task);
+    if (action == 'archive') {
+      context.read<TaskNewBloc>().add(ArchiveTask(id: task.id));
+    }
     if (action == 'delete') await _deleteTask(task);
   }
 
@@ -575,7 +583,13 @@ class _CalendarPageState extends State<CalendarPage> {
 
   void _notifyBloc() {
     if (!mounted) return;
-    context.read<TaskNewBloc>().add(LoadTasks());
+    final bloc = context.read<TaskNewBloc>();
+    final state = bloc.state;
+    if (state is TaskNewLoaded && state.showArchivedView) {
+      bloc.add(LoadArchivedTasks(statusFilter: state.selectedStatusFilter));
+    } else {
+      bloc.add(LoadTasks());
+    }
   }
 
   Future<void> _moveTask(Task task, DateTime newStart) async {

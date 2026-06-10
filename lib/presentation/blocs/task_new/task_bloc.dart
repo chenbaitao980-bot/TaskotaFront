@@ -75,6 +75,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     on<MergeSubTasksToChecklist>(_onMergeSubTasksToChecklist);
     on<ApplyTemplate>(_onApplyTemplate);
     on<SetSearchQuery>(_onSetSearchQuery);
+    on<ArchiveTask>(_onArchiveTask);
+    on<UnarchiveTask>(_onUnarchiveTask);
+    on<LoadArchivedTasks>(_onLoadArchivedTasks);
   }
 
   @visibleForTesting
@@ -296,6 +299,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     int? preservedDateFrom;
     int? preservedDateTo;
     String? preservedSearchKeyword;
+    bool preservedShowArchivedView = false;
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       preservedSubTrees = current.subTrees;
@@ -307,6 +311,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       preservedDateFrom = current.dateFrom;
       preservedDateTo = current.dateTo;
       preservedSearchKeyword = current.searchKeyword;
+      preservedShowArchivedView = current.showArchivedView;
     }
 
     if (state is! TaskNewLoaded) emit(TaskNewLoading());
@@ -450,6 +455,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           focusTaskId: event.focusTaskId,
           focusRequestToken: event.focusRequestToken,
           searchKeyword: selectedSearchKeyword,
+          showArchivedView: preservedShowArchivedView,
         ),
       );
       _persistFilterState(
@@ -502,8 +508,13 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   ) async {
     try {
       await TaskSyncService.instance.syncAll();
-      add(LoadTasks());
-      print('[Sync] user_tasks 鍚屾瀹屾垚');
+      if (state is TaskNewLoaded && (state as TaskNewLoaded).showArchivedView) {
+        final currentFilter = (state as TaskNewLoaded).selectedStatusFilter;
+        add(LoadArchivedTasks(statusFilter: currentFilter));
+      } else {
+        add(LoadTasks());
+      }
+      print('[Sync] user_tasks鍚屾瀹屾垚');
     } catch (e) {
       print('[Sync] 鎷夊彇澶辫触: $e');
     }
@@ -1339,15 +1350,24 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   ) async {
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
-      add(LoadTasks(
-        projectIds: current.selectedProjectIds,
-        filter: current.selectedFilter,
-        statusFilter: current.selectedStatusFilter,
-        dateFrom: current.dateFrom,
-        dateTo: current.dateTo,
-        searchKeyword: event.keyword,
-        hasSearchKeyword: true,
-      ));
+      if (current.showArchivedView) {
+        add(LoadArchivedTasks(
+          statusFilter: current.selectedStatusFilter,
+          searchKeyword: event.keyword,
+          dateFrom: current.dateFrom,
+          dateTo: current.dateTo,
+        ));
+      } else {
+        add(LoadTasks(
+          projectIds: current.selectedProjectIds,
+          filter: current.selectedFilter,
+          statusFilter: current.selectedStatusFilter,
+          dateFrom: current.dateFrom,
+          dateTo: current.dateTo,
+          searchKeyword: event.keyword,
+          hasSearchKeyword: true,
+        ));
+      }
     }
   }
 
@@ -1423,5 +1443,78 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
       await cloneTree(roots, null);
     });
+  }
+
+  // --- 归档 ---
+
+  Future<void> _onArchiveTask(
+    ArchiveTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    try {
+      // 拦截：检查所有后代是否都已完成
+      final allDone = await taskRepository.allDescendantsCompleted(event.id);
+      if (!allDone) {
+        emit(TaskNewError('无法归档：该任务还有未完成的子任务，请先完成所有子任务后再归档。'));
+        return;
+      }
+      await taskRepository.archiveTask(event.id);
+      // 刷新：归档视图内保持归档视图，普通视图刷新普通列表
+      if (state is TaskNewLoaded && (state as TaskNewLoaded).showArchivedView) {
+        final currentFilter = (state as TaskNewLoaded).selectedStatusFilter;
+        add(LoadArchivedTasks(statusFilter: currentFilter));
+      } else {
+        add(LoadTasks());
+      }
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onUnarchiveTask(
+    UnarchiveTask event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    try {
+      await taskRepository.unarchiveTask(event.id);
+      // 刷新归档视图，保留当前状态筛选
+      final currentFilter = state is TaskNewLoaded
+          ? (state as TaskNewLoaded).selectedStatusFilter
+          : 'all';
+      add(LoadArchivedTasks(statusFilter: currentFilter));
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
+  }
+
+  Future<void> _onLoadArchivedTasks(
+    LoadArchivedTasks event,
+    Emitter<TaskNewState> emit,
+  ) async {
+    // 在 await 前捕获快照，防止 async 等待期间状态漂移导致 cast 失败
+    final base = state is TaskNewLoaded ? state as TaskNewLoaded : null;
+    if (base == null) return;
+    try {
+      var archivedTasks = await taskRepository.getArchived(
+        searchKeyword: event.searchKeyword,
+        dateFrom: event.dateFrom,
+        dateTo: event.dateTo,
+      );
+      if (event.statusFilter == 'pending') {
+        archivedTasks = archivedTasks.where((t) => t.status != 2).toList();
+      } else if (event.statusFilter == 'completed') {
+        archivedTasks = archivedTasks.where((t) => t.status == 2).toList();
+      }
+      emit(base.copyWith(
+        tasks: archivedTasks,
+        showArchivedView: true,
+        selectedStatusFilter: event.statusFilter,
+        searchKeyword: event.searchKeyword,
+        dateFrom: event.dateFrom,
+        dateTo: event.dateTo,
+      ));
+    } catch (e) {
+      emit(TaskNewError(e.toString()));
+    }
   }
 }

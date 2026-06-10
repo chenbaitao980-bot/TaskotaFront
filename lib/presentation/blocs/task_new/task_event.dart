@@ -213,6 +213,30 @@ class DeleteTask extends TaskEvent {
   List<Object> get props => [id];
 }
 
+class ArchiveTask extends TaskEvent {
+  final String id;
+  ArchiveTask({required this.id});
+  @override
+  List<Object> get props => [id];
+}
+
+class UnarchiveTask extends TaskEvent {
+  final String id;
+  UnarchiveTask({required this.id});
+  @override
+  List<Object> get props => [id];
+}
+
+class LoadArchivedTasks extends TaskEvent {
+  final String statusFilter;
+  final String? searchKeyword;
+  final int? dateFrom;
+  final int? dateTo;
+  LoadArchivedTasks({this.statusFilter = 'all', this.searchKeyword, this.dateFrom, this.dateTo});
+  @override
+  List<Object?> get props => [statusFilter, searchKeyword, dateFrom, dateTo];
+}
+
 class ToggleTaskStatus extends TaskEvent {
   final String id;
   final bool cascadeChildren;

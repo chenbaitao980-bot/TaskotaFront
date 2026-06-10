@@ -229,6 +229,7 @@ If incomplete subtasks exist → emit `TaskNewError("子任务未完成，无法
 - **Failing to clear search on close**: The `_TaskSearchDelegate` must emit `SetSearchQuery(null)` when closing, otherwise stale search state persists.
 - **Adding permanent exclusions only to `_onLoadTasks`**: Fields like `archived`/`deleted` must be filtered at the DB (Repository) level, not the BLoC level — BLoC-only filtering is bypassed by any new query path.
 - **`clearCache()` missing derived fields**: Any cached flag derived from a remote query (e.g., `_isWhitelisted`) must be reset in `clearCache()`. Omitting it causes stale state to bleed into the next login session.
+- **External call sites resetting archive view**: Any code path that dispatches `LoadTasks()` (e.g., `_debounceLoadTasks`, `_notifyBloc`, error recovery) must first check `showArchivedView` and dispatch `LoadArchivedTasks()` instead when the archive view is active. Otherwise the view silently resets to normal mode.
 
 ---
 

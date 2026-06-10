@@ -67,6 +67,7 @@ Task _task({
     isAllDay: 0,
     sortOrder: 0,
     deleted: 0,
+    archived: 0,
     createdAt: 1,
     updatedAt: 2,
     remindBeforeMinutes: remindBeforeMinutes,
