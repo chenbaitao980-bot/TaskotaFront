@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend overview and guideline index for this project"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns, props, composition for building new FullScreenDialog page"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management patterns for passing task data to popup"}
+{"file": ".trellis/spec/frontend/platform-compatibility.md", "reason": "Platform split for desktop right-click vs mobile long-press interaction"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Code reuse guide — we are reusing _buildMultiDayBar and _showTaskContextActions patterns"}

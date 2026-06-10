@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend overview for quality verification"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality standards — VLB vs setState, O(n) patterns, debounce I/O"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify state handling in popup is correct"}
+{"file": ".trellis/spec/frontend/platform-compatibility.md", "reason": "Verify dual-platform interaction (desktop right-click, mobile long-press)"}

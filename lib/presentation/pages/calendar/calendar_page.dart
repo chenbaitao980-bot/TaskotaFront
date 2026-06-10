@@ -22,6 +22,7 @@ import '../../widgets/project_picker_content.dart';
 import '../tasks/task_detail/task_detail_page.dart';
 import '../tasks/widgets/task_create_sheet.dart';
 import 'day_task_lane_layout.dart';
+import 'multi_day_task_list_page.dart';
 import 'task_time_range_guard.dart';
 import 'package:drift/drift.dart' show Value;
 
@@ -1935,6 +1936,62 @@ class _CalendarPageState extends State<CalendarPage> {
                     ),
                   ),
                 ),
+                // 查看全部按钮（仅当任务数超出可见行时显示）
+                if (totalRows > maxVisibleLanes)
+                  Positioned(
+                    right: 2,
+                    bottom: 2,
+                    child: Material(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surface
+                          .withValues(alpha: 0.88),
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () async {
+                          await showMultiDayTaskListPage(
+                            context: context,
+                            tasks: tasks,
+                            onOpenTask: _openTaskDetail,
+                            onContextActions: _showTaskContextActions,
+                            priorityColor: _priorityColor,
+                          );
+                          _reloadData();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '查看全部 ${tasks.length} 条',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.78),
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(
+                                Icons.chevron_right,
+                                size: 14,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.78),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
