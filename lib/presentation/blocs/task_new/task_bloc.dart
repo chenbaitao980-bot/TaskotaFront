@@ -455,7 +455,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           focusTaskId: event.focusTaskId,
           focusRequestToken: event.focusRequestToken,
           searchKeyword: selectedSearchKeyword,
-          showArchivedView: preservedShowArchivedView,
+          showArchivedView: event.hasProjectSelectionOverride || event.filter != null
+              ? false
+              : preservedShowArchivedView,
         ),
       );
       _persistFilterState(

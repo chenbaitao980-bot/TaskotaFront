@@ -757,9 +757,13 @@ class _TasksPageState extends State<TasksPage> {
     await _storage.setExcludedProjectIds(result);
     if (!mounted) return;
     setState(() => _excludedProjectIds = result);
+    // 归档视图下排除项目后直接切回普通视图并应用排除
     if (state.showArchivedView) {
       context.read<TaskNewBloc>().add(
-        LoadArchivedTasks(statusFilter: state.selectedStatusFilter),
+        LoadTasks(
+          projectIds: state.selectedProjectIds.difference(result),
+          filter: state.selectedFilter,
+        ),
       );
     } else {
       context.read<TaskNewBloc>().add(
@@ -822,9 +826,10 @@ class _TasksPageState extends State<TasksPage> {
       ),
     );
     if (result == null || !mounted) return;
+    // 归档视图下筛选项目后直接切回普通视图并应用筛选
     if (state.showArchivedView) {
       context.read<TaskNewBloc>().add(
-        LoadArchivedTasks(statusFilter: state.selectedStatusFilter),
+        LoadTasks(projectIds: result, filter: state.selectedFilter),
       );
     } else {
       context.read<TaskNewBloc>().add(
