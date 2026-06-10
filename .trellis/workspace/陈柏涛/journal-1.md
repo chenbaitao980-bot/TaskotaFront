@@ -836,3 +836,34 @@ Windows提醒改为系统Toast（reminder场景不自动消失），支持稍后
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: 修复后台右侧留白 + 首页 Hero 布局
+
+**Date**: 2026-06-10
+**Task**: 修复后台右侧留白 + 首页 Hero 布局
+**Branch**: `master`
+
+### Summary
+
+taskora-website: 修复所有 admin 页面右侧留白（Starlight right-sidebar-container 占 flex 空间），commit 4be1f6b。修复首页 hero 布局：双列触发点 50rem→40rem，图标加圆角/阴影，commit 6d8b1d7。两个修复均已推送 GitHub 触发 Vercel 部署。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-06-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~838 | Active |
+| `journal-1.md` | ~869 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-06-10 | 修复后台右侧留白 + 首页 Hero 布局 | - | `master` |
 | 23 | 2026-06-10 | 导出页分组多选 + Excel 分组列 | `0101c1c`, `d0528f7` | `master` |
 | 22 | 2026-06-09 | VIP折扣展示 + 日历拖拽热区修复 | `05a944d`, `a1593ec` | `master` |
 | 21 | 2026-06-09 | 日历拖拽把手热区优化 | `a1593ec` | `master` |
