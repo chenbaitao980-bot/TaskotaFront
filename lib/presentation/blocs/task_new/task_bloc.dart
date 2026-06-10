@@ -1505,6 +1505,8 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       } else if (event.statusFilter == 'completed') {
         archivedTasks = archivedTasks.where((t) => t.status == 2).toList();
       }
+      // 定位到最近的任务：归档按 updatedAt desc 排序，第一个即为最近任务
+      final recentTaskId = archivedTasks.isNotEmpty ? archivedTasks.first.id : null;
       emit(base.copyWith(
         tasks: archivedTasks,
         showArchivedView: true,
@@ -1512,6 +1514,8 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         searchKeyword: event.searchKeyword,
         dateFrom: event.dateFrom,
         dateTo: event.dateTo,
+        focusTaskId: recentTaskId,
+        focusRequestToken: DateTime.now().microsecondsSinceEpoch,
       ));
     } catch (e) {
       emit(TaskNewError(e.toString()));

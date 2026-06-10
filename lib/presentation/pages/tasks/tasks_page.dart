@@ -315,7 +315,12 @@ class _TasksPageState extends State<TasksPage> {
             showArchivedView: effective.showArchivedView,
             onShowArchived: () {
               Navigator.pop(context);
-              context.read<TaskNewBloc>().add(LoadArchivedTasks());
+              if (effective.showArchivedView) {
+                // 已在归档视图，再次点击则返回所有任务
+                context.read<TaskNewBloc>().add(LoadTasks(filter: 'all'));
+              } else {
+                context.read<TaskNewBloc>().add(LoadArchivedTasks());
+              }
             },
           ),
           body: effective.showArchivedView
