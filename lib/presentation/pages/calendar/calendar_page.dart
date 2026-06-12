@@ -62,6 +62,7 @@ class _CalendarPageState extends State<CalendarPage> {
   bool _dragSkipped = false; // onPointerMove 因拖拽任务跳过时置 true，阻止 onPointerUp 翻页
   double? _dragStartX;
   final Set<String> _collapsedMultiDayGroups = {};
+  bool _multiDayLaneCollapsed = false;
 
   DateTime? _lastReloadTime;
   List<Task> _allTasks = [];
@@ -1762,6 +1763,67 @@ class _CalendarPageState extends State<CalendarPage> {
   ) {
     if (tasks.isEmpty) return const SizedBox.shrink();
 
+    // ── 全局收起状态：显示紧凑标题栏 ──
+    if (_multiDayLaneCollapsed) {
+      return Container(
+        height: 32,
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: _timeColumnWidth),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      '跨天任务 (${tasks.length})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        setState(() {
+                          _multiDayLaneCollapsed = false;
+                        });
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '展开',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            Icon(
+                              Icons.keyboard_arrow_down,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final weekStart = DateTime(
       days.first.year,
       days.first.month,
@@ -1848,11 +1910,7 @@ class _CalendarPageState extends State<CalendarPage> {
     final contentHeight = totalRows * laneHeight;
     final visibleHeight = visibleRows * laneHeight;
 
-    // 全局折叠/展开：仅考虑有子任务的组
-    final groupsWithChildren =
-        sortedRootIds.where((id) => childrenByRoot[id]!.isNotEmpty).toList();
-    final allCollapsed = groupsWithChildren.isNotEmpty &&
-        groupsWithChildren.every((id) => _collapsedMultiDayGroups.contains(id));
+
 
     return Container(
       height: visibleHeight,
@@ -1900,37 +1958,49 @@ class _CalendarPageState extends State<CalendarPage> {
                     ),
                   ),
                 ),
-                // 全部折叠 / 全部展开按钮
+                // 收起甘特图按钮
                 Positioned(
                   right: 2,
                   top: 2,
                   child: Tooltip(
-                    message: allCollapsed ? '展开全部' : '折叠全部',
+                    message: '收起甘特图',
                     child: Material(
                       color: Theme.of(context)
                           .colorScheme
                           .surface
-                          .withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(12),
+                          .withValues(alpha: 0.88),
+                      borderRadius: BorderRadius.circular(8),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                         onTap: () {
                           setState(() {
-                            if (allCollapsed) {
-                              _collapsedMultiDayGroups.clear();
-                            } else {
-                              _collapsedMultiDayGroups.addAll(groupsWithChildren);
-                            }
+                            _multiDayLaneCollapsed = true;
                           });
                         },
-                        child: SizedBox(
-                          width: 26,
-                          height: 26,
-                          child: Icon(
-                            allCollapsed
-                                ? Icons.keyboard_arrow_down
-                                : Icons.keyboard_arrow_up,
-                            size: 18,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '收起',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.65),
+                                ),
+                              ),
+                              Icon(
+                                Icons.keyboard_arrow_up,
+                                size: 14,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.65),
+                              ),
+                            ],
                           ),
                         ),
                       ),
