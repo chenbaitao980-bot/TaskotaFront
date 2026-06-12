@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Flutter/Dart 前端编码规范，确保修改符合项目约定"}
+{"file": ".trellis/spec/guides/index.md", "reason": "共享指南，检查是否有状态管理或异步操作相关规范"}
