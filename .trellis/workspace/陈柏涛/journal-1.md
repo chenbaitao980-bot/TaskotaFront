@@ -933,3 +933,37 @@ taskora-website: 修复所有 admin 页面右侧留白（Starlight right-sidebar
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: 日历拖动回弹修复 + 父任务范围精确匹配
+
+**Date**: 2026-06-12
+**Task**: 日历拖动回弹修复 + 父任务范围精确匹配
+**Branch**: `master`
+
+### Summary
+
+修复日历模块两个问题：1) 拖动任务块松手后的视觉回弹现象（延迟清除 moveDelta 等待 async DB 操作完成）；2) 父任务时间范围约束从覆盖改为精确匹配子任务范围。单日任务和多天任务条的拖动都已修复。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `519b571` | (see git log) |
+| `59f00c7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
