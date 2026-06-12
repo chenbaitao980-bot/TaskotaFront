@@ -967,3 +967,36 @@ taskora-website: 修复所有 admin 页面右侧留白（Starlight right-sidebar
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: 甘特图增强 + 配置页面样式
+
+**Date**: 2026-06-12
+**Task**: 甘特图增强 + 配置页面样式
+**Branch**: `master`
+
+### Summary
+
+四项修复：1) 甘特图全局收起/展开按钮 2) 弹窗任务条宽度按时间比例 3) 弹窗 DFS 父子排序+缩进 4) config.astro 卡片化设计+醒目保存按钮
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0ce6f75` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
