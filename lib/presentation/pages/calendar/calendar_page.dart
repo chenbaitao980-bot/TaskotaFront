@@ -801,10 +801,10 @@ class _CalendarPageState extends State<CalendarPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('父任务时间必须覆盖所有子任务时间段')));
+    ).showSnackBar(const SnackBar(content: Text('父任务时间必须与子任务时间范围完全一致')));
   }
 
-  bool _parentRangeCoversDescendants(
+  bool _parentRangeMatchesDescendants(
     Task task,
     DateTime newStart,
     DateTime newEnd,
@@ -821,8 +821,9 @@ class _CalendarPageState extends State<CalendarPage> {
     final normChildEnd = DateTime(
       childRange.end.year, childRange.end.month, childRange.end.day,
     );
-    return !normStart.isAfter(normChildStart) &&
-        !normEnd.isBefore(normChildEnd);
+    // 父任务时间范围必须恰好等于子任务范围
+    return normStart.isAtSameMomentAs(normChildStart) &&
+        normEnd.isAtSameMomentAs(normChildEnd);
   }
 
   @override
@@ -2045,24 +2046,24 @@ class _CalendarPageState extends State<CalendarPage> {
         onTap: () => _openTaskDetail(task),
         onSecondaryTap: () => _showTaskContextActions(task),
         onToggle: () => _toggleTaskStatus(task),
-        onMoveDay: (deltaDays) {
+        onMoveDay: (deltaDays) async {
           final newStart = s.add(Duration(days: deltaDays));
           final newEnd = d.add(Duration(days: deltaDays));
-          _moveTaskMultiDay(task, newStart, newEnd);
+          await _moveTaskMultiDay(task, newStart, newEnd);
         },
-        onResizeStartDay: (deltaDays) {
+        onResizeStartDay: (deltaDays) async {
           var newStart = s.add(Duration(days: deltaDays));
           if (!newStart.isBefore(d)) {
             newStart = DateTime(d.year, d.month, d.day, d.hour - 1, d.minute);
           }
-          _moveTaskMultiDay(task, newStart, d);
+          await _moveTaskMultiDay(task, newStart, d);
         },
-        onResizeEndDay: (deltaDays) {
+        onResizeEndDay: (deltaDays) async {
           var newEnd = d.add(Duration(days: deltaDays));
           if (!newEnd.isAfter(s)) {
             newEnd = DateTime(s.year, s.month, s.day, s.hour + 1, s.minute);
           }
-          _moveTaskMultiDay(task, s, newEnd);
+          await _moveTaskMultiDay(task, s, newEnd);
         },
       ),
     );
@@ -2105,7 +2106,7 @@ class _CalendarPageState extends State<CalendarPage> {
     DateTime newEnd,
   ) async {
     if (_taskRepo == null) return;
-    if (!_parentRangeCoversDescendants(task, newStart, newEnd)) {
+    if (!_parentRangeMatchesDescendants(task, newStart, newEnd)) {
       _showParentRangeMessage();
       return;
     }
@@ -2328,9 +2329,9 @@ class _ResizableTaskBlock extends StatefulWidget {
   final VoidCallback onSecondaryTap;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
-  final void Function(DateTime target) onMove;
-  final void Function(DateTime target) onResizeStart;
-  final void Function(DateTime target) onResizeEnd;
+  final Future<void> Function(DateTime target) onMove;
+  final Future<void> Function(DateTime target) onResizeStart;
+  final Future<void> Function(DateTime target) onResizeEnd;
   final ValueChanged<bool> onEditModeChanged;
 
   const _ResizableTaskBlock({
@@ -2496,10 +2497,10 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                     }
                                     ..onEnd = (details) {
                                       final delta = _moveDelta;
-                                      setState(() {
-                                        _moveDelta = null;
-                                      });
                                       if (delta == null || delta.distance < 3) {
+                                        setState(() {
+                                          _moveDelta = null;
+                                        });
                                         if (_checkboxHit) {
                                           _checkboxHit = false;
                                           w.onToggle();
@@ -2518,7 +2519,24 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                       _longPressActivated = false;
                                       final target = _targetFromDelta(delta);
                                       if (target != w.start) {
-                                        w.onMove(target);
+                                        // 等待 async 完成后再清除 _moveDelta，避免视觉回弹
+                                        w.onMove(target).then((_) {
+                                          if (mounted) {
+                                            setState(() {
+                                              _moveDelta = null;
+                                            });
+                                          }
+                                        }).catchError((_) {
+                                          if (mounted) {
+                                            setState(() {
+                                              _moveDelta = null;
+                                            });
+                                          }
+                                        });
+                                      } else {
+                                        setState(() {
+                                          _moveDelta = null;
+                                        });
                                       }
                                     }
                                     ..onCancel = () {
@@ -2560,10 +2578,10 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                     }
                                     ..onEnd = (details) {
                                       final delta = _moveDelta;
-                                      setState(() {
-                                        _moveDelta = null;
-                                      });
                                       if (delta == null || delta.distance < 3) {
+                                        setState(() {
+                                          _moveDelta = null;
+                                        });
                                         if (_checkboxHit) {
                                           _checkboxHit = false;
                                           w.onToggle();
@@ -2575,7 +2593,24 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                                       _checkboxHit = false;
                                       final target = _targetFromDelta(delta);
                                       if (target != w.start) {
-                                        w.onMove(target);
+                                        // 等待 async 完成后再清除 _moveDelta，避免视觉回弹
+                                        w.onMove(target).then((_) {
+                                          if (mounted) {
+                                            setState(() {
+                                              _moveDelta = null;
+                                            });
+                                          }
+                                        }).catchError((_) {
+                                          if (mounted) {
+                                            setState(() {
+                                              _moveDelta = null;
+                                            });
+                                          }
+                                        });
+                                      } else {
+                                        setState(() {
+                                          _moveDelta = null;
+                                        });
                                       }
                                     }
                                     ..onCancel = () {
@@ -2839,9 +2874,9 @@ class _EditableMultiDayBar extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onSecondaryTap;
   final VoidCallback onToggle;
-  final void Function(int deltaDays) onMoveDay;
-  final void Function(int deltaDays) onResizeStartDay;
-  final void Function(int deltaDays) onResizeEndDay;
+  final Future<void> Function(int deltaDays) onMoveDay;
+  final Future<void> Function(int deltaDays) onResizeStartDay;
+  final Future<void> Function(int deltaDays) onResizeEndDay;
 
   const _EditableMultiDayBar({
     required this.task,
@@ -2899,10 +2934,25 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
               },
               onHorizontalDragEnd: (_) {
                 final dx = _moveDeltaX;
-                setState(() => _moveDeltaX = null);
-                if (dx == null || dx.abs() < 3) return;
+                if (dx == null || dx.abs() < 3) {
+                  setState(() => _moveDeltaX = null);
+                  return;
+                }
                 final days = (dx / w.dayWidth).round();
-                if (days != 0) w.onMoveDay(days);
+                if (days != 0) {
+                  // 等待 async 完成后再清除 _moveDeltaX，避免视觉回弹
+                  w.onMoveDay(days).then((_) {
+                    if (mounted) {
+                      setState(() => _moveDeltaX = null);
+                    }
+                  }).catchError((_) {
+                    if (mounted) {
+                      setState(() => _moveDeltaX = null);
+                    }
+                  });
+                } else {
+                  setState(() => _moveDeltaX = null);
+                }
               },
               onHorizontalDragCancel: () {
                 setState(() => _moveDeltaX = null);
