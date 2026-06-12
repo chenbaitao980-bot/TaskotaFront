@@ -1,2 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code standards: VLB patterns, debounce I/O, forbidden patterns for quality check"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify service initialization flow follows Bloc conventions"}
