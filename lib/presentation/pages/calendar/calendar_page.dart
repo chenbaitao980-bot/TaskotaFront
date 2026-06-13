@@ -150,7 +150,8 @@ class _CalendarPageState extends State<CalendarPage> {
           .where((task) => !excludedProjectIds.contains(task.projectId))
           .toList();
       final projects = cachedProjects ?? await _projectRepo!.getActive();
-      final List<ProjectGroup> groups = cachedGroups ??
+      final List<ProjectGroup> groups =
+          cachedGroups ??
           await (context.read<TaskNewBloc>().projectGroupRepository?.getAll() ??
               Future.value(<ProjectGroup>[]));
       if (mounted) {
@@ -158,8 +159,10 @@ class _CalendarPageState extends State<CalendarPage> {
           _allTasks = tasks;
           _allProjects = projects;
           _allGroups = groups;
-          _parentIdSet =
-              tasks.map((t) => t.parentId).whereType<String>().toSet();
+          _parentIdSet = tasks
+              .map((t) => t.parentId)
+              .whereType<String>()
+              .toSet();
           _tasksByDayCache = null;
           _initialized = true;
         });
@@ -252,7 +255,6 @@ class _CalendarPageState extends State<CalendarPage> {
     }
     return map;
   }
-
 
   /// 任务的 [startDate, dueDate] 是否与 [rangeStart, rangeEndExclusive) 相交
   bool _taskOverlapsRange(
@@ -384,34 +386,25 @@ class _CalendarPageState extends State<CalendarPage> {
     final position = _weekScrollController.hasClients
         ? _weekScrollController.position
         : null;
-    // 如果提供了焦点偏移，围绕焦点缩放；否则回退到 viewport 中心
-    final double? anchorHour;
-    if (focalPointOffset != null && position != null) {
-      anchorHour = (position.pixels + focalPointOffset) / _hourHeight;
-    } else if (position != null) {
-      anchorHour =
-          (position.pixels + position.viewportDimension / 2) / _hourHeight;
-    } else {
-      anchorHour = null;
+    if (position == null) {
+      _hourHeightNotifier.value = nextHeight;
+      return;
     }
-    _hourHeightNotifier.value = nextHeight; // H6: 只重建周视图网格 VLB 子树
-    if (anchorHour == null) return;
-    final capturedAnchor = anchorHour;
-    final capturedFocal = focalPointOffset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_weekScrollController.hasClients) return;
-      final nextPosition = _weekScrollController.position;
-      final double newFocalOffset;
-      if (capturedFocal != null) {
-        newFocalOffset = capturedAnchor * _hourHeight;
-      } else {
-        newFocalOffset =
-            capturedAnchor * _hourHeight - nextPosition.viewportDimension / 2;
-      }
-      _weekScrollController.jumpTo(
-        newFocalOffset.clamp(0.0, nextPosition.maxScrollExtent),
-      );
-    });
+    // 焦点缺省取视口中心；anchorHour = 焦点像素位置对应的内容小时
+    final viewport = position.viewportDimension;
+    final focal = focalPointOffset ?? viewport / 2;
+    final anchorHour = (position.pixels + focal) / _hourHeight;
+
+    _hourHeightNotifier.value = nextHeight; // 触发网格 VLB 重建（新高度）
+
+    // 关键：同帧同步校正滚动位置，消除"先漂移后跳回"的闪烁。
+    // _setHourHeight 运行在 pointer/按钮回调（非 build 期），jumpTo 合法。
+    // 同步调用时 position 仍是旧布局、maxScrollExtent 还是旧值，故用新高度
+    // 自行计算 max 来 clamp（缩放时 viewport 不变）。下一帧 layout 以新高度
+    // 布局并采用此 pixels，锚点恒定停在焦点处，无漂移帧。
+    final newMax = (nextHeight * 24 - viewport).clamp(0.0, double.infinity);
+    final targetOffset = (anchorHour * nextHeight - focal).clamp(0.0, newMax);
+    _weekScrollController.jumpTo(targetOffset);
   }
 
   bool get _isCtrlPressed {
@@ -422,8 +415,20 @@ class _CalendarPageState extends State<CalendarPage> {
 
   void _handleTimelinePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent || !_isCtrlPressed) return;
-    final delta = event.scrollDelta.dy < 0 ? _zoomStep : -_zoomStep;
-    _setHourHeight(_hourHeight + delta);
+    // 抢先注册赢得 resolver，阻止内层 viewport 把 Ctrl+滚轮当作普通滚动。
+    // 该 Listener 现位于 ScrollView 内部，localPosition 为内容坐标，
+    // 需减去 scrollOffset 转回视口可见坐标供 _setHourHeight 使用。
+    GestureBinding.instance.pointerSignalResolver.register(event, (event) {
+      if (event is! PointerScrollEvent) return;
+      final delta = event.scrollDelta.dy < 0 ? _zoomStep : -_zoomStep;
+      final scrollOffset = _weekScrollController.hasClients
+          ? _weekScrollController.offset
+          : 0.0;
+      _setHourHeight(
+        _hourHeight + delta,
+        focalPointOffset: event.localPosition.dy - scrollOffset,
+      );
+    });
   }
 
   void _onPointerDown(PointerDownEvent e) {
@@ -544,7 +549,10 @@ class _CalendarPageState extends State<CalendarPage> {
     // 乐观更新：立即更新本地状态，不等 DB
     final newStatus = task.status == 2 ? 0 : 2;
     if (shouldCascade) {
-      final affectedIds = {task.id, ..._allTasks.where((t) => t.parentId == task.id).map((t) => t.id)};
+      final affectedIds = {
+        task.id,
+        ..._allTasks.where((t) => t.parentId == task.id).map((t) => t.id),
+      };
       setState(() {
         _tasksByDayCache = null;
         for (var i = 0; i < _allTasks.length; i++) {
@@ -553,7 +561,9 @@ class _CalendarPageState extends State<CalendarPage> {
           }
         }
       });
-      _taskRepo!.setStatusCascade(task.id, 2, includeDescendants: true).then((_) {
+      _taskRepo!.setStatusCascade(task.id, 2, includeDescendants: true).then((
+        _,
+      ) {
         _reloadData();
         _notifyBloc();
       });
@@ -817,10 +827,14 @@ class _CalendarPageState extends State<CalendarPage> {
     final normStart = DateTime(newStart.year, newStart.month, newStart.day);
     final normEnd = DateTime(newEnd.year, newEnd.month, newEnd.day);
     final normChildStart = DateTime(
-      childRange.start.year, childRange.start.month, childRange.start.day,
+      childRange.start.year,
+      childRange.start.month,
+      childRange.start.day,
     );
     final normChildEnd = DateTime(
-      childRange.end.year, childRange.end.month, childRange.end.day,
+      childRange.end.year,
+      childRange.end.month,
+      childRange.end.day,
     );
     // 父任务时间范围必须恰好等于子任务范围
     return normStart.isAtSameMomentAs(normChildStart) &&
@@ -1601,7 +1615,6 @@ class _CalendarPageState extends State<CalendarPage> {
                   (constraints.maxWidth - _timeColumnWidth).clamp(320, 2400) /
                   _displayDayCount;
               _cachedDayWidth = dayWidth;
-              final totalHeight = _hourHeight * 24;
               // Listener 绕过手势竞技场；内层任务块设 _isTaskDragging=true 时跳过翻周
               return Listener(
                 onPointerDown: (e) {
@@ -1637,8 +1650,9 @@ class _CalendarPageState extends State<CalendarPage> {
                   if (daysToShift != 0) {
                     // 翻周确实需要整页重建（天数列表变化）
                     setState(() {
-                      _focusedDay =
-                          _focusedDay.add(Duration(days: daysToShift));
+                      _focusedDay = _focusedDay.add(
+                        Duration(days: daysToShift),
+                      );
                       _didAutoScrollWeek = false;
                     });
                   }
@@ -1648,79 +1662,105 @@ class _CalendarPageState extends State<CalendarPage> {
                   _dragStartX = null;
                   _dragSkipped = false;
                 },
-                // H1: VLB 只重建 Transform，网格整列作 child 传入不重建
+                // H6: 缩放只重建监听 _hourHeightNotifier 的网格子树，不整页重建
                 child: ValueListenableBuilder<double>(
-                  valueListenable: _dragOffset,
-                  builder: (context, dragOffset, child) => Transform.translate(
-                    offset: Offset(dragOffset, 0),
-                    child: child,
-                  ),
-                  child: Column(
-                    children: [
-                      _buildMultiDayLane(days, dayWidth, multiDayTasks),
-                      Expanded(
-                        child: RepaintBoundary(
-                          child: Listener(
-                            key: _timelineListenerKey,
-                            onPointerSignal: _handleTimelinePointerSignal,
-                            onPointerDown: _onPointerDown,
-                            onPointerMove: _onPointerMove,
-                            onPointerUp: _onPointerUp,
-                            onPointerCancel: _onPointerCancel,
-                            child: NotificationListener<ScrollNotification>(
-                              onNotification: (_) =>
-                                  _isTaskDragging.value || _editingTaskId != null,
-                              child: SingleChildScrollView(
-                              controller: _weekScrollController,
-                              physics: _editingTaskId != null || _isTaskDragging.value
-                                  ? const NeverScrollableScrollPhysics()
-                                  : null,
-                              child: SizedBox(
-                                height: totalHeight,
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildTimeColumn(totalHeight),
-                                    SizedBox(
-                                      width: dayWidth * _displayDayCount,
-                                      height: totalHeight,
-                                      child: Stack(
-                                        children: [
-                                          for (var i = 0; i < days.length; i++)
-                                            Positioned(
-                                              left: i * dayWidth,
-                                              top: 0,
-                                              width: dayWidth,
+                  valueListenable: _hourHeightNotifier,
+                  builder: (context, hourHeight, _) {
+                    final totalHeight = hourHeight * 24;
+                    // H1: 内层 VLB 只重建 Transform，网格整列作 child 传入不重建
+                    return ValueListenableBuilder<double>(
+                      valueListenable: _dragOffset,
+                      builder: (context, dragOffset, child) =>
+                          Transform.translate(
+                            offset: Offset(dragOffset, 0),
+                            child: child,
+                          ),
+                      child: Column(
+                        children: [
+                          _buildMultiDayLane(days, dayWidth, multiDayTasks),
+                          Expanded(
+                            child: RepaintBoundary(
+                              child: Listener(
+                                key: _timelineListenerKey,
+                                onPointerDown: _onPointerDown,
+                                onPointerMove: _onPointerMove,
+                                onPointerUp: _onPointerUp,
+                                onPointerCancel: _onPointerCancel,
+                                child: NotificationListener<ScrollNotification>(
+                                  onNotification: (_) =>
+                                      _isTaskDragging.value ||
+                                      _editingTaskId != null,
+                                  child: SingleChildScrollView(
+                                    controller: _weekScrollController,
+                                    physics:
+                                        _editingTaskId != null ||
+                                            _isTaskDragging.value
+                                        ? const NeverScrollableScrollPhysics()
+                                        : null,
+                                    child: Listener(
+                                      onPointerSignal:
+                                          _handleTimelinePointerSignal,
+                                      behavior: HitTestBehavior.translucent,
+                                      child: SizedBox(
+                                        height: totalHeight,
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            _buildTimeColumn(totalHeight),
+                                            SizedBox(
+                                              width:
+                                                  dayWidth * _displayDayCount,
                                               height: totalHeight,
-                                              child: _buildDayDropColumn(
-                                                days[i],
-                                                dayWidth,
+                                              child: Stack(
+                                                children: [
+                                                  for (
+                                                    var i = 0;
+                                                    i < days.length;
+                                                    i++
+                                                  )
+                                                    Positioned(
+                                                      left: i * dayWidth,
+                                                      top: 0,
+                                                      width: dayWidth,
+                                                      height: totalHeight,
+                                                      child:
+                                                          _buildDayDropColumn(
+                                                            days[i],
+                                                            dayWidth,
+                                                          ),
+                                                    ),
+                                                  for (
+                                                    var i = 0;
+                                                    i < days.length;
+                                                    i++
+                                                  )
+                                                    ..._buildTaskBlocksForDay(
+                                                      days[i],
+                                                      i,
+                                                      dayWidth,
+                                                      singleDayTasks,
+                                                    ),
+                                                  _buildCurrentTimeIndicator(
+                                                    days,
+                                                    dayWidth,
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          for (var i = 0; i < days.length; i++)
-                                            ..._buildTaskBlocksForDay(
-                                              days[i],
-                                              i,
-                                              dayWidth,
-                                              singleDayTasks,
-                                            ),
-                                          _buildCurrentTimeIndicator(
-                                            days,
-                                            dayWidth,
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
+                                    ), // close Listener (pointer signal)
+                                  ), // close SingleChildScrollView
+                                ), // close NotificationListener
                               ),
-                            ), // close SingleChildScrollView
-                            ), // close NotificationListener
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               );
             },
@@ -1782,7 +1822,9 @@ class _CalendarPageState extends State<CalendarPage> {
                       '跨天任务 (${tasks.length})',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -1795,7 +1837,10 @@ class _CalendarPageState extends State<CalendarPage> {
                         });
                       },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1878,9 +1923,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
     // 组内：DFS 递归，保证父节点永远在子节点上面
     List<Task> dfsChildren(List<Task> allChildren, String parentId) {
-      final direct = allChildren
-          .where((t) => t.parentId == parentId)
-          .toList()
+      final direct = allChildren.where((t) => t.parentId == parentId).toList()
         ..sort((a, b) {
           final so = a.sortOrder.compareTo(b.sortOrder);
           if (so != 0) return so;
@@ -1910,8 +1953,6 @@ class _CalendarPageState extends State<CalendarPage> {
     final contentHeight = totalRows * laneHeight;
     final visibleHeight = visibleRows * laneHeight;
 
-
-
     return Container(
       height: visibleHeight,
       decoration: BoxDecoration(
@@ -1939,20 +1980,24 @@ class _CalendarPageState extends State<CalendarPage> {
                             dayWidth,
                             laneHeight,
                             onCollapseToggle:
-                                childrenByRoot[orderedRows[i].id]?.isNotEmpty == true
-                                    ? () {
-                                        final rootId = orderedRows[i].id;
-                                        setState(() {
-                                          if (_collapsedMultiDayGroups.contains(rootId)) {
-                                            _collapsedMultiDayGroups.remove(rootId);
-                                          } else {
-                                            _collapsedMultiDayGroups.add(rootId);
-                                          }
-                                        });
+                                childrenByRoot[orderedRows[i].id]?.isNotEmpty ==
+                                    true
+                                ? () {
+                                    final rootId = orderedRows[i].id;
+                                    setState(() {
+                                      if (_collapsedMultiDayGroups.contains(
+                                        rootId,
+                                      )) {
+                                        _collapsedMultiDayGroups.remove(rootId);
+                                      } else {
+                                        _collapsedMultiDayGroups.add(rootId);
                                       }
-                                    : null,
-                            isGroupCollapsed:
-                                _collapsedMultiDayGroups.contains(orderedRows[i].id),
+                                    });
+                                  }
+                                : null,
+                            isGroupCollapsed: _collapsedMultiDayGroups.contains(
+                              orderedRows[i].id,
+                            ),
                           ),
                       ],
                     ),
@@ -1965,10 +2010,9 @@ class _CalendarPageState extends State<CalendarPage> {
                   child: Tooltip(
                     message: '收起甘特图',
                     child: Material(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surface
-                          .withValues(alpha: 0.88),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surface.withValues(alpha: 0.88),
                       borderRadius: BorderRadius.circular(8),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(8),
@@ -1978,7 +2022,10 @@ class _CalendarPageState extends State<CalendarPage> {
                           });
                         },
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1986,19 +2033,16 @@ class _CalendarPageState extends State<CalendarPage> {
                                 '收起',
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
+                                  color: Theme.of(context).colorScheme.onSurface
                                       .withValues(alpha: 0.65),
                                 ),
                               ),
                               Icon(
                                 Icons.keyboard_arrow_up,
                                 size: 14,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.65),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.65),
                               ),
                             ],
                           ),
@@ -2013,10 +2057,9 @@ class _CalendarPageState extends State<CalendarPage> {
                     right: 2,
                     bottom: 2,
                     child: Material(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surface
-                          .withValues(alpha: 0.88),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surface.withValues(alpha: 0.88),
                       borderRadius: BorderRadius.circular(10),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(10),
@@ -2042,9 +2085,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                 '查看全部 ${tasks.length} 条',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
+                                  color: Theme.of(context).colorScheme.onSurface
                                       .withValues(alpha: 0.78),
                                 ),
                               ),
@@ -2052,10 +2093,9 @@ class _CalendarPageState extends State<CalendarPage> {
                               Icon(
                                 Icons.chevron_right,
                                 size: 14,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.78),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.78),
                               ),
                             ],
                           ),
@@ -2289,33 +2329,33 @@ class _CalendarPageState extends State<CalendarPage> {
       onPointerUp: (_) => _isTaskDragging.value = false,
       onPointerCancel: (_) => _isTaskDragging.value = false,
       child: _ResizableTaskBlock(
-      task: task,
-      start: start,
-      end: end,
-      segmentStart: segmentStart,
-      hourHeight: _hourHeight,
-      dayWidth: dayWidth,
-      priorityColor: _priorityColor(task.priority),
-      isCompleted: task.status == 2,
-      isEditMode: _editingTaskId == task.id,
-      timeLabel: _timeLabel,
-      parentLabel: _parentLabel(task),
-      onOpenDetail: () {
-        if (_editingTaskId != null) {
-          setState(() => _editingTaskId = null);
-        } else {
-          _openTaskDetail(task);
-        }
-      },
-      onToggle: () => _toggleTaskStatus(task),
-      onSecondaryTap: () => _showTaskContextActions(task),
-      onDelete: () => _deleteTask(task),
-      onMove: (target) => _moveTask(task, target),
-      onResizeStart: (target) => _resizeTaskStart(task, target),
-      onResizeEnd: (target) => _resizeTaskEnd(task, target),
-      onEditModeChanged: (editing) {
-        setState(() => _editingTaskId = editing ? task.id : null);
-      },
+        task: task,
+        start: start,
+        end: end,
+        segmentStart: segmentStart,
+        hourHeight: _hourHeight,
+        dayWidth: dayWidth,
+        priorityColor: _priorityColor(task.priority),
+        isCompleted: task.status == 2,
+        isEditMode: _editingTaskId == task.id,
+        timeLabel: _timeLabel,
+        parentLabel: _parentLabel(task),
+        onOpenDetail: () {
+          if (_editingTaskId != null) {
+            setState(() => _editingTaskId = null);
+          } else {
+            _openTaskDetail(task);
+          }
+        },
+        onToggle: () => _toggleTaskStatus(task),
+        onSecondaryTap: () => _showTaskContextActions(task),
+        onDelete: () => _deleteTask(task),
+        onMove: (target) => _moveTask(task, target),
+        onResizeStart: (target) => _resizeTaskStart(task, target),
+        onResizeEnd: (target) => _resizeTaskEnd(task, target),
+        onEditModeChanged: (editing) {
+          setState(() => _editingTaskId = editing ? task.id : null);
+        },
       ), // close _ResizableTaskBlock
     ); // close Listener
   }
@@ -2549,75 +2589,77 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                           _EagerPanGestureRecognizer:
                               GestureRecognizerFactoryWithHandlers<
                                 _EagerPanGestureRecognizer
-                              >(
-                                () => _EagerPanGestureRecognizer(),
-                                (_EagerPanGestureRecognizer instance) {
-                                  instance
-                                    ..onStart = (details) {
-                                      setState(() {
-                                        _moveDelta = Offset.zero;
-                                      });
-                                    }
-                                    ..onUpdate = (details) {
-                                      setState(() {
-                                        _moveDelta =
-                                            (_moveDelta ?? Offset.zero) +
-                                            details.delta;
-                                      });
-                                    }
-                                    ..onEnd = (details) {
-                                      final delta = _moveDelta;
-                                      if (delta == null || delta.distance < 3) {
-                                        setState(() {
-                                          _moveDelta = null;
-                                        });
-                                        if (_checkboxHit) {
-                                          _checkboxHit = false;
-                                          w.onToggle();
-                                          return;
-                                        }
-                                        if (_longPressActivated) {
-                                          // 长按激活编辑模式后松手，不视为点击
-                                          _longPressActivated = false;
-                                          return;
-                                        }
-                                        // 移动距离极小，视为点击
-                                        w.onOpenDetail();
-                                        return;
-                                      }
-                                      _checkboxHit = false;
-                                      _longPressActivated = false;
-                                      final target = _targetFromDelta(delta);
-                                      if (target != w.start) {
-                                        // 等待 async 完成后再清除 _moveDelta，避免视觉回弹
-                                        w.onMove(target).then((_) {
-                                          if (mounted) {
-                                            setState(() {
-                                              _moveDelta = null;
-                                            });
-                                          }
-                                        }).catchError((_) {
-                                          if (mounted) {
-                                            setState(() {
-                                              _moveDelta = null;
-                                            });
-                                          }
-                                        });
-                                      } else {
-                                        setState(() {
-                                          _moveDelta = null;
-                                        });
-                                      }
-                                    }
-                                    ..onCancel = () {
-                                      _checkboxHit = false;
-                                      _longPressActivated = false;
+                              >(() => _EagerPanGestureRecognizer(), (
+                                _EagerPanGestureRecognizer instance,
+                              ) {
+                                instance
+                                  ..onStart = (details) {
+                                    setState(() {
+                                      _moveDelta = Offset.zero;
+                                    });
+                                  }
+                                  ..onUpdate = (details) {
+                                    setState(() {
+                                      _moveDelta =
+                                          (_moveDelta ?? Offset.zero) +
+                                          details.delta;
+                                    });
+                                  }
+                                  ..onEnd = (details) {
+                                    final delta = _moveDelta;
+                                    if (delta == null || delta.distance < 3) {
                                       setState(() {
                                         _moveDelta = null;
                                       });
-                                    };
-                                },
-                              ),
+                                      if (_checkboxHit) {
+                                        _checkboxHit = false;
+                                        w.onToggle();
+                                        return;
+                                      }
+                                      if (_longPressActivated) {
+                                        // 长按激活编辑模式后松手，不视为点击
+                                        _longPressActivated = false;
+                                        return;
+                                      }
+                                      // 移动距离极小，视为点击
+                                      w.onOpenDetail();
+                                      return;
+                                    }
+                                    _checkboxHit = false;
+                                    _longPressActivated = false;
+                                    final target = _targetFromDelta(delta);
+                                    if (target != w.start) {
+                                      // 等待 async 完成后再清除 _moveDelta，避免视觉回弹
+                                      w
+                                          .onMove(target)
+                                          .then((_) {
+                                            if (mounted) {
+                                              setState(() {
+                                                _moveDelta = null;
+                                              });
+                                            }
+                                          })
+                                          .catchError((_) {
+                                            if (mounted) {
+                                              setState(() {
+                                                _moveDelta = null;
+                                              });
+                                            }
+                                          });
+                                    } else {
+                                      setState(() {
+                                        _moveDelta = null;
+                                      });
+                                    }
+                                  }
+                                  ..onCancel = () {
+                                    _checkboxHit = false;
+                                    _longPressActivated = false;
+                                    setState(() {
+                                      _moveDelta = null;
+                                    });
+                                  };
+                              }),
                         },
                         child: _buildBlockContent(color, textColor),
                       ),
@@ -2630,67 +2672,69 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                           _EagerPanGestureRecognizer:
                               GestureRecognizerFactoryWithHandlers<
                                 _EagerPanGestureRecognizer
-                              >(
-                                () => _EagerPanGestureRecognizer(),
-                                (_EagerPanGestureRecognizer instance) {
-                                  instance
-                                    ..onStart = (details) {
-                                      setState(() {
-                                        _moveDelta = Offset.zero;
-                                      });
-                                    }
-                                    ..onUpdate = (details) {
-                                      setState(() {
-                                        _moveDelta =
-                                            (_moveDelta ?? Offset.zero) +
-                                            details.delta;
-                                      });
-                                    }
-                                    ..onEnd = (details) {
-                                      final delta = _moveDelta;
-                                      if (delta == null || delta.distance < 3) {
-                                        setState(() {
-                                          _moveDelta = null;
-                                        });
-                                        if (_checkboxHit) {
-                                          _checkboxHit = false;
-                                          w.onToggle();
-                                          return;
-                                        }
-                                        w.onOpenDetail();
-                                        return;
-                                      }
-                                      _checkboxHit = false;
-                                      final target = _targetFromDelta(delta);
-                                      if (target != w.start) {
-                                        // 等待 async 完成后再清除 _moveDelta，避免视觉回弹
-                                        w.onMove(target).then((_) {
-                                          if (mounted) {
-                                            setState(() {
-                                              _moveDelta = null;
-                                            });
-                                          }
-                                        }).catchError((_) {
-                                          if (mounted) {
-                                            setState(() {
-                                              _moveDelta = null;
-                                            });
-                                          }
-                                        });
-                                      } else {
-                                        setState(() {
-                                          _moveDelta = null;
-                                        });
-                                      }
-                                    }
-                                    ..onCancel = () {
-                                      _checkboxHit = false;
+                              >(() => _EagerPanGestureRecognizer(), (
+                                _EagerPanGestureRecognizer instance,
+                              ) {
+                                instance
+                                  ..onStart = (details) {
+                                    setState(() {
+                                      _moveDelta = Offset.zero;
+                                    });
+                                  }
+                                  ..onUpdate = (details) {
+                                    setState(() {
+                                      _moveDelta =
+                                          (_moveDelta ?? Offset.zero) +
+                                          details.delta;
+                                    });
+                                  }
+                                  ..onEnd = (details) {
+                                    final delta = _moveDelta;
+                                    if (delta == null || delta.distance < 3) {
                                       setState(() {
                                         _moveDelta = null;
                                       });
-                                    };
-                                },
-                              ),
+                                      if (_checkboxHit) {
+                                        _checkboxHit = false;
+                                        w.onToggle();
+                                        return;
+                                      }
+                                      w.onOpenDetail();
+                                      return;
+                                    }
+                                    _checkboxHit = false;
+                                    final target = _targetFromDelta(delta);
+                                    if (target != w.start) {
+                                      // 等待 async 完成后再清除 _moveDelta，避免视觉回弹
+                                      w
+                                          .onMove(target)
+                                          .then((_) {
+                                            if (mounted) {
+                                              setState(() {
+                                                _moveDelta = null;
+                                              });
+                                            }
+                                          })
+                                          .catchError((_) {
+                                            if (mounted) {
+                                              setState(() {
+                                                _moveDelta = null;
+                                              });
+                                            }
+                                          });
+                                    } else {
+                                      setState(() {
+                                        _moveDelta = null;
+                                      });
+                                    }
+                                  }
+                                  ..onCancel = () {
+                                    _checkboxHit = false;
+                                    setState(() {
+                                      _moveDelta = null;
+                                    });
+                                  };
+                              }),
                         },
                         child: _buildBlockContent(color, textColor),
                       ),
@@ -2808,8 +2852,12 @@ class _ResizableTaskBlockState extends State<_ResizableTaskBlock> {
                           value: w.isCompleted,
                           onChanged: null,
                           visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          side: const BorderSide(color: Colors.white, width: 1.4),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(
+                            color: Colors.white,
+                            width: 1.4,
+                          ),
                           checkColor: Colors.grey,
                           fillColor: WidgetStateProperty.resolveWith(
                             (states) => states.contains(WidgetState.selected)
@@ -3011,15 +3059,18 @@ class _EditableMultiDayBarState extends State<_EditableMultiDayBar> {
                 final days = (dx / w.dayWidth).round();
                 if (days != 0) {
                   // 等待 async 完成后再清除 _moveDeltaX，避免视觉回弹
-                  w.onMoveDay(days).then((_) {
-                    if (mounted) {
-                      setState(() => _moveDeltaX = null);
-                    }
-                  }).catchError((_) {
-                    if (mounted) {
-                      setState(() => _moveDeltaX = null);
-                    }
-                  });
+                  w
+                      .onMoveDay(days)
+                      .then((_) {
+                        if (mounted) {
+                          setState(() => _moveDeltaX = null);
+                        }
+                      })
+                      .catchError((_) {
+                        if (mounted) {
+                          setState(() => _moveDeltaX = null);
+                        }
+                      });
                 } else {
                   setState(() => _moveDeltaX = null);
                 }

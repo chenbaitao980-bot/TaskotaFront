@@ -271,6 +271,57 @@ int effectiveGroupSpan(String rootId) {
 
 ---
 
+## Pointer / Gesture Patterns
+
+### Gotcha: 自定义 Ctrl+滚轮（PointerSignal）与 ScrollView 共存 —— Listener 必须在 viewport 内层
+
+**Symptom**: 在可滚动区（`SingleChildScrollView` 等）上做 Ctrl+滚轮缩放，缩放回调"看起来执行了"，但页面仍然跟着上下滚动，缩放被滚动覆盖。
+
+**Cause**: `Listener.onPointerSignal` **不消费** PointerSignal 事件，它与内层 `Scrollable` 的 viewport 是**竞争关系**。Flutter 用 `GestureBinding.instance.pointerSignalResolver` 仲裁：
+
+- `resolver.register(event, cb)` **只认第一个注册者**（源码 `if (_firstRegisteredCallback != null) return;`）。
+- 注册顺序沿命中路径**从内到外**。viewport 在内层、自定义 `Listener` 在外层时，**viewport 先注册并赢**，自定义缩放回调被静默丢弃 → 继续滚动。
+
+```dart
+// ❌ 错误：缩放 Listener 在 ScrollView 外层，viewport 先 register 赢得 resolver
+Listener(
+  onPointerSignal: _handleZoom,        // register 晚于 viewport → 被忽略
+  child: SingleChildScrollView(
+    child: SizedBox(/* 内容 */),
+  ),
+)
+```
+
+**Fix**: 把处理 `onPointerSignal` 的 `Listener` 放到 **`SingleChildScrollView` 内部**（包住内容），使它在命中路径上比 viewport 更内层、**先注册**，抢占 resolver 赢家位置，从而阻止 viewport 滚动。仍需在回调里调用 `resolver.register` 来真正占位。
+
+```dart
+// ✅ 正确：缩放 Listener 在 ScrollView 内层，先 register 赢
+SingleChildScrollView(
+  controller: _scrollController,
+  child: Listener(
+    onPointerSignal: _handleZoom,      // register 早于 viewport → 赢
+    behavior: HitTestBehavior.translucent,  // 空白区也能命中触发
+    child: SizedBox(/* 内容 */),
+  ),
+)
+
+void _handleZoom(PointerSignalEvent event) {
+  if (event is! PointerScrollEvent || !_isCtrlPressed) return;
+  GestureBinding.instance.pointerSignalResolver.register(event, (event) {
+    // ... 缩放逻辑
+  });
+}
+```
+
+> **⚠️ 坐标系陷阱**：`Listener` 从 ScrollView 外层移到内层后，`event.localPosition.dy` 的语义从**视觉坐标**（相对视口顶部，不含滚动）变为**内容坐标**（相对内容顶部，含滚动）。若下游公式期望视觉坐标（如 `(scrollOffset + focal) / itemHeight`），必须在回调里 `focal = localPosition.dy - scrollOffset` 转回，否则缩放焦点会随滚动位置漂移。
+
+**Prevention**:
+- 任何"自定义滚轮/触控板手势 + 可滚动区"组合，先问：我的 PointerSignal 处理者在 viewport 内层还是外层？外层必输。
+- 移动手势 `Listener` 在 widget 树中的层级时，复查 `localPosition` 是视觉坐标还是内容坐标,并核对下游公式的期望。
+- 实例参见 `lib/presentation/pages/calendar/calendar_page.dart` 的 `_handleTimelinePointerSignal`。
+
+---
+
 ## Notification Service Patterns
 
 ### Pattern: Persistent In-App Reminder Dialog (Desktop)
