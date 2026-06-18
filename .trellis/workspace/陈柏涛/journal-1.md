@@ -1000,3 +1000,36 @@ taskora-website: 修复所有 admin 页面右侧留白（Starlight right-sidebar
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: 桌面悬浮进行中任务页签
+
+**Date**: 2026-06-18
+**Task**: 桌面悬浮进行中任务页签
+**Branch**: `master`
+
+### Summary
+
+实现Windows桌面端关闭主窗口后显示悬浮页签功能。修复5个问题：status筛选条件错误(1→0)、导航路由指向错误数据源、透明框黑边、标题截断、子任务不优先。静态分析通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f68060b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
