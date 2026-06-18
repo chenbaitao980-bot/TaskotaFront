@@ -1,7 +1,11 @@
 import 'dart:io' show exit;
+
+import 'package:flutter/foundation.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
+
 import '../core/constants/app_constants.dart';
+import '../core/desktop/window_state.dart';
 import '../core/desktop/desktop_runtime.dart';
 
 final _systemTray = SystemTray();
@@ -11,14 +15,13 @@ Future<void> initTray() async {
     await windowManager.waitUntilReadyToShow();
     await windowManager.setSkipTaskbar(false);
 
-    final trayOk = await _systemTray.initSystemTray(
+    await _systemTray.initSystemTray(
       title: AppConstants.appName,
       iconPath: 'assets/icons/tray_icon.ico',
       toolTip: AppConstants.appName,
     );
-    print(trayOk ? '[Tray] 初始化成功' : '[Tray] 初始化失败 - 检查图标路径');
   } catch (e) {
-    print('[Tray] 异常: $e');
+    debugPrint('[Tray] init failed: $e');
     return;
   }
 
@@ -26,7 +29,7 @@ Future<void> initTray() async {
     MenuItem(
       label: '显示',
       onClicked: () async {
-        await windowManager.show();
+        await (showDesktopWindow?.call() ?? windowManager.show());
         await windowManager.focus();
       },
     ),
@@ -44,8 +47,9 @@ Future<void> initTray() async {
   _systemTray.registerSystemTrayEventHandler((eventName) {
     final action = trayEventActionFor(eventName);
     if (action == TrayEventAction.showWindow) {
-      windowManager.show();
-      windowManager.focus();
+      (showDesktopWindow?.call() ?? windowManager.show()).then((_) {
+        windowManager.focus();
+      });
     } else if (action == TrayEventAction.popUpContextMenu) {
       _systemTray.popUpContextMenu();
     }

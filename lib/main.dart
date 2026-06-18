@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/constants/app_constants.dart';
 import 'core/router/app_router.dart';
+import 'core/desktop/desktop_floating_tab_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/utils/file_logger.dart';
@@ -28,6 +29,7 @@ import 'presentation/blocs/task_new/task_bloc.dart' as task_new;
 import 'presentation/pages/auth/login_page.dart';
 import 'presentation/pages/home/home_page.dart';
 import 'presentation/pages/privacy/privacy_consent_page.dart';
+import 'presentation/widgets/desktop_floating_task_tab.dart';
 import 'services/attachment_sync_service.dart';
 import 'services/checklist_sync_service.dart';
 import 'services/notification_service.dart';
@@ -43,62 +45,69 @@ import 'services/member_config_service.dart';
 import 'services/app_config_service.dart';
 
 void main() async {
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-    FlutterError.onError = (details) {
-      FlutterError.presentError(details);
-      flog('[FlutterError] ${details.exceptionAsString()}');
-    };
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        flog('[FlutterError] ${details.exceptionAsString()}');
+      };
 
-    // 日志清理为磁盘 IO，可延后，不阻塞首帧（W9）
-    unawaited(FileLogger.instance.clear());
-    unawaited(FileLogger.instance.filePath.then((p) => print('Log path: $p')));
-    flog('[App] ===== 应用启动 =====');
+      // 日志清理为磁盘 IO，可延后，不阻塞首帧（W9）
+      unawaited(FileLogger.instance.clear());
+      unawaited(
+        FileLogger.instance.filePath.then((p) => debugPrint('Log path: $p')),
+      );
+      flog('[App] ===== 应用启动 =====');
 
-    if (!kIsWeb && isDesktop) {
-      await _initWindowManager();
-    }
-
-    // 主题 / 隐私标记 / Supabase 会话恢复互不依赖，并行执行（W8+W15）
-    // Supabase.initialize 必须在 runApp 前完成（首屏 auth 状态依赖）
-    var privacyAccepted = false;
-    await Future.wait<void>([
-      themeController.load(),
-      PrivacyConsentPage.isAccepted().then((v) => privacyAccepted = v),
-      Supabase.initialize(
-        url: AppConstants.supabaseUrl,
-        anonKey: AppConstants.supabaseAnonKey,
-      ),
-    ]);
-
-    // 始终只调用一次 runApp，由 MyApp 内部决定展示隐私页还是主界面
-    final deps = await _initServices();
-
-    runApp(MyApp(
-      privacyAccepted: privacyAccepted,
-      database: deps.database,
-      projectRepository: deps.projectRepository,
-      projectGroupRepository: deps.projectGroupRepository,
-      taskRepository: deps.taskRepository,
-      checklistRepository: deps.checklistRepository,
-      nodeTemplateRepository: deps.nodeTemplateRepository,
-    ));
-
-    // 首帧后再做托盘 / 通知 / 推送 / 会员配置等非首屏必需初始化（W1/W2/W3/W7/W13/W14）
-    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!kIsWeb && isDesktop) {
-        unawaited(initTray());
+        await _initWindowManager();
       }
-      if (kIsWeb) {
-        // Web 端预热 wasm 数据库，让下载/编译与首帧并行（W13）
-        unawaited(deps.database.customSelect('select 1').get());
-      }
-      unawaited(_initDeferredServices());
-    });
-  }, (error, stack) {
-    flog('[UncaughtError] $error\n$stack');
-  });
+
+      // 主题 / 隐私标记 / Supabase 会话恢复互不依赖，并行执行（W8+W15）
+      // Supabase.initialize 必须在 runApp 前完成（首屏 auth 状态依赖）
+      var privacyAccepted = false;
+      await Future.wait<void>([
+        themeController.load(),
+        PrivacyConsentPage.isAccepted().then((v) => privacyAccepted = v),
+        Supabase.initialize(
+          url: AppConstants.supabaseUrl,
+          anonKey: AppConstants.supabaseAnonKey,
+        ),
+      ]);
+
+      // 始终只调用一次 runApp，由 MyApp 内部决定展示隐私页还是主界面
+      final deps = await _initServices();
+
+      runApp(
+        MyApp(
+          privacyAccepted: privacyAccepted,
+          database: deps.database,
+          projectRepository: deps.projectRepository,
+          projectGroupRepository: deps.projectGroupRepository,
+          taskRepository: deps.taskRepository,
+          checklistRepository: deps.checklistRepository,
+          nodeTemplateRepository: deps.nodeTemplateRepository,
+        ),
+      );
+
+      // 首帧后再做托盘 / 通知 / 推送 / 会员配置等非首屏必需初始化（W1/W2/W3/W7/W13/W14）
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!kIsWeb && isDesktop) {
+          unawaited(initTray());
+        }
+        if (kIsWeb) {
+          // Web 端预热 wasm 数据库，让下载/编译与首帧并行（W13）
+          unawaited(deps.database.customSelect('select 1').get());
+        }
+        unawaited(_initDeferredServices());
+      });
+    },
+    (error, stack) {
+      flog('[UncaughtError] $error\n$stack');
+    },
+  );
 }
 
 /// 首帧后初始化的服务：均不影响首屏渲染与首批数据。
@@ -216,12 +225,17 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final _desktopFloatingTabController = DesktopFloatingTabController.instance;
   late bool _privacyAccepted;
 
   @override
   void initState() {
     super.initState();
     _privacyAccepted = widget.privacyAccepted;
+    _desktopFloatingTabController.bindTaskRepository(widget.taskRepository);
+    if (!kIsWeb && isDesktop) {
+      unawaited(_desktopFloatingTabController.ensureInitialized());
+    }
   }
 
   void _onPrivacyAccepted() {
@@ -261,7 +275,10 @@ class _MyAppState extends State<MyApp> {
             ),
           ],
           child: ListenableBuilder(
-            listenable: themeController,
+            listenable: Listenable.merge([
+              themeController,
+              _desktopFloatingTabController,
+            ]),
             builder: (context, _) => MaterialApp(
               title: AppConstants.appName,
               debugShowCheckedModeBanner: false,
@@ -282,12 +299,39 @@ class _MyAppState extends State<MyApp> {
               home: _privacyAccepted
                   ? BlocBuilder<AuthBloc, AuthState>(
                       builder: (context, state) {
+                        final canShowFloatingTab =
+                            state is Authenticated ||
+                            state is LocalAuthenticated;
+                        _desktopFloatingTabController.setCanShowFloatingTab(
+                          canShowFloatingTab,
+                        );
+                        if ((state is Authenticated ||
+                                state is LocalAuthenticated) &&
+                            isDesktop &&
+                            _desktopFloatingTabController.isFloating &&
+                            _desktopFloatingTabController.currentTask != null) {
+                          return DesktopFloatingTaskTab(
+                            task: _desktopFloatingTabController.currentTask!,
+                            onTap: () {
+                              _desktopFloatingTabController.restoreFullWindow(
+                                openTaskId: _desktopFloatingTabController
+                                    .currentTask
+                                    ?.taskId,
+                              );
+                            },
+                            onClose: () {
+                              return _desktopFloatingTabController
+                                  .closeFloatingTab();
+                            },
+                          );
+                        }
                         if (state is Authenticated ||
                             state is LocalAuthenticated) {
                           return HomePage(
                             database: widget.database,
                             projectRepository: widget.projectRepository,
-                            projectGroupRepository: widget.projectGroupRepository,
+                            projectGroupRepository:
+                                widget.projectGroupRepository,
                             taskRepository: widget.taskRepository,
                             checklistRepository: widget.checklistRepository,
                           );

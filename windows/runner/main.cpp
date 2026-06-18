@@ -12,7 +12,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
     HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"Taskora");
     if (existing) {
-      ::ShowWindow(existing, SW_RESTORE);
+      ::ShowWindow(existing, SW_MAXIMIZE);
       ::SetForegroundWindow(existing);
     }
     if (hMutex) ::CloseHandle(hMutex);
@@ -38,7 +38,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
+  Win32Window::Size size(1280, 860);
   if (!window.Create(L"Taskora", origin, size)) {
     return EXIT_FAILURE;
   }

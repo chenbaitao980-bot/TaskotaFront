@@ -439,6 +439,7 @@ class LocalStorageService {
   static const _excludedProjectIdsKey = 'excluded_project_ids';
   static const _projectSidebarTimeSortDescKey =
       'project_sidebar_time_sort_desc';
+  static const _desktopFloatingTabEnabledKey = 'desktop_floating_tab_enabled';
 
   Set<String> get excludedProjectIds {
     final raw = _prefs?.getStringList(_excludedProjectIdsKey) ?? const [];
@@ -455,6 +456,14 @@ class LocalStorageService {
 
   Future<void> setProjectSidebarTimeSortDesc(bool value) async {
     await _prefs?.setBool(_projectSidebarTimeSortDescKey, value);
+    await LocalDataService().persistPreferencesSnapshot();
+  }
+
+  bool get desktopFloatingTabEnabled =>
+      _prefs?.getBool(_desktopFloatingTabEnabledKey) ?? true;
+
+  Future<void> setDesktopFloatingTabEnabled(bool value) async {
+    await _prefs?.setBool(_desktopFloatingTabEnabledKey, value);
     await LocalDataService().persistPreferencesSnapshot();
   }
 
@@ -531,8 +540,7 @@ class LocalStorageService {
   // 上次逾期通知时间（毫秒时间戳，默认 0）
   static const _overdueLastNotifMsKey = 'overdue_last_notif_ms';
 
-  int get overdueLastNotifMs =>
-      _prefs?.getInt(_overdueLastNotifMsKey) ?? 0;
+  int get overdueLastNotifMs => _prefs?.getInt(_overdueLastNotifMsKey) ?? 0;
 
   Future<void> setOverdueLastNotifMs(int value) async {
     await _prefs?.setInt(_overdueLastNotifMsKey, value);

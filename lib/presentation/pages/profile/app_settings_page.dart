@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/utils/snackbar_helper.dart';
+import '../../../core/desktop/desktop_floating_tab_controller.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
@@ -42,6 +43,8 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   bool? _batteryOptIgnored;
   bool _isMiui = false; // 是否为小米/Redmi 设备
 
+  bool _desktopFloatingTabEnabled = true;
+
   @override
   void initState() {
     super.initState();
@@ -74,6 +77,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     setState(() {
       _skipWeekends = _storage.skipWeekends;
       _overdueNotifIntervalHours = _storage.overdueNotifIntervalHours;
+      _desktopFloatingTabEnabled = _storage.desktopFloatingTabEnabled;
       _dataDirectory = dataDirectory;
       _notifGranted = notifGranted;
       _exactAlarmGranted = exactGranted;
@@ -131,6 +135,10 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
             ],
           ),
           const SizedBox(height: 14),
+          if (isWindows) ...[
+            _buildDesktopWindowSection(),
+            const SizedBox(height: 14),
+          ],
           if (widget.showLocalDataTools) ...[
             _buildLocalDataSection(),
             const SizedBox(height: 14),
@@ -266,7 +274,8 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 ? null
                 : () async {
                     setState(() => _notifBusy = true);
-                    final ok = await NotificationService().showImmediateTestNotification();
+                    final ok = await NotificationService()
+                        .showImmediateTestNotification();
                     if (!mounted) return;
                     setState(() => _notifBusy = false);
                     if (ok) {
@@ -282,7 +291,10 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                             child: SingleChildScrollView(
                               child: SelectableText(
                                 diag.isEmpty ? '无诊断信息' : diag,
-                                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                ),
                               ),
                             ),
                           ),
@@ -320,9 +332,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '精确闹钟（Android 12+）',
-                    ),
+                    const Text('精确闹钟（Android 12+）'),
                     const SizedBox(height: 2),
                     Text(
                       _exactAlarmGranted == true
@@ -378,7 +388,8 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   onPressed: () async {
                     await BatteryOptimizationService.request();
                     await Future.delayed(const Duration(seconds: 1));
-                    final ignored = await BatteryOptimizationService.isIgnoring();
+                    final ignored =
+                        await BatteryOptimizationService.isIgnoring();
                     if (!mounted) return;
                     setState(() => _batteryOptIgnored = ignored);
                     if (ignored) {
@@ -433,9 +444,13 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
           setState(() => _overdueNotifIntervalHours = value);
           await _storage.setOverdueNotifIntervalHours(value);
         },
-        itemBuilder: (_) => [1, 2, 4, 8, 24]
-            .map((h) => PopupMenuItem(value: h, child: Text('$h 小时')))
-            .toList(),
+        itemBuilder: (_) => [
+          1,
+          2,
+          4,
+          8,
+          24,
+        ].map((h) => PopupMenuItem(value: h, child: Text('$h 小时'))).toList(),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -482,7 +497,9 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 decoration: BoxDecoration(
                   color: AppTheme.warning.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.warning.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: AppTheme.warning.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -526,15 +543,42 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
             ),
             child: Text(
               '$step',
-              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 13)),
-          ),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
         ],
       ),
+    );
+  }
+
+  Widget _buildDesktopWindowSection() {
+    return _SectionCard(
+      title: '桌面页签',
+      children: [
+        SwitchListTile(
+          title: const Text('关闭主窗口后显示当前任务页签'),
+          subtitle: Text(
+            '开启后，Windows 桌面版点击关闭按钮时会保留一个可拖动的当前任务页签；关闭后仍可从托盘恢复完整应用。',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          value: _ready && _desktopFloatingTabEnabled,
+          activeThumbColor: AppTheme.primaryColor,
+          contentPadding: EdgeInsets.zero,
+          onChanged: !_ready
+              ? null
+              : (value) async {
+                  setState(() => _desktopFloatingTabEnabled = value);
+                  await _storage.setDesktopFloatingTabEnabled(value);
+                  await DesktopFloatingTabController.instance.refreshSettings();
+                },
+        ),
+      ],
     );
   }
 

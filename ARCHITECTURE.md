@@ -241,3 +241,4 @@
 | 跑技能 | 触发 force-load-global-memories subagent |
 | 粘贴 force-load-global-memories | 完整逐条 recall_memory |
 | 格式 | 强制自检回复格式 |
+> 2026-06-18: Windows 桌面端新增“浮动任务页签”窗口模式。`DesktopFloatingTabController` 复用同一个主窗口，在 `full` / `floating` 两种模式之间切换，而不是新增第二个原生窗口；关闭主窗口时会先读取 `LocalStorageService.desktopFloatingTabEnabled`，再从 `TaskRepository.getAll()` 中筛出 `status == 1` 的进行中任务，并按“优先级 * 2 + 时间紧迫度”的规则选出单条展示任务。进入浮动模式后，主界面根节点由 `HomePage` 切换为 `DesktopFloatingTaskTab`，页签支持拖动、左键恢复完整窗口并通过 `/task/:id` 打开任务详情、右键关闭页签后退回托盘。`window_manager_bridge_desktop.dart` 继续负责 close-to-tray 钩子，但具体关闭行为委托给控制器统一处理；托盘“显示”和左键单击也改为通过控制器恢复完整窗口状态。`app_settings_page.dart` 新增 Windows 专属“关闭主窗口后显示当前任务页签”开关，配置写入本地偏好并同步到本地数据快照。

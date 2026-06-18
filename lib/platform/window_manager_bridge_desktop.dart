@@ -1,29 +1,35 @@
 import 'package:window_manager/window_manager.dart';
+
+import '../core/desktop/desktop_floating_tab_controller.dart';
 import '../core/desktop/window_state.dart';
 
 Future<void> ensureWindowManagerInitialized() async {
   await windowManager.ensureInitialized();
 }
 
-/// 点击窗口 X 时隐藏到托盘而不是退出进程，保持 Timer 继续运行。
 Future<void> setupCloseToTray() async {
   await windowManager.setPreventClose(true);
   windowManager.addListener(_TrayCloseListener());
-  // 注册唤窗/藏窗回调，供 NotificationService 使用
+
   showDesktopWindow = () async {
-    await windowManager.show();
-    await windowManager.focus();
-    desktopWindowVisible = true;
+    await DesktopFloatingTabController.instance.restoreFullWindow();
   };
   hideDesktopWindow = () async {
-    desktopWindowVisible = false;
-    await windowManager.hide();
+    await DesktopFloatingTabController.instance.hideToTray();
+  };
+  handleDesktopWindowCloseRequested = () async {
+    await DesktopFloatingTabController.instance.handleCloseRequested();
   };
 }
 
 class _TrayCloseListener extends WindowListener {
   @override
   void onWindowClose() {
+    final handler = handleDesktopWindowCloseRequested;
+    if (handler != null) {
+      handler();
+      return;
+    }
     desktopWindowVisible = false;
     windowManager.hide();
   }

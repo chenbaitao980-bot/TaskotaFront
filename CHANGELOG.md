@@ -1,3 +1,17 @@
+## 2026-06-18 (桌面悬浮页签修复 x5)
+
+### 修复
+- **悬浮页签从不显示**：`DesktopFloatingTabController._selectTaskForFloatingTab` 用 `status == 1` 筛选进行中任务，但主任务状态只有 0(待办)/2(已完成) 两态，`status == 1` 永不成立。改为 `status == 0`（未完成任务）。
+- **点击页签跳转「任务不存在」**：`_openTaskDetail` 走了 `/task/:id` 路由 → 本地 JSON 版 `TaskDetailPage`（`LocalStorageService`），而悬浮页签选任务用数据库 `TaskRepository`，两套数据源 ID 不互通。改为 `TaskRepository.get(id)` 取完整 `Task` 对象 → `MaterialPageRoute` 导航到数据库版 `tasks/task_detail/task_detail_page.dart`。
+- **页签黑框/透明框**：窗口 320×88 但卡片只有 300 宽 + Scaffold/Align 偏右上，多出区域露 Windows 背景；卡片圆角 18px 与矩形窗口之间四角露底色。改为卡片填满窗口 + 去掉圆角。
+- **标题截断无提示**：标题文本加 `Tooltip`，鼠标悬浮 400ms 后显示完整任务名。
+- **子任务不优先**：`getAll()` 只查顶层任务 + 父子同池竞争，父任务优先级高时永远胜出。改为 `getAllRaw()` 取全量 + 有子任务时完全排除父任务，子任务池内按现有评分竞争；无子任务时才回退到父任务。
+- 新增 `flog` 诊断日志覆盖关闭流程四个决策分支。
+
+### 影响文件
+- `lib/core/desktop/desktop_floating_tab_controller.dart` — 筛选条件 + 导航目标 + 全量选题 + 日志埋点
+- `lib/presentation/widgets/desktop_floating_task_tab.dart` — 去框 + Tooltip
+
 ## 2026-06-06 (移动端提醒通知准时性优化)
 
 ### 修复
@@ -1168,3 +1182,22 @@
 - 钩子通过 AGENTS.md 注入上下文，需确认每次新线程正确加载
 - 22 条记忆规则分散在 .reasonix，SKILL.md 是最新整合来源，但需要定期与原始文件同步
 - 外部触发词需要人工监督执行
+## 2026-06-18 (Windows 桌面浮动任务页签)
+
+### 新增
+- **关闭主窗口后保留当前任务页签**：Windows 桌面端点击主窗口关闭按钮时，当设置开启且存在进行中任务，会切换为桌面小页签，仅展示一条当前最值得关注的进行中任务。
+- **浮动页签交互**：页签支持拖动；左键点击会恢复完整主窗口并直接打开对应任务详情；右键菜单可选择“关闭页签”，关闭后仅保留托盘入口。
+- **设置开关**：`我的 -> 设置` 新增“关闭主窗口后显示当前任务页签”开关，支持控制该行为默认启用或关闭。
+
+### 规则
+- **无进行中任务时不显示页签**：若当前没有进行中任务，关闭主窗口仍按原行为隐藏到托盘。
+- **多任务时自动选一条**：当存在多条进行中任务时，复用首页“优先级 + 时间紧迫度”思路自动选出展示任务。
+
+### 影响文件
+- `lib/core/desktop/desktop_floating_tab_controller.dart`
+- `lib/presentation/widgets/desktop_floating_task_tab.dart`
+- `lib/platform/window_manager_bridge_desktop.dart`
+- `lib/platform/tray_service_desktop.dart`
+- `lib/presentation/pages/profile/app_settings_page.dart`
+- `lib/services/local_storage_service.dart`
+- `lib/main.dart`
