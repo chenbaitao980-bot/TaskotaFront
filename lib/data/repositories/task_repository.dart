@@ -295,11 +295,13 @@ class TaskRepository {
     }
     final result = <Task>[];
     final queue = <String>[taskId];
+    final visited = <String>{taskId}; // M9: 防环 visited 集合，避免循环 parentId 导致死循环
     var head = 0;
     while (head < queue.length) {
       final current = queue[head++];
       final children = childrenMap[current] ?? const [];
       for (final child in children) {
+        if (!visited.add(child.id)) continue; // 已访问过，跳过
         result.add(child);
         queue.add(child.id);
       }

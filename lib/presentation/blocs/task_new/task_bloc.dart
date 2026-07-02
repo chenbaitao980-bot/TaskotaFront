@@ -1068,12 +1068,48 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     MoveSubTask event,
     Emitter<TaskNewState> emit,
   ) async {
-    try {
-      await taskRepository.moveTask(event.taskId, event.newParentId);
-      add(LoadSubTree(rootTaskId: event.rootTaskId));
-    } catch (e) {
-      emit(TaskNewError(e.toString()));
-    }
+    await _runOptimisticTaskChange(emit, () async {
+      await taskRepository.moveTask(
+        event.taskId,
+        event.newParentId,
+        syncImmediately: false,
+      );
+
+      if (event.newParentId != null && state is TaskNewLoaded) {
+        final tasks = (state as TaskNewLoaded).tasks;
+        final child = tasks.where((t) => t.id == event.taskId).firstOrNull;
+        final parent = tasks
+            .where((t) => t.id == event.newParentId)
+            .firstOrNull;
+        if (parent != null && child != null) {
+          // 跨项目时同步 projectId
+          if (child.projectId != parent.projectId) {
+            await taskRepository.update(
+              child.id,
+              projectId: parent.projectId,
+              syncImmediately: false,
+            );
+          }
+          // 展开父任务时间范围
+          int? ns = parent.startDate;
+          int? nd = parent.dueDate;
+          final cs = child.startDate;
+          final cd = child.dueDate;
+          if (cs != null) ns = (ns == null || cs < ns) ? cs : ns;
+          if (cd != null) nd = (nd == null || cd > nd) ? cd : nd;
+          if (ns != parent.startDate || nd != parent.dueDate) {
+            await taskRepository.update(
+              parent.id,
+              startDate: ns,
+              dueDate: nd,
+              syncImmediately: false,
+            );
+          }
+        }
+      }
+    });
+    // 刷新子树视图
+    add(LoadSubTree(rootTaskId: event.rootTaskId));
   }
 
   Future<void> _onToggleSubTask(

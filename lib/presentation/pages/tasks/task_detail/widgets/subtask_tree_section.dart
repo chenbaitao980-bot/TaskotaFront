@@ -223,9 +223,15 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
     final isCompleted = child.status == 2;
 
     return DragTarget<String>(
+      onWillAcceptWithDetails: (details) {
+        final draggedId = details.data;
+        if (draggedId == child.id) return false;
+        // 防止拖到自己的后代上（循环 parentId）
+        if (_isDescendant(draggedId, child.id, allTasks)) return false;
+        return true;
+      },
       onAcceptWithDetails: (details) {
         final draggedId = details.data;
-        if (draggedId == child.id) return;
         context.read<TaskNewBloc>().add(
           MoveSubTask(
             taskId: draggedId,
@@ -475,6 +481,18 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
     );
     // 刷新当前根任务子树
     bloc.add(LoadSubTree(rootTaskId: widget.task.id));
+  }
+
+  /// 判断 targetId 是否是 ancestorId 的后代（沿 parentId 链向上追溯）
+  bool _isDescendant(String ancestorId, String targetId, List<Task> allTasks) {
+    String? current = targetId;
+    final visited = <String>{};
+    while (current != null && visited.add(current)) {
+      if (current == ancestorId) return true;
+      final task = allTasks.where((t) => t.id == current).firstOrNull;
+      current = task?.parentId;
+    }
+    return false;
   }
 
   void _editSubTask(BuildContext context, Task task) {
