@@ -51,6 +51,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   Timer? _autoSaveTimer;
   bool _hasChildren = false;
   bool _isRoot = false;
+  Task? _parentTask;
   List<ScheduledTaskShift> _pendingShiftedTasks = const [];
 
   @override
@@ -58,6 +59,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     super.initState();
     final t = widget.task;
     _isRoot = t.parentId == null;
+    if (t.parentId != null) {
+      context.read<TaskNewBloc>().taskRepository.get(t.parentId!).then((p) {
+        if (mounted) setState(() => _parentTask = p);
+      });
+    }
     context.read<TaskNewBloc>().taskRepository.hasChildren(t.id).then((v) {
       if (mounted) setState(() => _hasChildren = v);
     });
@@ -213,7 +219,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
     if (!mounted) return;
     setState(() => _allowPop = true);
-    Navigator.pop(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.pop(context);
+    });
   }
 
   @override
@@ -578,8 +586,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          if (_hasChildren)
-            _parentBadge(),
+          if (_parentTask != null) _parentLinkChip(),
+          if (_hasChildren) _parentBadge(),
           const SizedBox(width: 6),
           _projectChip(projects),
           const SizedBox(width: 6),
@@ -682,6 +690,46 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
+  Widget _parentLinkChip() {
+    final parent = _parentTask!;
+    return _chipContainer(
+      onTap: () {
+        final bloc = context.read<TaskNewBloc>();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BlocProvider.value(
+              value: bloc,
+              child: TaskDetailPage(task: parent),
+            ),
+          ),
+        );
+      },
+      bgColor: AppTheme.primaryColor.withValues(alpha: 0.08),
+      borderColor: AppTheme.primaryColor.withValues(alpha: 0.2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.subdirectory_arrow_left,
+            size: 12,
+            color: AppTheme.primaryColor,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            parent.title,
+            style: TextStyle(
+              fontSize: 11,
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _parentBadge() {
     return _chipContainer(
       bgColor: AppTheme.primaryColor.withValues(alpha: 0.08),
@@ -689,7 +737,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.account_tree_outlined, size: 12, color: AppTheme.primaryColor),
+          Icon(
+            Icons.account_tree_outlined,
+            size: 12,
+            color: AppTheme.primaryColor,
+          ),
           const SizedBox(width: 4),
           Text(
             '父任务',
@@ -776,11 +828,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.schedule_rounded,
-              size: 12,
-              color: AppTheme.textHint,
-            ),
+            Icon(Icons.schedule_rounded, size: 12, color: AppTheme.textHint),
             const SizedBox(width: 4),
             Text(
               '${fmt(_startDateTime)} ~ ${fmt(_endDateTime)}',

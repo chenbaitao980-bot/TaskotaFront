@@ -62,7 +62,7 @@ class _CalendarPageState extends State<CalendarPage> {
   bool _dragSkipped = false; // onPointerMove 因拖拽任务跳过时置 true，阻止 onPointerUp 翻页
   double? _dragStartX;
   final Set<String> _collapsedMultiDayGroups = {};
-  bool _multiDayLaneCollapsed = false;
+  bool _multiDayLaneCollapsed = true;
 
   DateTime? _lastReloadTime;
   List<Task> _allTasks = [];
@@ -82,6 +82,9 @@ class _CalendarPageState extends State<CalendarPage> {
   bool _initialized = false;
   TaskRepository? _taskRepo;
   ProjectRepository? _projectRepo;
+  static const double _calendarToolbarHeight = 46;
+  static const double _calendarActionGap = 2;
+  static const double _calendarHeaderIconSize = 18;
 
   @override
   void initState() {
@@ -875,13 +878,14 @@ class _CalendarPageState extends State<CalendarPage> {
         : '日历';
 
     return AppBar(
+      toolbarHeight: _calendarToolbarHeight,
       title: Text(projectName),
       actions: [
         // 项目筛选
         _buildProjectFilter(),
-        const SizedBox(width: 2),
+        const SizedBox(width: _calendarActionGap),
         _buildHolidayCountryDropdown(),
-        const SizedBox(width: 2),
+        const SizedBox(width: _calendarActionGap),
         SegmentedButton<CalendarFormat>(
           segments: const [
             ButtonSegment(value: CalendarFormat.week, label: Text('周')),
@@ -899,21 +903,30 @@ class _CalendarPageState extends State<CalendarPage> {
             textStyle: WidgetStateProperty.all(const TextStyle(fontSize: 13)),
           ),
         ),
-        const SizedBox(width: 2),
+        const SizedBox(width: _calendarActionGap),
         if (_calendarFormat == CalendarFormat.week) _buildDayCountDropdown(),
-        const SizedBox(width: 2),
+        const SizedBox(width: _calendarActionGap),
         IconButton(
-          icon: const Icon(Icons.zoom_out, size: 22),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.zoom_out, size: 20),
           tooltip: '缩小时间线',
           onPressed: () => _setHourHeight(_hourHeight - _zoomStep),
         ),
         IconButton(
-          icon: const Icon(Icons.zoom_in, size: 22),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.zoom_in, size: 20),
           tooltip: '放大时间线',
           onPressed: () => _setHourHeight(_hourHeight + _zoomStep),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 2),
         IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+          visualDensity: VisualDensity.compact,
           icon: const Icon(Icons.today),
           onPressed: () {
             final today = DateTime.now();
@@ -1051,7 +1064,7 @@ class _CalendarPageState extends State<CalendarPage> {
       child: DropdownButton<int>(
         value: _displayDayCount,
         isDense: true,
-        icon: const Icon(Icons.arrow_drop_down, size: 16),
+        icon: const Icon(Icons.arrow_drop_down, size: 15),
         style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
         selectedItemBuilder: (context) => List.generate(15, (i) {
           return Align(
@@ -1370,12 +1383,21 @@ class _CalendarPageState extends State<CalendarPage> {
       children: [
         // 月份导航行
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.only(top: 2, bottom: 1),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                icon: const Icon(Icons.chevron_left, size: 18),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 28,
+                  height: 28,
+                ),
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.chevron_left,
+                  size: _calendarHeaderIconSize,
+                ),
                 onPressed: () {
                   final nextFocusedDay = _focusedDay.subtract(
                     Duration(days: _displayDayCount),
@@ -1390,12 +1412,21 @@ class _CalendarPageState extends State<CalendarPage> {
               Text(
                 '${_focusedDay.year}年${_focusedDay.month}月',
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.chevron_right, size: 18),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 28,
+                  height: 28,
+                ),
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.chevron_right,
+                  size: _calendarHeaderIconSize,
+                ),
                 onPressed: () {
                   final nextFocusedDay = _focusedDay.add(
                     Duration(days: _displayDayCount),
@@ -1446,22 +1477,22 @@ class _CalendarPageState extends State<CalendarPage> {
                           });
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 1),
+                          padding: const EdgeInsets.only(top: 1, bottom: 2),
                           child: Column(
                             children: [
                               Text(
                                 weekdayNames[day.weekday - 1],
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 10,
                                   color: isToday
                                       ? Theme.of(context).colorScheme.primary
                                       : AppTheme.textSecondary,
                                 ),
                               ),
-                              const SizedBox(height: 1),
+                              const SizedBox(height: 2),
                               Container(
-                                width: 24,
-                                height: 24,
+                                width: 22,
+                                height: 22,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: isSelected
@@ -1475,7 +1506,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                 child: Text(
                                   '${day.day}',
                                   style: TextStyle(
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     fontWeight: isToday || isSelected
                                         ? FontWeight.bold
                                         : FontWeight.normal,
@@ -1488,7 +1519,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                 ),
                               ),
                               SizedBox(
-                                height: 14,
+                                height: 12,
                                 child: holiday == null
                                     ? (hasTasks
                                           ? Center(
@@ -1506,10 +1537,10 @@ class _CalendarPageState extends State<CalendarPage> {
                                           : const SizedBox.shrink())
                                     : Container(
                                         constraints: const BoxConstraints(
-                                          maxWidth: 62,
+                                          maxWidth: 56,
                                         ),
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 4,
+                                          horizontal: 3,
                                         ),
                                         decoration: BoxDecoration(
                                           color: holiday.backgroundColor,
@@ -1523,7 +1554,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            fontSize: 10,
+                                            fontSize: 9,
                                             height: 1,
                                             fontWeight: FontWeight.w600,
                                             color: holiday.color,
@@ -1806,7 +1837,7 @@ class _CalendarPageState extends State<CalendarPage> {
     // ── 全局收起状态：显示紧凑标题栏 ──
     if (_multiDayLaneCollapsed) {
       return Container(
-        height: 32,
+        height: 28,
         decoration: BoxDecoration(
           border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
         ),
@@ -1821,7 +1852,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     Text(
                       '跨天任务 (${tasks.length})',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: Theme.of(
                           context,
                         ).colorScheme.onSurface.withValues(alpha: 0.7),
@@ -1839,7 +1870,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
-                          vertical: 4,
+                          vertical: 2,
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,

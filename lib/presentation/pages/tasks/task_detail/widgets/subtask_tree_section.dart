@@ -479,7 +479,7 @@ class _SubtaskTreeSectionState extends State<SubtaskTreeSection> {
 
   void _editSubTask(BuildContext context, Task task) {
     final bloc = context.read<TaskNewBloc>();
-    Navigator.push(
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(

@@ -1853,7 +1853,10 @@ class _HomeContentState extends State<_HomeContent> {
     final groups = taskState is TaskNewLoaded
         ? taskState.groups
         : <ProjectGroup>[];
-    final draft = Set<String>.from(_filterProjectIds);
+    final allProjectIds = projects.map((project) => project.id).toSet();
+    final draft = _filterProjectIds.isEmpty
+        ? Set<String>.from(allProjectIds)
+        : Set<String>.from(_filterProjectIds.intersection(allProjectIds));
     final result = await showDialog<Set<String>>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1868,11 +1871,19 @@ class _HomeContentState extends State<_HomeContent> {
                 draft: draft,
                 setDialogState: setDialogState,
                 extraHeader: CheckboxListTile(
-                  value: draft.isEmpty,
+                  value: draft.length == allProjectIds.length,
                   title: const Text('全部项目'),
                   dense: true,
                   controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (_) => setDialogState(draft.clear),
+                  onChanged: (_) => setDialogState(() {
+                    if (draft.length == allProjectIds.length) {
+                      draft.clear();
+                    } else {
+                      draft
+                        ..clear()
+                        ..addAll(allProjectIds);
+                    }
+                  }),
                 ),
               ),
             ),
@@ -1883,7 +1894,14 @@ class _HomeContentState extends State<_HomeContent> {
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, draft),
+              onPressed: draft.isEmpty
+                  ? null
+                  : () => Navigator.pop(
+                      context,
+                      draft.length == allProjectIds.length
+                          ? <String>{}
+                          : Set<String>.from(draft),
+                    ),
               child: const Text('确定'),
             ),
           ],
