@@ -222,6 +222,77 @@ If incomplete subtasks exist → emit `TaskNewError("子任务未完成，无法
 
 ---
 
+## Assistant CLAUDE.md Preference Injection Contract
+
+### 1. Scope / Trigger
+
+- Trigger: user-editable AI behavior preferences must affect both assistant chat and AI-assisted task creation.
+- Scope: `AssistantModelConfig.userInstructions` stores the in-app `CLAUDE.md` preference text; services inject it into model system prompts.
+
+### 2. Signatures
+
+```dart
+class AssistantModelConfig {
+  final String userInstructions;
+}
+
+Future<LazyLogResult> HomeLazyLogService.structure({
+  required AssistantModelConfig config,
+  required String input,
+  DateTime? now,
+});
+
+Future<AssistantChatResult> AssistantChatService.send({
+  required AssistantModelConfig config,
+  required List<AssistantMessage> history,
+  required String question,
+});
+```
+
+### 3. Contracts
+
+- Storage: `AssistantConfigService` persists `AssistantModelConfig.toJson()` in SharedPreferences under `assistant_model_config`.
+- UI: the assistant config dialog exposes `CLAUDE.md / user preferences` as multiline Markdown text.
+- Prompt injection: `HomeLazyLogService` and `AssistantChatService` append the text as a clearly labeled user preference block in their system prompts.
+- Precedence: built-in safety, JSON-format, and read-only rules stay above user preferences.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|-----------|----------|
+| Missing `userInstructions` in old saved config | Defaults to empty string |
+| Empty preference text | No extra prompt block is injected |
+| Preference conflicts with built-in constraints | Built-in constraints win |
+| Lazy-log model returns an end-of-week point for "this week" task | Normalize to a week task range |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `this week complete proposal` with no clock time becomes a multi-day task range.
+- Base: empty preferences behave exactly like previous prompts.
+- Bad: do not store this in repository root `CLAUDE.md`; it is user data inside app config.
+
+### 6. Tests Required
+
+- Assert `AssistantModelConfig.toJson/fromJson` round-trips `userInstructions`.
+- Assert `HomeLazyLogService` includes user preferences in the system prompt.
+- Assert current-week deadline output is normalized to Monday 09:00 through Sunday 18:00.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dart
+{'role': 'system', 'content': _systemPrompt()}
+```
+
+#### Correct
+
+```dart
+{'role': 'system', 'content': _systemPrompt(config.userInstructions)}
+```
+
+---
+
 ## Common Mistakes
 
 - **Forgetting to apply new filter in `refreshTasks`**: A filter added in `_onLoadTasks` but not in `refreshTasks` will be lost after mutations (create/update/delete).

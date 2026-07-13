@@ -5,12 +5,14 @@ class AssistantModelConfig {
   final String apiPath;
   final String apiKey;
   final String model;
+  final String userInstructions;
 
   const AssistantModelConfig({
     this.baseUrl = '',
     this.apiPath = '/chat/completions',
     this.apiKey = '',
     this.model = '',
+    this.userInstructions = '',
   });
 
   bool get isComplete =>
@@ -44,12 +46,14 @@ class AssistantModelConfig {
     String? apiPath,
     String? apiKey,
     String? model,
+    String? userInstructions,
   }) {
     return AssistantModelConfig(
       baseUrl: baseUrl ?? this.baseUrl,
       apiPath: apiPath ?? this.apiPath,
       apiKey: apiKey ?? this.apiKey,
       model: model ?? this.model,
+      userInstructions: userInstructions ?? this.userInstructions,
     );
   }
 
@@ -58,6 +62,7 @@ class AssistantModelConfig {
     'apiPath': apiPath,
     'apiKey': apiKey,
     'model': model,
+    'userInstructions': userInstructions,
   };
 
   factory AssistantModelConfig.fromJson(Map<String, dynamic> json) {
@@ -66,6 +71,7 @@ class AssistantModelConfig {
       apiPath: json['apiPath'] as String? ?? '/chat/completions',
       apiKey: json['apiKey'] as String? ?? '',
       model: json['model'] as String? ?? '',
+      userInstructions: json['userInstructions'] as String? ?? '',
     );
   }
 }

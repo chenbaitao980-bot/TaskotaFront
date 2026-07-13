@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_assistant/models/assistant/assistant_models.dart';
 import 'package:smart_assistant/models/assistant/lazy_log_models.dart';
@@ -51,5 +54,77 @@ void main() {
     expect(result.tasks.single.dueTime?.hour, 18);
     expect(result.schedules.single.title, '项目复盘');
     expect(result.schedules.single.endTime.hour, 11);
+  });
+
+  test('normalizes current-week task deadline into a week range', () async {
+    String? capturedSystemPrompt;
+    final dio = Dio()
+      ..interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            final data = options.data as Map<String, dynamic>;
+            final messages = data['messages'] as List<dynamic>;
+            capturedSystemPrompt =
+                (messages.first as Map<String, dynamic>)['content'] as String?;
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                data: {
+                  'choices': [
+                    {
+                      'message': {
+                        'content': jsonEncode({
+                          'summary': '安排本周方案',
+                          'tasks': [
+                            {
+                              'title': '让甄云供应商完成方案',
+                              'priority': 'P2',
+                              'startTime': '2026-07-19T22:59:00',
+                              'dueTime': '2026-07-19T23:59:00',
+                            },
+                          ],
+                          'schedules': [],
+                        }),
+                      },
+                    },
+                  ],
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+    final result = await HomeLazyLogService(dio: dio).structure(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'model',
+        userInstructions: 'WEEK_RANGE_RULE',
+      ),
+      input: '这周让甄云供应商完成方案',
+      now: DateTime(2026, 7, 13, 10),
+    );
+
+    final task = result.tasks.single;
+    expect(capturedSystemPrompt, contains('WEEK_RANGE_RULE'));
+    expect(task.startTime, DateTime(2026, 7, 13, 9));
+    expect(task.dueTime, DateTime(2026, 7, 19, 18));
+  });
+
+  test('persists assistant CLAUDE.md preferences in model config json', () {
+    const config = AssistantModelConfig(
+      baseUrl: 'https://example.com',
+      apiKey: 'key',
+      model: 'model',
+      userInstructions: 'Prefer week ranges for current-week tasks.',
+    );
+
+    final restored = AssistantModelConfig.fromJson(config.toJson());
+
+    expect(
+      restored.userInstructions,
+      'Prefer week ranges for current-week tasks.',
+    );
   });
 }

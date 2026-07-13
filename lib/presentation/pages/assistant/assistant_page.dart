@@ -615,6 +615,9 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
   late final _apiPath = TextEditingController(text: widget.config.apiPath);
   late final _apiKey = TextEditingController(text: widget.config.apiKey);
   late final _model = TextEditingController(text: widget.config.model);
+  late final _userInstructions = TextEditingController(
+    text: widget.config.userInstructions,
+  );
 
   @override
   void dispose() {
@@ -622,6 +625,7 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
     _apiPath.dispose();
     _apiKey.dispose();
     _model.dispose();
+    _userInstructions.dispose();
     super.dispose();
   }
 
@@ -646,6 +650,14 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
               _field(_model, '模型 ID', 'gpt-4o-mini'),
               const SizedBox(height: 12),
               _field(_apiKey, 'API Key', 'sk-...', obscure: true),
+              const SizedBox(height: 12),
+              _field(
+                _userInstructions,
+                'CLAUDE.md / 用户偏好',
+                '例如：这周完成类任务按本周一 09:00 到周日 18:00 创建跨天任务',
+                minLines: 5,
+                maxLines: 10,
+              ),
             ],
           ),
         ),
@@ -666,6 +678,7 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
                     : _apiPath.text.trim(),
                 apiKey: _apiKey.text.trim(),
                 model: _model.text.trim(),
+                userInstructions: _userInstructions.text.trim(),
               ),
             );
           },
@@ -680,10 +693,14 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
     String label,
     String hint, {
     bool obscure = false,
+    int minLines = 1,
+    int maxLines = 1,
   }) {
     return TextField(
       controller: controller,
       obscureText: obscure,
+      minLines: obscure ? 1 : minLines,
+      maxLines: obscure ? 1 : maxLines,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

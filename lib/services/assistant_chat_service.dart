@@ -41,7 +41,7 @@ class AssistantChatService {
     }
 
     final apiMessages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': _systemPrompt()},
+      {'role': 'system', 'content': _systemPrompt(config.userInstructions)},
       ..._historyForApi(history),
       {'role': 'user', 'content': question},
     ];
@@ -210,7 +210,8 @@ class AssistantChatService {
     return value is String ? value.trim() : '';
   }
 
-  String _systemPrompt() {
+  String _systemPrompt(String userInstructions) {
+    final preferences = _userInstructionsBlock(userInstructions);
     return '''
 你是 Taskora 的只读任务助手。你可以通过工具检索本机任务、项目和日历日程，然后用中文回答用户。
 
@@ -219,6 +220,17 @@ class AssistantChatService {
 2. 涉及今天、本周、某项目、某时间段时，优先调用工具获取本机数据。
 3. 回答要引用你查到的事实，必要时用 Markdown 列表或表格。
 4. 如果工具结果为空，明确说明没有找到匹配记录，并建议更具体的关键词或日期。
+$preferences
 ''';
+  }
+
+  String _userInstructionsBlock(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    return '''
+
+用户自定义 CLAUDE.md 偏好：
+$trimmed
+请在不违反上方规则的前提下遵循这些偏好。''';
   }
 }

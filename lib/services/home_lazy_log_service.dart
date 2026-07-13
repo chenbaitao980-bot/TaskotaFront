@@ -20,7 +20,11 @@ class HomeLazyLogService {
     final trimmed = input.trim();
     if (trimmed.isEmpty) return const LazyLogResult();
     if (!config.isComplete) {
-      return _fallback(trimmed);
+      return _normalizeRelativeTaskRanges(
+        _fallback(trimmed),
+        input: trimmed,
+        now: now ?? DateTime.now(),
+      );
     }
 
     try {
@@ -36,25 +40,52 @@ class HomeLazyLogService {
           'model': config.model.trim(),
           'temperature': 0.2,
           'messages': [
-            {'role': 'system', 'content': _systemPrompt(now ?? DateTime.now())},
+            {
+              'role': 'system',
+              'content': _systemPrompt(
+                now ?? DateTime.now(),
+                config.userInstructions,
+              ),
+            },
             {'role': 'user', 'content': trimmed},
           ],
         },
       );
       final content = _readContent(response.data);
       final decoded = jsonDecode(_stripFence(content));
-      if (decoded is! Map) return _fallback(trimmed);
+      if (decoded is! Map) {
+        return _normalizeRelativeTaskRanges(
+          _fallback(trimmed),
+          input: trimmed,
+          now: now ?? DateTime.now(),
+        );
+      }
       final result = LazyLogResult.fromJson(
         decoded.map((key, value) => MapEntry(key.toString(), value)),
       );
-      return result.isEmpty ? _fallback(trimmed) : result;
+      return result.isEmpty
+          ? _normalizeRelativeTaskRanges(
+              _fallback(trimmed),
+              input: trimmed,
+              now: now ?? DateTime.now(),
+            )
+          : _normalizeRelativeTaskRanges(
+              result,
+              input: trimmed,
+              now: now ?? DateTime.now(),
+            );
     } catch (_) {
-      return _fallback(trimmed);
+      return _normalizeRelativeTaskRanges(
+        _fallback(trimmed),
+        input: trimmed,
+        now: now ?? DateTime.now(),
+      );
     }
   }
 
-  String _systemPrompt(DateTime now) {
+  String _systemPrompt(DateTime now, String userInstructions) {
     final today = _dateOnly(now);
+    final preferences = _userInstructionsBlock(userInstructions);
     return '''
 你是 Taskora 首页懒人日志结构化助手。把用户随手输入整理成 JSON，不要输出 Markdown，不要解释。
 
@@ -91,11 +122,90 @@ JSON 格式必须是：
 1. 只基于用户输入，不得编造不存在的任务、时间、人员、原因、结果。
 2. 所有需要创建的事项都放入 tasks；即使有明确时间，也写入 tasks.startTime/dueTime，不要放入 schedules。
 3. 用户明确说“明天/今天/下午/晚上/几点”时，结合当前日期转换为 ISO-8601。
-4. 任务标题要短，适合直接进入待办列表。
-5. 如果输入里出现“关于xxx”“xxx相关内容”“某项目/模块/供应商/客户”等上下文，把它提炼为 parentTitle。
-6. schedules 只为兼容旧格式保留，默认返回空数组。
-7. 如果某类没有内容，返回空数组。
+4. 用户说“这周/本周/这星期/本星期”且没有明确几点时，创建跨天周任务区间：startTime 用本周一 09:00，dueTime 用本周日 18:00；不要把它压成周日 23:59 或最后一小时。
+5. 任务标题要短，适合直接进入待办列表。
+6. 如果输入里出现“关于xxx”“xxx相关内容”“某项目/模块/供应商/客户”等上下文，把它提炼为 parentTitle。
+7. schedules 只为兼容旧格式保留，默认返回空数组。
+8. 如果某类没有内容，返回空数组。
+$preferences
 ''';
+  }
+
+  String _userInstructionsBlock(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    return '''
+
+用户自定义 CLAUDE.md 偏好：
+$trimmed
+请在不违反上方 JSON 格式和任务创建规则的前提下遵循这些偏好。''';
+  }
+
+  LazyLogResult _normalizeRelativeTaskRanges(
+    LazyLogResult result, {
+    required String input,
+    required DateTime now,
+  }) {
+    if (!_hasCurrentWeekPhrase(input) || _hasExplicitClock(input)) {
+      return result;
+    }
+
+    final weekStartDate = _startOfWeek(now);
+    final weekStart = DateTime(
+      weekStartDate.year,
+      weekStartDate.month,
+      weekStartDate.day,
+      9,
+    );
+    final weekEnd = DateTime(
+      weekStartDate.year,
+      weekStartDate.month,
+      weekStartDate.day + 6,
+      18,
+    );
+    final tasks = result.tasks.map((task) {
+      if (!_shouldUseWeekRange(task, weekStartDate)) return task;
+      return task.copyWith(startTime: weekStart, dueTime: weekEnd);
+    }).toList();
+
+    return LazyLogResult(
+      summary: result.summary,
+      completed: result.completed,
+      blockers: result.blockers,
+      nextActions: result.nextActions,
+      tasks: tasks,
+      schedules: result.schedules,
+      parentTitle: result.parentTitle,
+      usedFallback: result.usedFallback,
+    );
+  }
+
+  bool _shouldUseWeekRange(LazyLogTaskDraft task, DateTime weekStartDate) {
+    final start = task.startTime;
+    final due = task.dueTime;
+    if (start == null || due == null) return true;
+    if (due.difference(start) < const Duration(days: 1)) return true;
+    return _isSameDate(due, weekStartDate.add(const Duration(days: 6))) &&
+        due.hour >= 22;
+  }
+
+  DateTime _startOfWeek(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    return day.subtract(Duration(days: date.weekday - DateTime.monday));
+  }
+
+  bool _isSameDate(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool _hasCurrentWeekPhrase(String input) {
+    return _containsAny(input, const ['这周', '本周', '这星期', '本星期']);
+  }
+
+  bool _hasExplicitClock(String input) {
+    return RegExp(
+      r'(\d{1,2}[:：]\d{2}|\d{1,2}\s*点|上午|中午|下午|晚上)',
+    ).hasMatch(input);
   }
 
   LazyLogResult _fallback(String input) {
@@ -127,6 +237,10 @@ JSON 格式必须是：
         '后续',
         '待办',
         '准备',
+        '这周',
+        '本周',
+        '这星期',
+        '本星期',
       ])) {
         nextActions.add(line);
         tasks.add(LazyLogTaskDraft(title: _taskTitle(line), description: line));
