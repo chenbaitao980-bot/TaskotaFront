@@ -849,6 +849,7 @@ class _HomeContentState extends State<_HomeContent> {
           title: t.title,
           description: t.description,
           date: date,
+          endDate: t.endDate,
           isCompleted: t.status == 'completed',
           priority: t.priority,
           source: 'storage',
@@ -3124,8 +3125,7 @@ class _HomeContentState extends State<_HomeContent> {
         final endOffset = _hourTimelineOffset(
           end,
         ).clamp(startOffset, totalWidth);
-        final startSlotEnd = (task.date.hour + 1) * _hourWidth;
-        if (endOffset > startSlotEnd + 1) {
+        if (endOffset > startOffset + 1) {
           final left = startOffset.clamp(4.0, totalWidth - 36.0);
           return _TimelineRenderItem(
             task: task,
