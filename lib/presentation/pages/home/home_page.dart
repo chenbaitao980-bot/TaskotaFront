@@ -853,6 +853,7 @@ class _HomeContentState extends State<_HomeContent> {
           source: 'storage',
           projectId: null,
           taskId: t.id,
+          parentId: t.parentTaskId,
         ),
       );
     }
@@ -1625,6 +1626,8 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   Future<bool?> _showLazyLogPreview(LazyLogResult result) {
+    final tasks = _effectiveLazyLogTasks(result);
+    final parentTitle = _lazyLogParentTitle(result, tasks);
     return showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1661,8 +1664,8 @@ class _HomeContentState extends State<_HomeContent> {
                 _buildLazyLogPreviewSection('进展', result.completed),
                 _buildLazyLogPreviewSection('问题', result.blockers),
                 _buildLazyLogPreviewSection('下一步', result.nextActions),
-                _buildLazyTaskPreview(_effectiveLazyLogTasks(result)),
-                _buildLazySchedulePreview(result.schedules),
+                _buildLazyParentPreview(parentTitle),
+                _buildLazyTaskPreview(tasks),
               ],
             ),
           ),
@@ -1675,7 +1678,30 @@ class _HomeContentState extends State<_HomeContent> {
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(
-              '创建 ${_effectiveLazyLogTasks(result).length} 个任务 / ${result.schedules.length} 个日程',
+              parentTitle.isEmpty
+                  ? '创建 ${tasks.length} 个任务'
+                  : '创建 ${tasks.length} 个任务（必要时另建父任务）',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLazyParentPreview(String parentTitle) {
+    if (parentTitle.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(Icons.account_tree_outlined, size: 18, color: AppTheme.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '父任务：$parentTitle（自动匹配或创建）',
+              style: TextStyle(color: AppTheme.textSecondary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -1751,57 +1777,27 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  Widget _buildLazySchedulePreview(List<LazyLogScheduleDraft> schedules) {
-    if (schedules.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '将创建日程',
-          style: TextStyle(
-            color: AppTheme.textSecondary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        for (final schedule in schedules)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              Icons.event_available_outlined,
-              color: _priorityColor(schedule.priority),
-            ),
-            title: Text(
-              schedule.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              '${_formatDateTime(schedule.startTime)} - ${_formatTime(schedule.endTime)}',
-            ),
-          ),
-      ],
-    );
-  }
-
   Future<void> _applyLazyLogResult(LazyLogResult result) async {
     var createdTasks = 0;
     var skippedTasks = 0;
-    var createdSchedules = 0;
     final tasks = _effectiveLazyLogTasks(result);
+    final parentTitle = _lazyLogParentTitle(result, tasks);
 
     if (widget.taskRepository == null) {
+      final parent = await _resolveLocalLazyLogParentTaskId(parentTitle, tasks);
+      final parentTaskId = parent.id;
+      if (parent.created) createdTasks++;
       for (final task in tasks) {
         final range = _taskDraftTimeRange(task);
         await widget.storage.createTask(
           userId: _homeUserId(),
           title: task.title,
           description: task.description,
-          level: 'task',
+          level: parentTaskId == null ? 'task' : 'subtask',
           startDate: range.start,
           endDate: range.end,
           priority: task.priority,
+          parentTaskId: parentTaskId,
         );
         createdTasks++;
       }
@@ -1810,6 +1806,13 @@ class _HomeContentState extends State<_HomeContent> {
       if (tasks.isNotEmpty && projectId == null) {
         skippedTasks = tasks.length;
       } else if (projectId != null) {
+        final parent = await _resolveDbLazyLogParentTaskId(
+          parentTitle,
+          projectId,
+          tasks,
+        );
+        final parentId = parent.id;
+        if (parent.created) createdTasks++;
         for (final task in tasks) {
           final range = _taskDraftTimeRange(task);
           await widget.taskRepository!.create(
@@ -1819,38 +1822,11 @@ class _HomeContentState extends State<_HomeContent> {
             priority: _priorityToDbValue(task.priority),
             startDate: range.start.millisecondsSinceEpoch,
             dueDate: range.end.millisecondsSinceEpoch,
+            parentId: parentId,
           );
           createdTasks++;
         }
       }
-    }
-
-    for (final schedule in result.schedules) {
-      final created = await widget.storage.createSchedule(
-        userId: _homeUserId(),
-        title: schedule.title,
-        description: schedule.description.isEmpty ? null : schedule.description,
-        startTime: schedule.startTime,
-        endTime: schedule.endTime,
-        priority: schedule.priority,
-      );
-      if (created.reminderEnabled) {
-        await NotificationService().scheduleReminderForSchedule(
-          scheduleId: created.id,
-          title: created.title,
-          startTime: created.startTime,
-          description: created.description,
-          remindBeforeMinutes: created.remindBeforeMinutes,
-          isRepeating: created.isRepeating,
-          repeatInterval: created.repeatInterval,
-        );
-      }
-      if (mounted) {
-        context.read<ScheduleBloc>().add(
-          CreateSchedule(schedule: created.copyWith(syncStatus: 'synced')),
-        );
-      }
-      createdSchedules++;
     }
 
     if (mounted) {
@@ -1859,15 +1835,24 @@ class _HomeContentState extends State<_HomeContent> {
       await _loadData();
       if (!mounted) return;
       final skippedText = skippedTasks > 0 ? '，$skippedTasks 个任务因没有项目未创建' : '';
-      showAppSnackBar(
-        context,
-        '已创建 $createdTasks 个任务、$createdSchedules 个日程$skippedText',
-      );
+      showAppSnackBar(context, '已创建 $createdTasks 个任务$skippedText');
     }
   }
 
   List<LazyLogTaskDraft> _effectiveLazyLogTasks(LazyLogResult result) {
-    if (result.tasks.isNotEmpty) return result.tasks;
+    final tasks = <LazyLogTaskDraft>[
+      ...result.tasks,
+      ...result.schedules.map(
+        (schedule) => LazyLogTaskDraft(
+          title: schedule.title,
+          description: schedule.description,
+          priority: schedule.priority,
+          startTime: schedule.startTime,
+          dueTime: schedule.endTime,
+        ),
+      ),
+    ].where((task) => task.title.trim().isNotEmpty).toList();
+    if (tasks.isNotEmpty) return tasks;
     return result.nextActions
         .map(
           (action) => LazyLogTaskDraft(
@@ -1886,6 +1871,142 @@ class _HomeContentState extends State<_HomeContent> {
         .trim();
     final title = normalized.isEmpty ? trimmed : normalized;
     return title.length <= 36 ? title : '${title.substring(0, 36)}...';
+  }
+
+  String _lazyLogParentTitle(
+    LazyLogResult result,
+    List<LazyLogTaskDraft> tasks,
+  ) {
+    final explicit = _normalizeLazyLogParentTitle(result.parentTitle);
+    if (explicit.isNotEmpty) return explicit;
+    final source = [
+      result.summary,
+      ...result.completed,
+      ...result.blockers,
+      ...result.nextActions,
+      ...tasks.map((task) => '${task.title} ${task.description}'),
+    ].join(' ');
+    final aboutMatch = RegExp(r'关于\s*([^，,。；;\n]+)').firstMatch(source);
+    if (aboutMatch != null) {
+      final title = _normalizeLazyLogParentTitle(aboutMatch.group(1) ?? '');
+      if (title.isNotEmpty) return title;
+    }
+    final relatedMatch = RegExp(
+      r'([\u4e00-\u9fa5A-Za-z0-9_-]{2,40}相关内容)',
+    ).firstMatch(source);
+    if (relatedMatch != null) {
+      final title = _normalizeLazyLogParentTitle(relatedMatch.group(1) ?? '');
+      if (title.isNotEmpty) return title;
+    }
+    return '';
+  }
+
+  String _normalizeLazyLogParentTitle(String value) {
+    final trimmed = value.trim().replaceAll(
+      RegExp(r'^[\s，,。；;：:]+|[\s，,。；;：:]+$'),
+      '',
+    );
+    if (trimmed.isEmpty) return '';
+    return trimmed.length <= 40 ? trimmed : trimmed.substring(0, 40);
+  }
+
+  Future<({String? id, bool created})> _resolveLocalLazyLogParentTaskId(
+    String parentTitle,
+    List<LazyLogTaskDraft> tasks,
+  ) async {
+    if (_shouldSkipLazyLogParent(parentTitle, tasks)) {
+      return (id: null, created: false);
+    }
+    final existing = _findLazyLogParentTask(parentTitle, source: 'storage');
+    if (existing != null) return (id: existing.taskId, created: false);
+    final range = _lazyLogParentRange(tasks);
+    final created = await widget.storage.createTask(
+      userId: _homeUserId(),
+      title: parentTitle,
+      description: '由懒人日志自动创建的父任务',
+      level: 'task',
+      startDate: range?.start,
+      endDate: range?.end,
+      priority: 'P2',
+    );
+    return (id: created.id, created: true);
+  }
+
+  Future<({String? id, bool created})> _resolveDbLazyLogParentTaskId(
+    String parentTitle,
+    String projectId,
+    List<LazyLogTaskDraft> tasks,
+  ) async {
+    if (_shouldSkipLazyLogParent(parentTitle, tasks)) {
+      return (id: null, created: false);
+    }
+    final existing = _findLazyLogParentTask(
+      parentTitle,
+      source: 'db',
+      projectId: projectId,
+    );
+    if (existing != null) return (id: existing.taskId, created: false);
+    final range = _lazyLogParentRange(tasks);
+    final created = await widget.taskRepository!.create(
+      projectId: projectId,
+      title: parentTitle,
+      description: '由懒人日志自动创建的父任务',
+      priority: 1,
+      startDate: range?.start.millisecondsSinceEpoch,
+      dueDate: range?.end.millisecondsSinceEpoch,
+    );
+    return (id: created.id, created: true);
+  }
+
+  bool _shouldSkipLazyLogParent(
+    String parentTitle,
+    List<LazyLogTaskDraft> tasks,
+  ) {
+    if (parentTitle.isEmpty) return true;
+    return tasks.length == 1 &&
+        _lazyLogTitleKey(parentTitle) == _lazyLogTitleKey(tasks.first.title);
+  }
+
+  _TimelineTask? _findLazyLogParentTask(
+    String parentTitle, {
+    required String source,
+    String? projectId,
+  }) {
+    final parentKey = _lazyLogTitleKey(parentTitle);
+    if (parentKey.isEmpty) return null;
+    final candidates = _timelineTasks.where(
+      (task) =>
+          task.source == source &&
+          task.parentId == null &&
+          (projectId == null || task.projectId == projectId),
+    );
+    final exact = candidates
+        .where((task) => _lazyLogTitleKey(task.title) == parentKey)
+        .firstOrNull;
+    if (exact != null) return exact;
+    return candidates.where((task) {
+      final key = _lazyLogTitleKey(task.title);
+      return key.isNotEmpty &&
+          (key.contains(parentKey) || parentKey.contains(key));
+    }).firstOrNull;
+  }
+
+  String _lazyLogTitleKey(String value) {
+    return value.trim().toLowerCase().replaceAll(RegExp(r'[\s，,。；;：:_-]+'), '');
+  }
+
+  ({DateTime start, DateTime end})? _lazyLogParentRange(
+    List<LazyLogTaskDraft> tasks,
+  ) {
+    if (tasks.isEmpty) return null;
+    final ranges = tasks.map(_taskDraftTimeRange).toList();
+    var start = ranges.first.start;
+    var end = ranges.first.end;
+    for (final range in ranges.skip(1)) {
+      if (range.start.isBefore(start)) start = range.start;
+      if (range.end.isAfter(end)) end = range.end;
+    }
+    return (start: start, end: end);
   }
 
   Future<String?> _defaultLazyLogProjectId() async {

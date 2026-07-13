@@ -26,6 +26,7 @@ void main() {
       'completed': ['完成输入面板'],
       'blockers': ['无'],
       'nextActions': ['联调'],
+      'parentTitle': 'SRM相关内容',
       'tasks': [
         {
           'title': '修复首页样式',
@@ -45,6 +46,7 @@ void main() {
     });
 
     expect(result.summary, '整理今日输入');
+    expect(result.parentTitle, 'SRM相关内容');
     expect(result.tasks.single.priority, 'P1');
     expect(result.tasks.single.dueTime?.hour, 18);
     expect(result.schedules.single.title, '项目复盘');

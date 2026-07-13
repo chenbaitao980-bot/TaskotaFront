@@ -62,11 +62,12 @@ class HomeLazyLogService {
 
 JSON 格式必须是：
 {
-  "summary": "一句话总结",
-  "completed": ["已完成或已有进展的事实"],
-  "blockers": ["问题、阻塞、风险或报错"],
-  "nextActions": ["下一步行动"],
-  "tasks": [
+	  "summary": "一句话总结",
+	  "completed": ["已完成或已有进展的事实"],
+	  "blockers": ["问题、阻塞、风险或报错"],
+	  "nextActions": ["下一步行动"],
+	  "parentTitle": "可选，上下文主题或父任务标题，例如 SRM相关内容",
+	  "tasks": [
     {
       "title": "任务标题",
       "description": "可选说明",
@@ -88,10 +89,12 @@ JSON 格式必须是：
 
 规则：
 1. 只基于用户输入，不得编造不存在的任务、时间、人员、原因、结果。
-2. 没有明确时间的内容放入 tasks，不要放入 schedules。
+2. 所有需要创建的事项都放入 tasks；即使有明确时间，也写入 tasks.startTime/dueTime，不要放入 schedules。
 3. 用户明确说“明天/今天/下午/晚上/几点”时，结合当前日期转换为 ISO-8601。
 4. 任务标题要短，适合直接进入待办列表。
-5. 如果某类没有内容，返回空数组。
+5. 如果输入里出现“关于xxx”“xxx相关内容”“某项目/模块/供应商/客户”等上下文，把它提炼为 parentTitle。
+6. schedules 只为兼容旧格式保留，默认返回空数组。
+7. 如果某类没有内容，返回空数组。
 ''';
   }
 
