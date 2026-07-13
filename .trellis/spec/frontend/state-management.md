@@ -293,6 +293,47 @@ Future<AssistantChatResult> AssistantChatService.send({
 
 ---
 
+## Lazy Log Project Routing Contract
+
+### 1. Scope / Trigger
+
+- Trigger: AI-assisted lazy-log task creation needs to choose a project without hardcoded keyword mappings.
+- Scope: `HomeLazyLogService` receives the current project tree, `LazyLogResult` carries model hints, `_smartLazyLogProjectId` resolves hints against real projects, and `LazyLogCreationDialog` lets the user override the choice.
+
+### 2. Contracts
+
+- Project context: build a fresh text tree from active `ProjectGroup` + `Project` data before calling the model.
+- Model JSON: `projectGroupHint` must be a real group name from the provided tree, `projectHint` must be a real project name from the provided tree; uncertain values stay empty.
+- Local routing: score only real group names, real project names, current project filters, and existing task context. Do not hardcode domain words such as errands, delivery, work, or life.
+- Ambiguity: if the best score is tied, or confidence is below threshold, return `null` and let the preview dropdown require user choice.
+- Fallback: do not silently pick the first project when active projects exist. Only use a default project path when the project cache is empty and the app must create one.
+- Preview UI: project options are grouped by project group, with a `no automatic project` option.
+
+### 3. Tests Required
+
+- Assert `LazyLogResult.fromJson` parses `projectGroupHint` and `projectHint`.
+- Assert `HomeLazyLogService` injects project group/project context into the system prompt.
+- Add routing helper coverage if `_smartLazyLogProjectId` is extracted from `home_page.dart`.
+
+### 4. Wrong vs Correct
+
+#### Wrong
+
+```dart
+if (input.contains('delivery')) return choresProjectId;
+return projects.first.id;
+```
+
+#### Correct
+
+```dart
+final context = buildProjectRoutingContext(groups, projects);
+final result = await service.structure(projectRoutingContext: context);
+return resolveProjectFromRealHints(result.projectGroupHint, result.projectHint);
+```
+
+---
+
 ## Lazy Log Task Creation Resource Contract
 
 ### 1. Scope / Trigger

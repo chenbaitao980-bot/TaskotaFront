@@ -83,6 +83,8 @@ class LazyLogResult {
   final List<LazyLogTaskDraft> tasks;
   final List<LazyLogScheduleDraft> schedules;
   final String parentTitle;
+  final String projectHint;
+  final String projectGroupHint;
   final bool usedFallback;
 
   const LazyLogResult({
@@ -93,6 +95,8 @@ class LazyLogResult {
     this.tasks = const [],
     this.schedules = const [],
     this.parentTitle = '',
+    this.projectHint = '',
+    this.projectGroupHint = '',
     this.usedFallback = false,
   });
 
@@ -111,6 +115,8 @@ class LazyLogResult {
       blockers: _readStringList(json['blockers']),
       nextActions: _readStringList(json['nextActions']),
       parentTitle: _readString(json['parentTitle']),
+      projectHint: _readString(json['projectHint']),
+      projectGroupHint: _readString(json['projectGroupHint']),
       tasks: _readObjectList(json['tasks'])
           .map(LazyLogTaskDraft.fromJson)
           .where((task) => task.title.trim().isNotEmpty)
@@ -131,6 +137,8 @@ class LazyLogResult {
       tasks: tasks,
       schedules: schedules,
       parentTitle: parentTitle,
+      projectHint: projectHint,
+      projectGroupHint: projectGroupHint,
       usedFallback: true,
     );
   }

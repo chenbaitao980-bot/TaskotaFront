@@ -30,6 +30,8 @@ void main() {
       'blockers': ['无'],
       'nextActions': ['联调'],
       'parentTitle': 'SRM相关内容',
+      'projectGroupHint': '生活',
+      'projectHint': '杂事',
       'tasks': [
         {
           'title': '修复首页样式',
@@ -51,6 +53,8 @@ void main() {
 
     expect(result.summary, '整理今日输入');
     expect(result.parentTitle, 'SRM相关内容');
+    expect(result.projectGroupHint, '生活');
+    expect(result.projectHint, '杂事');
     expect(result.tasks.single.priority, 'P1');
     expect(result.tasks.single.checklist, ['验证桌面端', '验证移动端']);
     expect(result.tasks.single.dueTime?.hour, 18);
@@ -105,11 +109,13 @@ void main() {
         userInstructions: 'WEEK_RANGE_RULE',
       ),
       input: '这周让甄云供应商完成方案',
+      projectRoutingContext: '- 分组：生活\n  - 项目：杂事',
       now: DateTime(2026, 7, 13, 10),
     );
 
     final task = result.tasks.single;
     expect(capturedSystemPrompt, contains('WEEK_RANGE_RULE'));
+    expect(capturedSystemPrompt, contains('项目：杂事'));
     expect(task.startTime, DateTime(2026, 7, 13, 9));
     expect(task.dueTime, DateTime(2026, 7, 19, 18));
   });

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/utils/platform_utils.dart';
 import 'dart:math';
 import 'package:desktop_drop/desktop_drop.dart';
@@ -157,6 +156,7 @@ class _HomePageState extends State<HomePage> {
         child: _HomeContent(
           storage: _storage,
           projectRepository: widget.projectRepository,
+          projectGroupRepository: widget.projectGroupRepository,
           taskRepository: widget.taskRepository,
           checklistRepository: widget.checklistRepository,
           visibleTabIndex: _visibleTabIndex,
@@ -667,6 +667,7 @@ class _BottomNavWidget extends StatelessWidget {
 class _HomeContent extends StatefulWidget {
   final LocalStorageService storage;
   final ProjectRepository? projectRepository;
+  final ProjectGroupRepository? projectGroupRepository;
   final TaskRepository? taskRepository;
   final ChecklistRepository? checklistRepository;
 
@@ -681,6 +682,7 @@ class _HomeContent extends StatefulWidget {
   const _HomeContent({
     required this.storage,
     this.projectRepository,
+    this.projectGroupRepository,
     this.taskRepository,
     this.checklistRepository,
     required this.visibleTabIndex,
@@ -738,6 +740,7 @@ class _HomeContentState extends State<_HomeContent> {
   List<_TimelineTask> _timelineTasks = [];
   List<_TimelineTask> _filteredTasks = [];
   Map<String, Project> _projectCache = {};
+  Map<String, ProjectGroup> _projectGroupCache = {};
   final Map<String, List<ChecklistItem>> _checklistCache = {};
   final Map<String, List<Task>> _subtaskCache = {};
   final Map<String, Task?> _dbTaskCache = {};
@@ -751,7 +754,6 @@ class _HomeContentState extends State<_HomeContent> {
   final ValueNotifier<double> _timelineDragDxNotifier = ValueNotifier<double>(
     0,
   );
-  double get _timelineDragDx => _timelineDragDxNotifier.value;
   final ValueNotifier<int> _timelineDragHourShiftNotifier = ValueNotifier<int>(
     0,
   );
@@ -821,6 +823,10 @@ class _HomeContentState extends State<_HomeContent> {
     if (widget.projectRepository != null) {
       final projects = await widget.projectRepository!.getActive();
       _projectCache = {for (final p in projects) p.id: p};
+    }
+    if (widget.projectGroupRepository != null) {
+      final groups = await widget.projectGroupRepository!.getAll();
+      _projectGroupCache = {for (final group in groups) group.id: group};
     }
 
     // Load storage tasks
@@ -1642,6 +1648,7 @@ class _HomeContentState extends State<_HomeContent> {
       final result = await _lazyLogService.structure(
         config: config,
         input: input,
+        projectRoutingContext: _lazyLogProjectRoutingContext(),
       );
       if (!mounted) return;
       if (result.isEmpty) {
@@ -1704,7 +1711,9 @@ class _HomeContentState extends State<_HomeContent> {
         createdTasks++;
       }
     } else {
-      final projectId = plan.projectId ?? await _defaultLazyLogProjectId();
+      final projectId =
+          plan.projectId ??
+          (_projectCache.isEmpty ? await _defaultLazyLogProjectId() : null);
       if (plan.tasks.isNotEmpty && projectId == null) {
         skippedTasks = plan.tasks.length;
       } else if (projectId != null) {
@@ -1791,11 +1800,58 @@ class _HomeContentState extends State<_HomeContent> {
 
   List<LazyLogProjectOption> _lazyLogProjectOptions() {
     final projects = _projectCache.values.toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+      ..sort((a, b) {
+        final groupCompare = _projectGroupSortKey(
+          a,
+        ).compareTo(_projectGroupSortKey(b));
+        if (groupCompare != 0) return groupCompare;
+        return a.name.compareTo(b.name);
+      });
     return [
       for (final project in projects)
-        LazyLogProjectOption(id: project.id, name: project.name),
+        LazyLogProjectOption(
+          id: project.id,
+          name: project.name,
+          groupId: project.groupId,
+          groupName: _projectGroupName(project),
+        ),
     ];
+  }
+
+  String _projectGroupSortKey(Project project) {
+    final group = project.groupId == null
+        ? null
+        : _projectGroupCache[project.groupId!];
+    return '${group?.sortOrder.toString().padLeft(8, '0') ?? '99999999'}'
+        '|${group?.name ?? '未分组'}';
+  }
+
+  String _projectGroupName(Project project) {
+    if (project.groupId == null) return '未分组';
+    return _projectGroupCache[project.groupId!]?.name ?? '未分组';
+  }
+
+  String _lazyLogProjectRoutingContext() {
+    if (_projectCache.isEmpty) return '';
+    final projects = _projectCache.values.toList()
+      ..sort((a, b) {
+        final groupCompare = _projectGroupSortKey(
+          a,
+        ).compareTo(_projectGroupSortKey(b));
+        if (groupCompare != 0) return groupCompare;
+        return a.name.compareTo(b.name);
+      });
+    final buffer = StringBuffer();
+    String? currentGroupName;
+    for (final project in projects) {
+      final groupName = _projectGroupName(project);
+      if (currentGroupName != groupName) {
+        currentGroupName = groupName;
+        buffer.writeln('- 分组：$groupName');
+      }
+      buffer.writeln('  - 项目：${project.name}');
+    }
+    return buffer.toString().trim();
   }
 
   List<LazyLogParentOption> _lazyLogParentOptions() {
@@ -1835,23 +1891,32 @@ class _HomeContentState extends State<_HomeContent> {
       return _filterProjectIds.first;
     }
     if (_projectCache.isEmpty) return null;
-    final text = _lazyLogTitleKey(
-      [
-        result.summary,
-        result.parentTitle,
-        parentTitle,
-        ...result.completed,
-        ...result.blockers,
-        ...result.nextActions,
-        ...tasks.map((task) => '${task.title} ${task.description}'),
-      ].join(' '),
-    );
+    final rawText = [
+      result.summary,
+      result.parentTitle,
+      result.projectGroupHint,
+      result.projectHint,
+      parentTitle,
+      ...result.completed,
+      ...result.blockers,
+      ...result.nextActions,
+      ...tasks.map((task) => '${task.title} ${task.description}'),
+    ].join(' ');
+    final text = _lazyLogTitleKey(rawText);
+    final projectHint = _lazyLogTitleKey(result.projectHint);
+    final groupHint = _lazyLogTitleKey(result.projectGroupHint);
     Project? bestProject;
-    var bestScore = -1;
+    var bestScore = 0;
+    var bestScoreCount = 0;
     for (final project in _projectCache.values) {
       var score = 0;
       final projectKey = _lazyLogTitleKey(project.name);
+      final groupName = _projectGroupName(project);
+      final groupKey = _lazyLogTitleKey(groupName);
+      if (projectHint.isNotEmpty && projectKey == projectHint) score += 220;
+      if (groupHint.isNotEmpty && groupKey == groupHint) score += 120;
       if (projectKey.isNotEmpty && text.contains(projectKey)) score += 100;
+      if (groupKey.isNotEmpty && text.contains(groupKey)) score += 80;
       if (_filterProjectIds.contains(project.id)) score += 25;
       for (final task in _timelineTasks.where(
         (t) => t.projectId == project.id,
@@ -1870,9 +1935,12 @@ class _HomeContentState extends State<_HomeContent> {
       if (score > bestScore) {
         bestScore = score;
         bestProject = project;
+        bestScoreCount = 1;
+      } else if (score == bestScore && score > 0) {
+        bestScoreCount++;
       }
     }
-    return (bestProject ?? _projectCache.values.first).id;
+    return bestScore >= 60 && bestScoreCount == 1 ? bestProject?.id : null;
   }
 
   List<_TimelineTask> _lazyLogParentCandidates({
@@ -2715,22 +2783,10 @@ class _HomeContentState extends State<_HomeContent> {
     final totalDays = _daysBefore + _daysAfter;
 
     final int itemCount;
-    final double itemExtent;
-    final Widget Function(BuildContext, int) itemBuilder;
-
     if (_timelineMode == 'hour') {
       itemCount = 24;
-      itemExtent = _hourWidth;
-      itemBuilder = (context, index) =>
-          _buildHourColumn(index, showTasks: false);
     } else {
       itemCount = totalDays;
-      itemExtent = _dayWidth;
-      itemBuilder = (context, index) {
-        final dayDate = baseDate.add(Duration(days: index));
-        final isToday = _isSameDayDate(dayDate, today);
-        return _buildDayColumn(dayDate, isToday, index, showTasks: false);
-      };
     }
 
     return Container(
@@ -4715,7 +4771,6 @@ class _HomeContentState extends State<_HomeContent> {
     if (task.source != 'db' || widget.taskRepository == null) return;
     // Map label back to DB value
     const labelToDb = {'P3': 0, 'P2': 1, 'P1': 3, 'P0': 5};
-    final dbValues = [0, 1, 3, 5];
     final labels = ['P3', 'P2', 'P1', 'P0'];
     int currentLabelIdx = labels.indexOf(task.priority);
     if (currentLabelIdx < 0) currentLabelIdx = 0;

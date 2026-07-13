@@ -15,6 +15,7 @@ class HomeLazyLogService {
   Future<LazyLogResult> structure({
     required AssistantModelConfig config,
     required String input,
+    String projectRoutingContext = '',
     DateTime? now,
   }) async {
     final trimmed = input.trim();
@@ -45,6 +46,7 @@ class HomeLazyLogService {
               'content': _systemPrompt(
                 now ?? DateTime.now(),
                 config.userInstructions,
+                projectRoutingContext,
               ),
             },
             {'role': 'user', 'content': trimmed},
@@ -83,9 +85,14 @@ class HomeLazyLogService {
     }
   }
 
-  String _systemPrompt(DateTime now, String userInstructions) {
+  String _systemPrompt(
+    DateTime now,
+    String userInstructions,
+    String projectRoutingContext,
+  ) {
     final today = _dateOnly(now);
     final preferences = _userInstructionsBlock(userInstructions);
+    final projectRouting = _projectRoutingBlock(projectRoutingContext);
     return '''
 你是 Taskora 首页懒人日志结构化助手。把用户随手输入整理成 JSON，不要输出 Markdown，不要解释。
 
@@ -98,6 +105,8 @@ JSON 格式必须是：
 	  "blockers": ["问题、阻塞、风险或报错"],
 	  "nextActions": ["下一步行动"],
 	  "parentTitle": "可选，上下文主题或父任务标题，例如 SRM相关内容",
+	  "projectGroupHint": "可选，必须来自可用项目分组名称；不确定则空字符串",
+	  "projectHint": "可选，必须来自可用项目名称；不确定则空字符串",
 	  "tasks": [
     {
       "title": "任务标题",
@@ -126,10 +135,13 @@ JSON 格式必须是：
 4. 用户说“这周/本周/这星期/本星期”且没有明确几点时，创建跨天周任务区间：startTime 用本周一 09:00，dueTime 用本周日 18:00；不要把它压成周日 23:59 或最后一小时。
 5. 任务标题要短，适合直接进入待办列表。
 6. 如果输入里出现“关于xxx”“xxx相关内容”“某项目/模块/供应商/客户”等上下文，把它提炼为 parentTitle。
-7. schedules 只为兼容旧格式保留，默认返回空数组。
-8. 创建任务时，如果用户输入包含背景、目标、交付物、约束或原因，顺带生成 description；如果任务步骤比较多、验收点明确或执行较复杂，生成 checklist 检查点。
-9. 如果某类没有内容，返回空数组。
+7. 如果提供了可用项目分组/项目列表，只能基于这些真实名称填写 projectGroupHint/projectHint；不要编造项目名。
+8. 当输入明显更像某个分组或项目，但项目名没有字面出现时，也可以根据语义选择最贴近的真实项目；不确定时保持空字符串，交给用户在预览里选择。
+9. schedules 只为兼容旧格式保留，默认返回空数组。
+10. 创建任务时，如果用户输入包含背景、目标、交付物、约束或原因，顺带生成 description；如果任务步骤比较多、验收点明确或执行较复杂，生成 checklist 检查点。
+11. 如果某类没有内容，返回空数组。
 $preferences
+$projectRouting
 ''';
   }
 
@@ -141,6 +153,17 @@ $preferences
 用户自定义 CLAUDE.md 偏好：
 $trimmed
 请在不违反上方 JSON 格式和任务创建规则的前提下遵循这些偏好。''';
+  }
+
+  String _projectRoutingBlock(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    return '''
+
+可用项目分组和项目：
+$trimmed
+
+请优先使用这里的真实分组/项目名称填写 projectGroupHint/projectHint。''';
   }
 
   LazyLogResult _normalizeRelativeTaskRanges(
@@ -178,6 +201,8 @@ $trimmed
       tasks: tasks,
       schedules: result.schedules,
       parentTitle: result.parentTitle,
+      projectHint: result.projectHint,
+      projectGroupHint: result.projectGroupHint,
       usedFallback: result.usedFallback,
     );
   }

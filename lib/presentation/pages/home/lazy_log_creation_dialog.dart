@@ -6,8 +6,15 @@ import '../../../core/theme/app_theme.dart';
 class LazyLogProjectOption {
   final String id;
   final String name;
+  final String? groupId;
+  final String groupName;
 
-  const LazyLogProjectOption({required this.id, required this.name});
+  const LazyLogProjectOption({
+    required this.id,
+    required this.name,
+    this.groupId,
+    this.groupName = '未分组',
+  });
 }
 
 class LazyLogParentOption {
@@ -206,18 +213,13 @@ class _LazyLogCreationDialogState extends State<LazyLogCreationDialog> {
                     labelText: '项目',
                     prefixIcon: Icon(Icons.folder_outlined),
                   ),
-                  items: [
-                    for (final project in widget.projects)
-                      DropdownMenuItem(
-                        value: project.id,
-                        child: Text(project.name),
-                      ),
-                  ],
+                  items: _projectMenuItems(),
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() {
                       _plan = _plan.copyWith(
-                        projectId: value,
+                        projectId: value.isEmpty ? null : value,
+                        clearProjectId: value.isEmpty,
                         clearParentTaskId: true,
                       );
                     });
@@ -313,7 +315,44 @@ class _LazyLogCreationDialogState extends State<LazyLogCreationDialog> {
         widget.projects.any((project) => project.id == selected)) {
       return selected;
     }
-    return widget.projects.first.id;
+    return '';
+  }
+
+  List<DropdownMenuItem<String>> _projectMenuItems() {
+    final items = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(value: '', child: Text('不自动选择项目')),
+    ];
+    String? currentGroupKey;
+    for (final project in widget.projects) {
+      final groupKey = project.groupId ?? '__ungrouped__';
+      if (currentGroupKey != groupKey) {
+        currentGroupKey = groupKey;
+        items.add(
+          DropdownMenuItem(
+            value: '__group_$groupKey',
+            enabled: false,
+            child: Text(
+              project.groupName,
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        );
+      }
+      items.add(
+        DropdownMenuItem(
+          value: project.id,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(project.name),
+          ),
+        ),
+      );
+    }
+    return items;
   }
 
   List<LazyLogParentOption> _filteredParents() {
