@@ -1546,21 +1546,33 @@ class _HomeContentState extends State<_HomeContent> {
             ],
           ),
           const SizedBox(height: 10),
-          TextField(
-            controller: _lazyLogController,
-            minLines: 2,
-            maxLines: 5,
-            textInputAction: TextInputAction.newline,
-            enabled: !_lazyLogSubmitting,
-            decoration: InputDecoration(
-              hintText: '随手写：今天做了什么、遇到什么、接下来要安排什么...',
-              filled: true,
-              fillColor: AppTheme.bgInput,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+          Focus(
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent &&
+                  event.logicalKey == LogicalKeyboardKey.enter &&
+                  !HardwareKeyboard.instance.isShiftPressed) {
+                _submitLazyLog();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: TextField(
+              controller: _lazyLogController,
+              minLines: 2,
+              maxLines: 5,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _submitLazyLog(),
+              enabled: !_lazyLogSubmitting,
+              decoration: InputDecoration(
+                hintText: '随手写：今天做了什么、遇到什么、接下来要安排什么...',
+                filled: true,
+                fillColor: AppTheme.bgInput,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(12),
               ),
-              contentPadding: const EdgeInsets.all(12),
             ),
           ),
           const SizedBox(height: 10),
@@ -1730,8 +1742,7 @@ class _HomeContentState extends State<_HomeContent> {
               subtitle: Text(
                 [
                   _priorityLabel(task.priority),
-                  if (task.dueTime != null)
-                    '截止 ${_formatDateTime(task.dueTime!)}',
+                  _taskTimeLabel(task),
                 ].join(' · '),
               ),
             ),
@@ -1784,6 +1795,7 @@ class _HomeContentState extends State<_HomeContent> {
       skippedTasks = result.tasks.length;
     } else if (projectId != null) {
       for (final task in result.tasks) {
+        final range = _taskDraftTimeRange(task);
         if (widget.taskRepository != null) {
           context.read<TaskNewBloc>().add(
             CreateTask(
@@ -1791,8 +1803,8 @@ class _HomeContentState extends State<_HomeContent> {
               title: task.title,
               description: task.description,
               priority: _priorityToDbValue(task.priority),
-              startDate: task.startTime?.millisecondsSinceEpoch,
-              dueDate: task.dueTime?.millisecondsSinceEpoch,
+              startDate: range.start.millisecondsSinceEpoch,
+              dueDate: range.end.millisecondsSinceEpoch,
             ),
           );
         } else {
@@ -1801,8 +1813,8 @@ class _HomeContentState extends State<_HomeContent> {
             title: task.title,
             description: task.description,
             level: 'task',
-            startDate: task.startTime,
-            endDate: task.dueTime,
+            startDate: range.start,
+            endDate: range.end,
             priority: task.priority,
           );
         }
@@ -1870,6 +1882,30 @@ class _HomeContentState extends State<_HomeContent> {
     'P2' => 1,
     _ => 0,
   };
+
+  ({DateTime start, DateTime end}) _taskDraftTimeRange(LazyLogTaskDraft task) {
+    final defaultStart = _defaultLazyTaskStart();
+    final start =
+        task.startTime ??
+        task.dueTime?.subtract(const Duration(hours: 1)) ??
+        defaultStart;
+    final end =
+        task.dueTime ??
+        task.startTime?.add(const Duration(hours: 1)) ??
+        defaultStart.add(const Duration(hours: 1));
+    if (end.isAfter(start)) return (start: start, end: end);
+    return (start: start, end: start.add(const Duration(hours: 1)));
+  }
+
+  DateTime _defaultLazyTaskStart() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, now.hour, now.minute);
+  }
+
+  String _taskTimeLabel(LazyLogTaskDraft task) {
+    final range = _taskDraftTimeRange(task);
+    return '${_formatDateTime(range.start)} - ${_formatTime(range.end)}';
+  }
 
   String _formatDateTime(DateTime date) {
     return '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
