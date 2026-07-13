@@ -1661,7 +1661,7 @@ class _HomeContentState extends State<_HomeContent> {
                 _buildLazyLogPreviewSection('进展', result.completed),
                 _buildLazyLogPreviewSection('问题', result.blockers),
                 _buildLazyLogPreviewSection('下一步', result.nextActions),
-                _buildLazyTaskPreview(result.tasks),
+                _buildLazyTaskPreview(_effectiveLazyLogTasks(result)),
                 _buildLazySchedulePreview(result.schedules),
               ],
             ),
@@ -1675,7 +1675,7 @@ class _HomeContentState extends State<_HomeContent> {
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(
-              '创建 ${result.tasks.length} 个任务 / ${result.schedules.length} 个日程',
+              '创建 ${_effectiveLazyLogTasks(result).length} 个任务 / ${result.schedules.length} 个日程',
             ),
           ),
         ],
@@ -1789,36 +1789,39 @@ class _HomeContentState extends State<_HomeContent> {
     var createdTasks = 0;
     var skippedTasks = 0;
     var createdSchedules = 0;
+    final tasks = _effectiveLazyLogTasks(result);
 
-    final projectId = _defaultLazyLogProjectId();
-    if (result.tasks.isNotEmpty && projectId == null) {
-      skippedTasks = result.tasks.length;
-    } else if (projectId != null) {
-      for (final task in result.tasks) {
+    if (widget.taskRepository == null) {
+      for (final task in tasks) {
         final range = _taskDraftTimeRange(task);
-        if (widget.taskRepository != null) {
-          context.read<TaskNewBloc>().add(
-            CreateTask(
-              projectId: projectId,
-              title: task.title,
-              description: task.description,
-              priority: _priorityToDbValue(task.priority),
-              startDate: range.start.millisecondsSinceEpoch,
-              dueDate: range.end.millisecondsSinceEpoch,
-            ),
-          );
-        } else {
-          await widget.storage.createTask(
-            userId: _homeUserId(),
+        await widget.storage.createTask(
+          userId: _homeUserId(),
+          title: task.title,
+          description: task.description,
+          level: 'task',
+          startDate: range.start,
+          endDate: range.end,
+          priority: task.priority,
+        );
+        createdTasks++;
+      }
+    } else {
+      final projectId = await _defaultLazyLogProjectId();
+      if (tasks.isNotEmpty && projectId == null) {
+        skippedTasks = tasks.length;
+      } else if (projectId != null) {
+        for (final task in tasks) {
+          final range = _taskDraftTimeRange(task);
+          await widget.taskRepository!.create(
+            projectId: projectId,
             title: task.title,
             description: task.description,
-            level: 'task',
-            startDate: range.start,
-            endDate: range.end,
-            priority: task.priority,
+            priority: _priorityToDbValue(task.priority),
+            startDate: range.start.millisecondsSinceEpoch,
+            dueDate: range.end.millisecondsSinceEpoch,
           );
+          createdTasks++;
         }
-        createdTasks++;
       }
     }
 
@@ -1863,10 +1866,41 @@ class _HomeContentState extends State<_HomeContent> {
     }
   }
 
-  String? _defaultLazyLogProjectId() {
+  List<LazyLogTaskDraft> _effectiveLazyLogTasks(LazyLogResult result) {
+    if (result.tasks.isNotEmpty) return result.tasks;
+    return result.nextActions
+        .map(
+          (action) => LazyLogTaskDraft(
+            title: _lazyActionTitle(action),
+            description: action,
+          ),
+        )
+        .where((task) => task.title.trim().isNotEmpty)
+        .toList();
+  }
+
+  String _lazyActionTitle(String value) {
+    final trimmed = value.trim();
+    final normalized = trimmed
+        .replaceFirst(RegExp(r'^(明天|今天|接下来|后续|计划|待办|准备)[:：，,\s]*'), '')
+        .trim();
+    final title = normalized.isEmpty ? trimmed : normalized;
+    return title.length <= 36 ? title : '${title.substring(0, 36)}...';
+  }
+
+  Future<String?> _defaultLazyLogProjectId() async {
     if (_filterProjectIds.length == 1) return _filterProjectIds.first;
     if (_projectCache.isNotEmpty) return _projectCache.values.first.id;
-    return null;
+    final repository = widget.projectRepository;
+    if (repository == null) return null;
+    final projects = await repository.getActive();
+    if (projects.isNotEmpty) {
+      _projectCache = {for (final project in projects) project.id: project};
+      return projects.first.id;
+    }
+    final project = await repository.create(name: '默认项目');
+    _projectCache = {project.id: project};
+    return project.id;
   }
 
   String _homeUserId() {
