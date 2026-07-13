@@ -35,6 +35,7 @@ void main() {
           'title': '修复首页样式',
           'description': '检查移动端布局',
           'priority': 'P1',
+          'checklist': ['验证桌面端', '验证移动端'],
           'dueTime': '2026-07-14T18:00:00',
         },
       ],
@@ -51,6 +52,7 @@ void main() {
     expect(result.summary, '整理今日输入');
     expect(result.parentTitle, 'SRM相关内容');
     expect(result.tasks.single.priority, 'P1');
+    expect(result.tasks.single.checklist, ['验证桌面端', '验证移动端']);
     expect(result.tasks.single.dueTime?.hour, 18);
     expect(result.schedules.single.title, '项目复盘');
     expect(result.schedules.single.endTime.hour, 11);

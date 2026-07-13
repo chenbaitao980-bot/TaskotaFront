@@ -293,6 +293,154 @@ Future<AssistantChatResult> AssistantChatService.send({
 
 ---
 
+## Lazy Log Task Creation Resource Contract
+
+### 1. Scope / Trigger
+
+- Trigger: AI-assisted task creation carries more than a title/time range.
+- Scope: `HomeLazyLogService` parses model output, `LazyLogCreationDialog` lets the user edit the preview, and `_applyLazyLogPlan` persists the final task resources.
+
+### 2. Signatures
+
+```dart
+class LazyLogTaskDraft {
+  final String title;
+  final String description;
+  final String priority;
+  final List<String> checklist;
+  final DateTime? startTime;
+  final DateTime? dueTime;
+}
+
+class LazyLogTaskEdit {
+  final String title;
+  final String description;
+  final String priority;
+  final List<String> checklist;
+  final List<PlatformFile> attachments;
+  final DateTime start;
+  final DateTime end;
+}
+```
+
+### 3. Contracts
+
+- Model JSON: task objects may include `description` and `checklist`; missing fields default to empty values.
+- Preview UI: task title, description, checklist lines, start/end, image uploads, and generic attachments are user-editable before creation.
+- Persistence: create the task first, then use the returned task id to create checklist items and save attachments.
+- Local storage mode: description is persisted with the task; checklist and attachments require the DB-backed repositories/services.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|-----------|----------|
+| Model omits `description` | Use an empty description |
+| Model omits `checklist` | Use an empty checklist |
+| Checklist preview has blank lines | Drop blank lines before persistence |
+| Attachment selected before task exists | Keep `PlatformFile` in preview state; save after task creation returns an id |
+| No `ChecklistRepository` available | Skip checklist persistence |
+
+### 5. Good/Base/Bad Cases
+
+- Good: complex task includes a description, several checklist items, and user-selected attachments; all are saved after confirmation.
+- Base: simple task with only title/time still creates normally.
+- Bad: do not save attachments during preview, because cancellation would leave orphan files.
+
+### 6. Tests Required
+
+- Assert `LazyLogResult.fromJson` parses `tasks[].checklist`.
+- Assert task creation paths that change parent timing have regression coverage.
+- Widget/integration coverage should verify preview edits are reflected in `LazyLogCreationPlan` before confirmation.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dart
+await taskRepository.create(...);
+// checklist and attachments are ignored
+```
+
+#### Correct
+
+```dart
+final task = await taskRepository.create(...);
+for (final item in edit.checklist) {
+  await checklistRepository.create(taskId: task.id, title: item);
+}
+for (final file in edit.attachments) {
+  await TaskAttachmentService().saveAttachment(task.id, file);
+}
+```
+
+---
+
+## Parent Task Date Range Contract
+
+### 1. Scope / Trigger
+
+- Trigger: creating or updating subtasks must keep ancestor task ranges aligned with their children.
+- Scope: `TaskRepository.expandAncestorDates` owns parent date recalculation for DB-backed tasks.
+
+### 2. Signatures
+
+```dart
+Future<void> TaskRepository.expandAncestorDates(
+  String? childParentId,
+  int? childStart,
+  int? childEnd, {
+  bool syncImmediately = true,
+});
+```
+
+### 3. Contracts
+
+- Parent `startDate` is the minimum start-like value among direct active children.
+- Parent `dueDate` is the maximum end-like value among direct active children.
+- The parent's previous explicit range is not a boundary. It must not prevent shrinking or expanding to the actual child range.
+- After recalculating one parent, recurse upward so every ancestor reflects its direct children.
+- Creating a subtask must call ancestor date recalculation immediately after reopening completed ancestors.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|-----------|----------|
+| New child extends beyond parent | Parent expands to include it |
+| New child is narrower than old parent range and siblings are also narrower | Parent shrinks to direct children min/max |
+| Child has only `startDate` or only `dueDate` | Use the available value as that child's point range |
+| No dated active children | Parent range may clear to null |
+
+### 5. Good/Base/Bad Cases
+
+- Good: parent with children `14:00-15:40` and `08:00-Friday 17:00` becomes `08:00-Friday 17:00`.
+- Base: a single dated child makes the parent range equal that child range.
+- Bad: keeping parent `7/3-15:40` because it was the old stored value.
+
+### 6. Tests Required
+
+- Repository-level test: creating a new dated child recalculates the parent from all children.
+- Bloc-level test: adding dated subtasks updates the parent range shown in the mind map.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dart
+var start = parent.startDate;
+var end = parent.dueDate;
+// expand only, or recalculate only when no expansion happened
+```
+
+#### Correct
+
+```dart
+final children = await getSubTasks(parent.id);
+parent.startDate = min(children.startDate ?? children.dueDate);
+parent.dueDate = max(children.dueDate ?? children.startDate);
+```
+
+---
+
 ## Common Mistakes
 
 - **Forgetting to apply new filter in `refreshTasks`**: A filter added in `_onLoadTasks` but not in `refreshTasks` will be lost after mutations (create/update/delete).

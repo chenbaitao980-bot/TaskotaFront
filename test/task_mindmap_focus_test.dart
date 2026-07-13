@@ -252,9 +252,52 @@ void main() {
     );
 
     final updatedParent = created.tasks.where((t) => t.id == parent.id).first;
-    expect(updatedParent.startDate, parentStart.millisecondsSinceEpoch);
+    expect(updatedParent.startDate, childStart.millisecondsSinceEpoch);
     expect(updatedParent.dueDate, childEnd.millisecondsSinceEpoch);
   });
+
+  test(
+    'repository create recalculates parent range from all children',
+    () async {
+      final harness = await _BlocHarness.create();
+      addTearDown(harness.dispose);
+
+      final project = await harness.projectRepository.create(name: 'Project A');
+      final parent = await harness.taskRepository.create(
+        projectId: project.id,
+        title: 'Parent',
+        startDate: DateTime(2026, 7, 3, 18, 34).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 13, 15, 40).millisecondsSinceEpoch,
+        syncImmediately: false,
+      );
+      await harness.taskRepository.create(
+        projectId: project.id,
+        title: 'Existing child',
+        parentId: parent.id,
+        startDate: DateTime(2026, 7, 13, 14).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 13, 15, 40).millisecondsSinceEpoch,
+        syncImmediately: false,
+      );
+      await harness.taskRepository.create(
+        projectId: project.id,
+        title: 'This week child',
+        parentId: parent.id,
+        startDate: DateTime(2026, 7, 13, 8).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 17, 17).millisecondsSinceEpoch,
+        syncImmediately: false,
+      );
+
+      final updatedParent = await harness.taskRepository.get(parent.id);
+      expect(
+        updatedParent!.startDate,
+        DateTime(2026, 7, 13, 8).millisecondsSinceEpoch,
+      );
+      expect(
+        updatedParent.dueDate,
+        DateTime(2026, 7, 17, 17).millisecondsSinceEpoch,
+      );
+    },
+  );
 
   test(
     'auto-insert shifted subtask expands parent range to shifted end',

@@ -221,8 +221,8 @@ class TaskRepository {
     return result.isNotEmpty;
   }
 
-  /// 从当前层向上追溯，扩展每层父任务的时间范围覆盖所有子任务
-  /// 当子任务缩小时会重新计算所有子任务的 min/max，支持回缩
+  /// 从当前层向上追溯，用每层直接子任务的真实 min/max 覆盖父任务时间范围。
+  /// 支持子任务范围变大和变小，避免父任务保留过期的旧边界。
   Future<void> expandAncestorDates(
     String? childParentId,
     int? childStart,
@@ -234,46 +234,35 @@ class TaskRepository {
       final parent = await get(currentParentId);
       if (parent == null) break;
 
-      int? ns = parent.startDate;
-      int? nd = parent.dueDate;
-
-      // 1) 先尝试向外扩展（子任务超出父范围）
-      if (childStart != null) {
-        ns = (ns == null || childStart < ns) ? childStart : ns;
-      }
-      if (childEnd != null) {
-        nd = (nd == null || childEnd > nd) ? childEnd : nd;
-      }
-
-      // 2) 如果子任务在父范围内（本次未扩展），重新计算所有子任务的真实范围，支持回缩
-      if (ns == parent.startDate && nd == parent.dueDate) {
-        final children = await getSubTasks(parent.id);
-        int? minStart, maxEnd;
-        for (final c in children) {
-          if (c.startDate != null) {
-            minStart =
-                (minStart == null || c.startDate! < minStart)
-                    ? c.startDate!
-                    : minStart;
-          }
-          if (c.dueDate != null) {
-            maxEnd =
-                (maxEnd == null || c.dueDate! > maxEnd)
-                    ? c.dueDate!
-                    : maxEnd;
-          }
+      final children = await getSubTasks(parent.id);
+      int? minStart;
+      int? maxEnd;
+      for (final child in children) {
+        final start = child.startDate ?? child.dueDate;
+        final end = child.dueDate ?? child.startDate;
+        if (start != null) {
+          minStart = (minStart == null || start < minStart) ? start : minStart;
         }
-        ns = minStart ?? ns;
-        nd = maxEnd ?? nd;
+        if (end != null) {
+          maxEnd = (maxEnd == null || end > maxEnd) ? end : maxEnd;
+        }
       }
 
-      if (ns != parent.startDate || nd != parent.dueDate) {
-        await update(
-          parent.id,
-          startDate: ns,
-          dueDate: nd,
-          syncImmediately: syncImmediately,
+      if (minStart != parent.startDate || maxEnd != parent.dueDate) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await (_db.update(
+          _db.tasks,
+        )..where((t) => t.id.equals(parent.id))).write(
+          TasksCompanion(
+            startDate: Value(minStart),
+            dueDate: Value(maxEnd),
+            updatedAt: Value(now),
+          ),
         );
+        final updated = await get(parent.id);
+        if (syncImmediately && updated != null) {
+          _syncService?.push(updated);
+        }
       }
       currentParentId = parent.parentId;
     }
@@ -451,6 +440,12 @@ class TaskRepository {
     if (parentId != null) {
       await _reopenCompletedAncestors(
         parentId,
+        syncImmediately: syncImmediately,
+      );
+      await expandAncestorDates(
+        parentId,
+        startDate,
+        dueDate,
         syncImmediately: syncImmediately,
       );
     }

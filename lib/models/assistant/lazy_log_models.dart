@@ -2,6 +2,7 @@ class LazyLogTaskDraft {
   final String title;
   final String description;
   final String priority;
+  final List<String> checklist;
   final DateTime? startTime;
   final DateTime? dueTime;
 
@@ -9,6 +10,7 @@ class LazyLogTaskDraft {
     required this.title,
     this.description = '',
     this.priority = 'P2',
+    this.checklist = const [],
     this.startTime,
     this.dueTime,
   });
@@ -18,6 +20,7 @@ class LazyLogTaskDraft {
       title: _readString(json['title']),
       description: _readString(json['description']),
       priority: _normalizePriority(_readString(json['priority'])),
+      checklist: _readStringList(json['checklist']),
       startTime: _readDateTime(json['startTime']),
       dueTime: _readDateTime(json['dueTime']),
     );
@@ -27,6 +30,7 @@ class LazyLogTaskDraft {
     String? title,
     String? description,
     String? priority,
+    List<String>? checklist,
     DateTime? startTime,
     DateTime? dueTime,
   }) {
@@ -34,6 +38,7 @@ class LazyLogTaskDraft {
       title: title ?? this.title,
       description: description ?? this.description,
       priority: priority ?? this.priority,
+      checklist: checklist ?? this.checklist,
       startTime: startTime ?? this.startTime,
       dueTime: dueTime ?? this.dueTime,
     );

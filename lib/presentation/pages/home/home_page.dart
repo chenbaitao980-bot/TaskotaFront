@@ -1684,7 +1684,7 @@ class _HomeContentState extends State<_HomeContent> {
         final parentId = parent.id;
         if (parent.created) createdTasks++;
         for (final task in plan.tasks) {
-          await widget.taskRepository!.create(
+          final createdTask = await widget.taskRepository!.create(
             projectId: projectId,
             title: task.title,
             description: task.description,
@@ -1693,6 +1693,7 @@ class _HomeContentState extends State<_HomeContent> {
             dueDate: task.end.millisecondsSinceEpoch,
             parentId: parentId,
           );
+          await _createLazyLogTaskResources(createdTask.id, task);
           createdTasks++;
         }
       }
@@ -1705,6 +1706,20 @@ class _HomeContentState extends State<_HomeContent> {
       if (!mounted) return;
       final skippedText = skippedTasks > 0 ? '，$skippedTasks 个任务因没有项目未创建' : '';
       showAppSnackBar(context, '已创建 $createdTasks 个任务$skippedText');
+    }
+  }
+
+  Future<void> _createLazyLogTaskResources(
+    String taskId,
+    LazyLogTaskEdit task,
+  ) async {
+    if (widget.checklistRepository != null) {
+      for (final title in task.checklist) {
+        await widget.checklistRepository!.create(taskId: taskId, title: title);
+      }
+    }
+    for (final file in task.attachments) {
+      await TaskAttachmentService().saveAttachment(taskId, file);
     }
   }
 
@@ -1733,6 +1748,7 @@ class _HomeContentState extends State<_HomeContent> {
             title: task.title,
             description: task.description,
             priority: task.priority,
+            checklist: task.checklist,
             start: _taskDraftTimeRange(task).start,
             end: _taskDraftTimeRange(task).end,
           ),
@@ -1769,6 +1785,7 @@ class _HomeContentState extends State<_HomeContent> {
           title: task.title,
           description: task.description,
           priority: task.priority,
+          checklist: task.checklist,
           startTime: task.start,
           dueTime: task.end,
         ),
