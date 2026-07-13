@@ -16,6 +16,9 @@ import '../../../data/repositories/checklist_repository.dart';
 import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/project_repository.dart';
 import '../../../data/repositories/task_repository.dart';
+import '../../../models/assistant/lazy_log_models.dart';
+import '../../../services/assistant_config_service.dart';
+import '../../../services/home_lazy_log_service.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/permission_service.dart';
@@ -38,6 +41,7 @@ import '../../widgets/upgrade_dialog.dart';
 import '../../widgets/calendar_date_picker.dart';
 import '../../widgets/project_picker_content.dart';
 import '../../widgets/create_schedule_dialog.dart';
+import '../assistant/assistant_page.dart';
 import '../calendar/calendar_page.dart';
 import '../profile/profile_page.dart';
 import '../task/create_task_page.dart';
@@ -70,6 +74,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ValueNotifier<int> _tabIndex = ValueNotifier<int>(0);
+
   /// 可见 tab 索引通知器，避免每次切换重建整个 _HomeContent
   final ValueNotifier<int> _visibleTabIndex = ValueNotifier<int>(0);
   final LocalStorageService _storage = LocalStorageService();
@@ -83,8 +88,10 @@ class _HomePageState extends State<HomePage> {
   bool _projectSyncStarted = false;
   DateTime? _lastRescheduleTime;
   AppLifecycleListener? _lifecycleListener;
+
   /// 防抖：短时间内密集的 LoadTasks 只执行最后一次
   Timer? _loadTasksDebounce;
+
   /// 缓存页面实例，避免每次 build 重建
   late final List<Widget> _pages = _buildPages();
 
@@ -96,9 +103,7 @@ class _HomePageState extends State<HomePage> {
       PermissionService.showNotificationGuideIfNeeded(context);
     });
     // 每次 App 回到前台时触发全量对账（打开就刷新）
-    _lifecycleListener = AppLifecycleListener(
-      onResume: _onAppResume,
-    );
+    _lifecycleListener = AppLifecycleListener(onResume: _onAppResume);
   }
 
   void _onAppResume() {
@@ -163,8 +168,13 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       const RepaintBoundary(child: TasksPage()),
+      RepaintBoundary(child: CalendarPage(onJumpToMindMap: _jumpToMindMap)),
       RepaintBoundary(
-        child: CalendarPage(onJumpToMindMap: _jumpToMindMap),
+        child: AssistantPage(
+          storage: _storage,
+          taskRepository: widget.taskRepository,
+          projectRepository: widget.projectRepository,
+        ),
       ),
       RepaintBoundary(
         child: ProfilePage(
@@ -495,14 +505,13 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       body: ValueListenableBuilder<int>(
         valueListenable: _tabIndex,
-        builder: (ctx, index, _) => IndexedStack(index: index, children: _pages),
+        builder: (ctx, index, _) =>
+            IndexedStack(index: index, children: _pages),
       ),
       bottomNavigationBar: ValueListenableBuilder<int>(
         valueListenable: _tabIndex,
-        builder: (ctx, index, _) => _BottomNavWidget(
-          currentIndex: index,
-          onTap: _onNavTap,
-        ),
+        builder: (ctx, index, _) =>
+            _BottomNavWidget(currentIndex: index, onTap: _onNavTap),
       ),
       floatingActionButton: ValueListenableBuilder<int>(
         valueListenable: _tabIndex,
@@ -546,10 +555,7 @@ class _BottomNavWidget extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  const _BottomNavWidget({
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _BottomNavWidget({required this.currentIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -593,6 +599,12 @@ class _BottomNavWidget extends StatelessWidget {
             ),
             _navItem(
               3,
+              Icons.auto_awesome_outlined,
+              Icons.auto_awesome_rounded,
+              '助手',
+            ),
+            _navItem(
+              4,
               Icons.person_outline_rounded,
               Icons.person_rounded,
               '我的',
@@ -656,6 +668,7 @@ class _HomeContent extends StatefulWidget {
   final ProjectRepository? projectRepository;
   final TaskRepository? taskRepository;
   final ChecklistRepository? checklistRepository;
+
   /// 监听父级可见 tab 索引，避免 widget 实例随 isVisible 变化重建
   final ValueNotifier<int> visibleTabIndex;
   final VoidCallback onCreateSchedule;
@@ -700,6 +713,11 @@ class _HomeContentState extends State<_HomeContent> {
   String _completionFilter = 'all';
   bool _homeFilterStateRestored = false;
   int _attachmentRefreshToken = 0;
+  final TextEditingController _lazyLogController = TextEditingController();
+  final AssistantConfigService _assistantConfigService =
+      AssistantConfigService();
+  final HomeLazyLogService _lazyLogService = HomeLazyLogService();
+  bool _lazyLogSubmitting = false;
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
   String _statsPeriod = 'day'; // 完成率统计周期: 'day'|'week'|'month'|'year'
@@ -729,12 +747,18 @@ class _HomeContentState extends State<_HomeContent> {
   String? _draggingTimelineTaskId;
   double _timelineDragRawDx = 0;
   // H4: 拖拽偏移/小时偏移高频写入，用 ValueNotifier 只重建 Transform 子树
-  final ValueNotifier<double> _timelineDragDxNotifier = ValueNotifier<double>(0);
+  final ValueNotifier<double> _timelineDragDxNotifier = ValueNotifier<double>(
+    0,
+  );
   double get _timelineDragDx => _timelineDragDxNotifier.value;
-  final ValueNotifier<int> _timelineDragHourShiftNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _timelineDragHourShiftNotifier = ValueNotifier<int>(
+    0,
+  );
   int get _timelineDragHourShift => _timelineDragHourShiftNotifier.value;
   // H5: 时间轴高度由滚动后 lane 数决定，用 ValueNotifier 只重建 SizedBox
-  final ValueNotifier<double> _timelineHeightNotifier = ValueNotifier<double>(80.0);
+  final ValueNotifier<double> _timelineHeightNotifier = ValueNotifier<double>(
+    80.0,
+  );
   Timer? _descriptionSaveDebounce;
 
   static const double _timelineDragHitWidth = 56;
@@ -779,6 +803,7 @@ class _HomeContentState extends State<_HomeContent> {
     _timelineDragDxNotifier.dispose();
     _timelineDragHourShiftNotifier.dispose();
     _timelineHeightNotifier.dispose();
+    _lazyLogController.dispose();
     super.dispose();
   }
 
@@ -917,7 +942,10 @@ class _HomeContentState extends State<_HomeContent> {
       }
       final cloudHourWidth = cloudPrefs?['timelineHourWidth'];
       if (cloudHourWidth is num) {
-        _hourWidthNotifier.value = cloudHourWidth.toDouble().clamp(_hourWidthMin, _hourWidthMax);
+        _hourWidthNotifier.value = cloudHourWidth.toDouble().clamp(
+          _hourWidthMin,
+          _hourWidthMax,
+        );
       }
     }
 
@@ -992,9 +1020,7 @@ class _HomeContentState extends State<_HomeContent> {
     final overdueTasks = _timelineTasks
         .where(
           (t) =>
-              !t.isCompleted &&
-              t.endDate != null &&
-              t.endDate!.isBefore(now),
+              !t.isCompleted && t.endDate != null && t.endDate!.isBefore(now),
         )
         .toList();
     if (overdueTasks.isEmpty) return;
@@ -1327,6 +1353,8 @@ class _HomeContentState extends State<_HomeContent> {
                       const SizedBox(height: 12),
                       _buildProjectFilter(),
                       const SizedBox(height: 12),
+                      _buildLazyLogPanel(),
+                      const SizedBox(height: 12),
                       _buildTimeline(),
                       const SizedBox(height: 16),
                       if (_selectedTask != null) _buildTaskDetail(),
@@ -1415,7 +1443,10 @@ class _HomeContentState extends State<_HomeContent> {
     final completedCount = inPeriod.where((t) => t.isCompleted).length;
 
     final totalOverdue = _filteredTasks
-        .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(now))
+        .where(
+          (t) =>
+              !t.isCompleted && t.endDate != null && t.endDate!.isBefore(now),
+        )
         .length;
 
     return GestureDetector(
@@ -1474,6 +1505,381 @@ class _HomeContentState extends State<_HomeContent> {
   Widget _compactDivider() =>
       Container(width: 0.5, height: 28, color: AppTheme.borderSubtle);
 
+  Widget _buildLazyLogPanel() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.borderSubtle),
+        boxShadow: AppTheme.cardShadowLight,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_outlined,
+                size: 18,
+                color: AppTheme.primaryColor,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '懒人日志',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (_lazyLogSubmitting)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _lazyLogController,
+            minLines: 2,
+            maxLines: 5,
+            textInputAction: TextInputAction.newline,
+            enabled: !_lazyLogSubmitting,
+            decoration: InputDecoration(
+              hintText: '随手写：今天做了什么、遇到什么、接下来要安排什么...',
+              filled: true,
+              fillColor: AppTheme.bgInput,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'AI 会先生成预览，确认后再创建任务和日程。',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: _lazyLogSubmitting ? null : _submitLazyLog,
+                icon: const Icon(Icons.bolt_rounded, size: 17),
+                label: const Text('整理'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitLazyLog() async {
+    final input = _lazyLogController.text.trim();
+    if (input.isEmpty || _lazyLogSubmitting) return;
+    setState(() => _lazyLogSubmitting = true);
+    try {
+      final config = await _assistantConfigService.loadConfig();
+      final result = await _lazyLogService.structure(
+        config: config,
+        input: input,
+      );
+      if (!mounted) return;
+      if (result.isEmpty) {
+        showAppSnackBar(context, '没有整理出可创建的内容');
+        return;
+      }
+      final confirmed = await _showLazyLogPreview(result);
+      if (confirmed == true && mounted) {
+        await _applyLazyLogResult(result);
+        _lazyLogController.clear();
+      }
+    } catch (error) {
+      if (mounted) showAppSnackBar(context, '整理失败：$error');
+    } finally {
+      if (mounted) setState(() => _lazyLogSubmitting = false);
+    }
+  }
+
+  Future<bool?> _showLazyLogPreview(LazyLogResult result) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            const Text('确认创建'),
+            if (result.usedFallback) ...[
+              const SizedBox(width: 8),
+              Tooltip(
+                message: '模型不可用或返回格式异常，已使用本地规则整理',
+                child: Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: AppTheme.warning,
+                ),
+              ),
+            ],
+          ],
+        ),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (result.summary.trim().isNotEmpty) ...[
+                  Text(
+                    result.summary,
+                    style: TextStyle(color: AppTheme.textPrimary),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _buildLazyLogPreviewSection('进展', result.completed),
+                _buildLazyLogPreviewSection('问题', result.blockers),
+                _buildLazyLogPreviewSection('下一步', result.nextActions),
+                _buildLazyTaskPreview(result.tasks),
+                _buildLazySchedulePreview(result.schedules),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              '创建 ${result.tasks.length} 个任务 / ${result.schedules.length} 个日程',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLazyLogPreviewSection(String title, List<String> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '• $item',
+                style: TextStyle(color: AppTheme.textPrimary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLazyTaskPreview(List<LazyLogTaskDraft> tasks) {
+    if (tasks.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '将创建任务',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final task in tasks)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.check_circle_outline,
+                color: _priorityColor(task.priority),
+              ),
+              title: Text(
+                task.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                [
+                  _priorityLabel(task.priority),
+                  if (task.dueTime != null)
+                    '截止 ${_formatDateTime(task.dueTime!)}',
+                ].join(' · '),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLazySchedulePreview(List<LazyLogScheduleDraft> schedules) {
+    if (schedules.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '将创建日程',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        for (final schedule in schedules)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              Icons.event_available_outlined,
+              color: _priorityColor(schedule.priority),
+            ),
+            title: Text(
+              schedule.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              '${_formatDateTime(schedule.startTime)} - ${_formatTime(schedule.endTime)}',
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _applyLazyLogResult(LazyLogResult result) async {
+    var createdTasks = 0;
+    var skippedTasks = 0;
+    var createdSchedules = 0;
+
+    final projectId = _defaultLazyLogProjectId();
+    if (result.tasks.isNotEmpty && projectId == null) {
+      skippedTasks = result.tasks.length;
+    } else if (projectId != null) {
+      for (final task in result.tasks) {
+        if (widget.taskRepository != null) {
+          context.read<TaskNewBloc>().add(
+            CreateTask(
+              projectId: projectId,
+              title: task.title,
+              description: task.description,
+              priority: _priorityToDbValue(task.priority),
+              startDate: task.startTime?.millisecondsSinceEpoch,
+              dueDate: task.dueTime?.millisecondsSinceEpoch,
+            ),
+          );
+        } else {
+          await widget.storage.createTask(
+            userId: _homeUserId(),
+            title: task.title,
+            description: task.description,
+            level: 'task',
+            startDate: task.startTime,
+            endDate: task.dueTime,
+            priority: task.priority,
+          );
+        }
+        createdTasks++;
+      }
+    }
+
+    for (final schedule in result.schedules) {
+      final created = await widget.storage.createSchedule(
+        userId: _homeUserId(),
+        title: schedule.title,
+        description: schedule.description.isEmpty ? null : schedule.description,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        priority: schedule.priority,
+      );
+      if (created.reminderEnabled) {
+        await NotificationService().scheduleReminderForSchedule(
+          scheduleId: created.id,
+          title: created.title,
+          startTime: created.startTime,
+          description: created.description,
+          remindBeforeMinutes: created.remindBeforeMinutes,
+          isRepeating: created.isRepeating,
+          repeatInterval: created.repeatInterval,
+        );
+      }
+      if (mounted) {
+        context.read<ScheduleBloc>().add(
+          CreateSchedule(schedule: created.copyWith(syncStatus: 'synced')),
+        );
+      }
+      createdSchedules++;
+    }
+
+    if (mounted) {
+      context.read<TaskNewBloc>().add(LoadTasks());
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await _loadData();
+      if (!mounted) return;
+      final skippedText = skippedTasks > 0 ? '，$skippedTasks 个任务因没有项目未创建' : '';
+      showAppSnackBar(
+        context,
+        '已创建 $createdTasks 个任务、$createdSchedules 个日程$skippedText',
+      );
+    }
+  }
+
+  String? _defaultLazyLogProjectId() {
+    if (_filterProjectIds.length == 1) return _filterProjectIds.first;
+    if (_projectCache.isNotEmpty) return _projectCache.values.first.id;
+    return null;
+  }
+
+  String _homeUserId() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is LocalAuthenticated) return authState.email;
+    if (authState is Authenticated) return authState.user.id;
+    return 'local_user';
+  }
+
+  int _priorityToDbValue(String priority) => switch (priority) {
+    'P0' => 5,
+    'P1' => 3,
+    'P2' => 1,
+    _ => 0,
+  };
+
+  String _formatDateTime(DateTime date) {
+    return '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
+        '${_formatTime(date)}';
+  }
+
+  String _formatTime(DateTime date) {
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
   Widget _buildStatItem({
     required String label,
     required String value,
@@ -1514,10 +1920,19 @@ class _HomeContentState extends State<_HomeContent> {
         .where((t) => _isSameDayDate(t.date, today))
         .length;
     final overdueByDay = _filteredTasks
-        .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(today))
+        .where(
+          (t) =>
+              !t.isCompleted && t.endDate != null && t.endDate!.isBefore(today),
+        )
         .length;
     final overdueByHour = _filteredTasks
-        .where((t) => !t.isCompleted && t.endDate != null && _isSameDayDate(t.endDate!, today) && t.endDate!.isBefore(now))
+        .where(
+          (t) =>
+              !t.isCompleted &&
+              t.endDate != null &&
+              _isSameDayDate(t.endDate!, today) &&
+              t.endDate!.isBefore(now),
+        )
         .length;
     final totalOverdue = overdueByDay + overdueByHour;
 
@@ -1691,20 +2106,36 @@ class _HomeContentState extends State<_HomeContent> {
     switch (mode) {
       case 'day':
         overdue = _filteredTasks
-            .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(today))
+            .where(
+              (t) =>
+                  !t.isCompleted &&
+                  t.endDate != null &&
+                  t.endDate!.isBefore(today),
+            )
             .toList();
         title = '逾期任务-天';
         break;
       case 'hour':
         overdue = _filteredTasks
-            .where((t) => !t.isCompleted && t.endDate != null && _isSameDayDate(t.endDate!, today) && t.endDate!.isBefore(now))
+            .where(
+              (t) =>
+                  !t.isCompleted &&
+                  t.endDate != null &&
+                  _isSameDayDate(t.endDate!, today) &&
+                  t.endDate!.isBefore(now),
+            )
             .toList();
         title = '逾期任务-小时';
         break;
       case 'total':
       default:
         overdue = _filteredTasks
-            .where((t) => !t.isCompleted && t.endDate != null && t.endDate!.isBefore(now))
+            .where(
+              (t) =>
+                  !t.isCompleted &&
+                  t.endDate != null &&
+                  t.endDate!.isBefore(now),
+            )
             .toList();
         title = '逾期任务';
         break;
@@ -2035,7 +2466,9 @@ class _HomeContentState extends State<_HomeContent> {
                         return ValueListenableBuilder<double>(
                           valueListenable: _hourWidthNotifier,
                           builder: (context, hourWidth, _) {
-                            final effectiveExtent = _timelineMode == 'hour' ? hourWidth : _dayWidth;
+                            final effectiveExtent = _timelineMode == 'hour'
+                                ? hourWidth
+                                : _dayWidth;
                             final timelineWidth = itemCount * effectiveExtent;
                             return ValueListenableBuilder<double>(
                               valueListenable: _timelineHeightNotifier,
@@ -2057,10 +2490,20 @@ class _HomeContentState extends State<_HomeContent> {
                                               width: effectiveExtent,
                                               height: timelineHeight,
                                               child: _timelineMode == 'hour'
-                                                  ? _buildHourColumn(i, showTasks: false)
+                                                  ? _buildHourColumn(
+                                                      i,
+                                                      showTasks: false,
+                                                    )
                                                   : _buildDayColumn(
-                                                      baseDate.add(Duration(days: i)),
-                                                      _isSameDayDate(baseDate.add(Duration(days: i)), today),
+                                                      baseDate.add(
+                                                        Duration(days: i),
+                                                      ),
+                                                      _isSameDayDate(
+                                                        baseDate.add(
+                                                          Duration(days: i),
+                                                        ),
+                                                        today,
+                                                      ),
                                                       i,
                                                       showTasks: false,
                                                     ),
@@ -2542,10 +2985,8 @@ class _HomeContentState extends State<_HomeContent> {
       child: isDragging
           ? ValueListenableBuilder<double>(
               valueListenable: _timelineDragDxNotifier,
-              builder: (context, dragDx, child) => Transform.translate(
-                offset: Offset(dragDx, 0),
-                child: child,
-              ),
+              builder: (context, dragDx, child) =>
+                  Transform.translate(offset: Offset(dragDx, 0), child: child),
               child: _buildTimelineDragSurface(
                 task: task,
                 canDrag: canDrag,
@@ -3283,8 +3724,8 @@ class _HomeContentState extends State<_HomeContent> {
   Widget _buildDescriptionBox(_TimelineTask task) {
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-            () => _pasteHomeDescriptionImage(task),
+        const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
+            _pasteHomeDescriptionImage(task),
       },
       child: DropTarget(
         onDragDone: (detail) =>
