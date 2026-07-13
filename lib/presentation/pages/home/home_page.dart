@@ -1431,26 +1431,59 @@ class _HomeContentState extends State<_HomeContent> {
     }
   }
 
+  String _periodLabel(String period) => switch (period) {
+    'week' => '本周',
+    'month' => '本月',
+    'year' => '今年',
+    _ => '今日',
+  };
+
+  List<_TimelineTask> get _statsTasks => _displayTasks;
+
+  bool _taskOverlapsRange(_TimelineTask task, DateTime start, DateTime end) {
+    final taskEnd = task.endDate ?? task.date;
+    return task.date.isBefore(end) && !taskEnd.isBefore(start);
+  }
+
+  List<_TimelineTask> _statsTasksInRange(DateTime start, DateTime end) {
+    return _statsTasks
+        .where((task) => _taskOverlapsRange(task, start, end))
+        .toList();
+  }
+
+  List<_TimelineTask> _todayStatsTasks(DateTime today) {
+    return _statsTasksInRange(today, today.add(const Duration(days: 1)));
+  }
+
+  List<_TimelineTask> _overdueStatsTasks({
+    String mode = 'total',
+    DateTime? now,
+  }) {
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+    return _statsTasks.where((t) {
+      if (t.isCompleted || t.endDate == null) return false;
+      if (mode == 'day') return t.endDate!.isBefore(today);
+      if (mode == 'hour') {
+        return _isSameDayDate(t.endDate!, today) &&
+            t.endDate!.isBefore(current);
+      }
+      return t.endDate!.isBefore(current);
+    }).toList();
+  }
+
   Widget _buildStatsCompact() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    final todayCount = _filteredTasks
-        .where((t) => _isSameDayDate(t.date, today))
-        .length;
+    final todayTasks = _todayStatsTasks(today);
+    final todayCount = todayTasks.length;
 
     final (start, end) = _periodRange(_statsPeriod);
-    final inPeriod = _filteredTasks
-        .where((t) => !t.date.isBefore(start) && t.date.isBefore(end))
-        .toList();
+    final inPeriod = _statsTasksInRange(start, end);
     final completedCount = inPeriod.where((t) => t.isCompleted).length;
 
-    final totalOverdue = _filteredTasks
-        .where(
-          (t) =>
-              !t.isCompleted && t.endDate != null && t.endDate!.isBefore(now),
-        )
-        .length;
+    final totalOverdue = _overdueStatsTasks(now: now).length;
 
     return GestureDetector(
       onTap: _showStatsDetail,
@@ -2169,24 +2202,10 @@ class _HomeContentState extends State<_HomeContent> {
   void _showStatsDetail() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final todayCount = _filteredTasks
-        .where((t) => _isSameDayDate(t.date, today))
-        .length;
-    final overdueByDay = _filteredTasks
-        .where(
-          (t) =>
-              !t.isCompleted && t.endDate != null && t.endDate!.isBefore(today),
-        )
-        .length;
-    final overdueByHour = _filteredTasks
-        .where(
-          (t) =>
-              !t.isCompleted &&
-              t.endDate != null &&
-              _isSameDayDate(t.endDate!, today) &&
-              t.endDate!.isBefore(now),
-        )
-        .length;
+    final todayTasks = _todayStatsTasks(today);
+    final todayCount = todayTasks.length;
+    final overdueByDay = _overdueStatsTasks(mode: 'day', now: now).length;
+    final overdueByHour = _overdueStatsTasks(mode: 'hour', now: now).length;
     final totalOverdue = overdueByDay + overdueByHour;
 
     showModalBottomSheet(
@@ -2196,9 +2215,7 @@ class _HomeContentState extends State<_HomeContent> {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final (start, end) = _periodRange(sheetPeriod);
-            final inPeriod = _filteredTasks
-                .where((t) => !t.date.isBefore(start) && t.date.isBefore(end))
-                .toList();
+            final inPeriod = _statsTasksInRange(start, end);
             final completedCount = inPeriod.where((t) => t.isCompleted).length;
 
             return SafeArea(
@@ -2218,15 +2235,43 @@ class _HomeContentState extends State<_HomeContent> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildStatItem(
-                        label: '今日任务',
-                        value: '$todayCount',
-                        valueColor: AppTheme.textPrimary,
+                      GestureDetector(
+                        onTap: todayTasks.isNotEmpty
+                            ? () {
+                                Navigator.pop(ctx);
+                                _showTaskListSheet(
+                                  title: '今日任务',
+                                  tasks: todayTasks,
+                                  icon: Icons.today_outlined,
+                                  accentColor: AppTheme.primaryColor,
+                                );
+                              }
+                            : null,
+                        child: _buildStatItem(
+                          label: '今日任务',
+                          value: '$todayCount',
+                          valueColor: AppTheme.textPrimary,
+                          showChevron: todayTasks.isNotEmpty,
+                        ),
                       ),
-                      _buildStatItem(
-                        label: '完成率',
-                        value: '$completedCount/${inPeriod.length}',
-                        valueColor: AppTheme.primaryColor,
+                      GestureDetector(
+                        onTap: inPeriod.isNotEmpty
+                            ? () {
+                                Navigator.pop(ctx);
+                                _showTaskListSheet(
+                                  title: '${_periodLabel(sheetPeriod)}任务完成明细',
+                                  tasks: inPeriod,
+                                  icon: Icons.fact_check_outlined,
+                                  accentColor: AppTheme.primaryColor,
+                                );
+                              }
+                            : null,
+                        child: _buildStatItem(
+                          label: '完成率',
+                          value: '$completedCount/${inPeriod.length}',
+                          valueColor: AppTheme.primaryColor,
+                          showChevron: inPeriod.isNotEmpty,
+                        ),
                       ),
                     ],
                   ),
@@ -2352,49 +2397,45 @@ class _HomeContentState extends State<_HomeContent> {
 
   void _showOverdueSheet({String mode = 'total'}) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
 
     List<_TimelineTask> overdue;
     String title;
     switch (mode) {
       case 'day':
-        overdue = _filteredTasks
-            .where(
-              (t) =>
-                  !t.isCompleted &&
-                  t.endDate != null &&
-                  t.endDate!.isBefore(today),
-            )
-            .toList();
+        overdue = _overdueStatsTasks(mode: 'day', now: now);
         title = '逾期任务-天';
         break;
       case 'hour':
-        overdue = _filteredTasks
-            .where(
-              (t) =>
-                  !t.isCompleted &&
-                  t.endDate != null &&
-                  _isSameDayDate(t.endDate!, today) &&
-                  t.endDate!.isBefore(now),
-            )
-            .toList();
+        overdue = _overdueStatsTasks(mode: 'hour', now: now);
         title = '逾期任务-小时';
         break;
       case 'total':
       default:
-        overdue = _filteredTasks
-            .where(
-              (t) =>
-                  !t.isCompleted &&
-                  t.endDate != null &&
-                  t.endDate!.isBefore(now),
-            )
-            .toList();
+        overdue = _overdueStatsTasks(now: now);
         title = '逾期任务';
         break;
     }
     overdue.sort((a, b) => a.date.compareTo(b.date));
     if (overdue.isEmpty) return;
+
+    _showTaskListSheet(
+      title: title,
+      tasks: overdue,
+      icon: Icons.warning_amber_rounded,
+      accentColor: AppTheme.error,
+      overdueStyle: true,
+    );
+  }
+
+  void _showTaskListSheet({
+    required String title,
+    required List<_TimelineTask> tasks,
+    required IconData icon,
+    required Color accentColor,
+    bool overdueStyle = false,
+  }) {
+    final sorted = [...tasks]..sort((a, b) => a.date.compareTo(b.date));
+    if (sorted.isEmpty) return;
 
     showModalBottomSheet(
       context: context,
@@ -2406,14 +2447,10 @@ class _HomeContentState extends State<_HomeContent> {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    size: 18,
-                    color: AppTheme.error,
-                  ),
+                  Icon(icon, size: 18, color: accentColor),
                   const SizedBox(width: 6),
                   Text(
-                    '$title (${overdue.length})',
+                    '$title (${sorted.length})',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -2426,9 +2463,9 @@ class _HomeContentState extends State<_HomeContent> {
             Flexible(
               child: ListView.builder(
                 shrinkWrap: true,
-                itemCount: overdue.length,
+                itemCount: sorted.length,
                 itemBuilder: (_, i) {
-                  final task = overdue[i];
+                  final task = sorted[i];
                   return ListTile(
                     leading: Container(
                       width: 10,
@@ -2444,17 +2481,36 @@ class _HomeContentState extends State<_HomeContent> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
-                      _formatTaskDate(task.date),
-                      style: TextStyle(color: AppTheme.error, fontSize: 12),
+                      _taskStatsSubtitle(task),
+                      style: TextStyle(
+                        color: overdueStyle
+                            ? AppTheme.error
+                            : AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      size: 18,
-                      color: AppTheme.textHint,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          task.isCompleted ? '已完成' : '未完成',
+                          style: TextStyle(
+                            color: task.isCompleted
+                                ? AppTheme.success
+                                : AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: AppTheme.textHint,
+                        ),
+                      ],
                     ),
                     onTap: () {
                       Navigator.pop(ctx);
-                      // 选中时间轴节点并展开详情卡（时间轴随之切换天/小时）
                       _selectTask(task);
                     },
                   );
@@ -2466,6 +2522,22 @@ class _HomeContentState extends State<_HomeContent> {
         ),
       ),
     );
+  }
+
+  String _taskStatsSubtitle(_TimelineTask task) {
+    final parts = <String>[];
+    if (_isParentNode(task)) {
+      parts.add('父任务');
+    } else if (_isChildNode(task)) {
+      parts.add('子任务');
+    } else {
+      parts.add('任务');
+    }
+    parts.add(_formatTaskDate(task.date));
+    if (task.endDate != null) {
+      parts.add('→ ${_formatTaskDate(task.endDate!)}');
+    }
+    return parts.join('  ');
   }
 
   Widget _buildProjectFilter() {

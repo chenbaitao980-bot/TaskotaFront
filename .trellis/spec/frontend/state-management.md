@@ -441,6 +441,66 @@ parent.dueDate = max(children.dueDate ?? children.startDate);
 
 ---
 
+## Home Stats Detail Contract
+
+### 1. Scope / Trigger
+
+- Trigger: the compact home stats card must explain exactly which tasks are counted.
+- Scope: `_buildStatsCompact`, `_showStatsDetail`, and task-list detail sheets in `home_page.dart`.
+
+### 2. Signatures
+
+```dart
+List<_TimelineTask> get _statsTasks;
+bool _taskOverlapsRange(_TimelineTask task, DateTime start, DateTime end);
+List<_TimelineTask> _statsTasksInRange(DateTime start, DateTime end);
+List<_TimelineTask> _todayStatsTasks(DateTime today);
+```
+
+### 3. Contracts
+
+- Stats are calculated from the currently visible home task set after project, completion, and node-type filters.
+- A task belongs to a day or period when its `[date, endDate ?? date]` range overlaps the `[start, end)` stats range.
+- The compact stats card and detail bottom sheet must use the same helper methods so numbers and lists match.
+- Tapping `今日任务` shows the exact tasks counted for today.
+- Tapping `完成率` shows the exact period tasks, with completed/pending status for each row.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|-----------|----------|
+| Task starts before today and ends today/later | Count it in today's tasks |
+| Task has no `endDate` | Treat it as a point task at `date` |
+| Current node-type filters hide parents or children | Stats exclude hidden node types |
+| User taps a listed task | Close the sheet and select that timeline task |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `今日任务 3` opens a list with exactly three rows.
+- Base: a point task dated today counts in today's stats.
+- Bad: computing compact stats from `_filteredTasks` while detail rows use another list.
+
+### 6. Tests Required
+
+- Add widget or helper coverage when stats logic is extracted from `home_page.dart`.
+- Manual check: compact count, detail count, and listed rows match after changing project/node/completion filters.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dart
+final todayCount = _filteredTasks.where((t) => isSameDay(t.date, today)).length;
+```
+
+#### Correct
+
+```dart
+final todayCount = _todayStatsTasks(today).length;
+```
+
+---
+
 ## Common Mistakes
 
 - **Forgetting to apply new filter in `refreshTasks`**: A filter added in `_onLoadTasks` but not in `refreshTasks` will be lost after mutations (create/update/delete).
