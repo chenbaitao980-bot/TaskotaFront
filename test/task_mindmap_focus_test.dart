@@ -350,6 +350,51 @@ void main() {
     );
     expect((await harness.taskRepository.get(parent.id))!.status, 2);
   });
+
+  test('creating pending child reopens completed ancestors', () async {
+    final harness = await _BlocHarness.create();
+    addTearDown(harness.dispose);
+
+    final project = await harness.projectRepository.create(name: 'Project A');
+    final root = await harness.taskRepository.create(
+      projectId: project.id,
+      title: 'Root',
+      syncImmediately: false,
+    );
+    final parent = await harness.taskRepository.create(
+      projectId: project.id,
+      title: 'Parent',
+      parentId: root.id,
+      syncImmediately: false,
+    );
+
+    await harness.taskRepository.setStatusCascade(
+      root.id,
+      2,
+      includeDescendants: true,
+      syncImmediately: false,
+    );
+    final completedRoot = await harness.taskRepository.get(root.id);
+    final completedParent = await harness.taskRepository.get(parent.id);
+    expect(completedRoot!.status, 2);
+    expect(completedRoot.completedTime, isNotNull);
+    expect(completedParent!.status, 2);
+    expect(completedParent.completedTime, isNotNull);
+
+    await harness.taskRepository.create(
+      projectId: project.id,
+      title: 'New child',
+      parentId: parent.id,
+      syncImmediately: false,
+    );
+
+    final reopenedRoot = await harness.taskRepository.get(root.id);
+    final reopenedParent = await harness.taskRepository.get(parent.id);
+    expect(reopenedRoot!.status, 0);
+    expect(reopenedRoot.completedTime, isNull);
+    expect(reopenedParent!.status, 0);
+    expect(reopenedParent.completedTime, isNull);
+  });
 }
 
 class _BlocHarness {

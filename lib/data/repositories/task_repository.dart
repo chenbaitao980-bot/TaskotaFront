@@ -448,6 +448,12 @@ class TaskRepository {
       _db.tasks,
     )..where((t) => t.id.equals(id))).get();
     final task = result.first;
+    if (parentId != null) {
+      await _reopenCompletedAncestors(
+        parentId,
+        syncImmediately: syncImmediately,
+      );
+    }
     if (syncImmediately) {
       // fire-and-forget：本地写完立即返回，推送失败由全量对账兜底
       unawaited(_syncService?.push(task));
@@ -673,6 +679,42 @@ class TaskRepository {
       final updated = await get(parent.id);
       if (syncImmediately && updated != null) _syncService?.push(updated);
       child = updated;
+    }
+  }
+
+  Future<void> _reopenCompletedAncestors(
+    String parentId, {
+    bool syncImmediately = true,
+  }) async {
+    var currentParentId = parentId;
+    final changedIds = <String>[];
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    while (currentParentId.isNotEmpty) {
+      final parent = await get(currentParentId);
+      if (parent == null) break;
+      if (parent.status == 2) {
+        await (_db.update(
+          _db.tasks,
+        )..where((t) => t.id.equals(parent.id))).write(
+          TasksCompanion(
+            status: const Value(0),
+            completedTime: const Value(null),
+            updatedAt: Value(now),
+          ),
+        );
+        changedIds.add(parent.id);
+      }
+      final nextParentId = parent.parentId;
+      if (nextParentId == null) break;
+      currentParentId = nextParentId;
+    }
+
+    if (syncImmediately && changedIds.isNotEmpty) {
+      final rows = await _getLiveByIds(changedIds);
+      for (final row in rows) {
+        _syncService?.push(row);
+      }
     }
   }
 
