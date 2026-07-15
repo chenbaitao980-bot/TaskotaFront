@@ -440,6 +440,7 @@ class LocalStorageService {
   static const _projectSidebarTimeSortDescKey =
       'project_sidebar_time_sort_desc';
   static const _desktopFloatingTabEnabledKey = 'desktop_floating_tab_enabled';
+  static const _autoStartKey = 'desktop_auto_start';
 
   Set<String> get excludedProjectIds {
     final raw = _prefs?.getStringList(_excludedProjectIdsKey) ?? const [];
@@ -464,6 +465,13 @@ class LocalStorageService {
 
   Future<void> setDesktopFloatingTabEnabled(bool value) async {
     await _prefs?.setBool(_desktopFloatingTabEnabledKey, value);
+    await LocalDataService().persistPreferencesSnapshot();
+  }
+
+  bool get autoStart => _prefs?.getBool(_autoStartKey) ?? false;
+
+  Future<void> setAutoStart(bool value) async {
+    await _prefs?.setBool(_autoStartKey, value);
     await LocalDataService().persistPreferencesSnapshot();
   }
 

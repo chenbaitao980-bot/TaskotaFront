@@ -367,8 +367,11 @@ class LazyLogTaskEdit {
 ### 3. Contracts
 
 - Model JSON: task objects may include `description` and `checklist`; missing fields default to empty values.
+- If the model returns only `summary` / `completed` / `blockers` and no `tasks`, `schedules`, or `nextActions`, the preview must still create an editable fallback task from the first non-empty progress/problem/summary line.
 - Preview UI: task title, description, checklist lines, start/end, image uploads, and generic attachments are user-editable before creation.
 - Persistence: create the task first, then use the returned task id to create checklist items and save attachments.
+- Parent behavior: a single lazy-log task must not auto-create a parent task by default; if multiple tasks are generated, bind them to an existing parent when matched or create a concise parent container when none is suitable. Manual parent selection/input in the preview must still be respected.
+- DB-backed lazy-log creation must stay behavior-compatible with normal task creation: same-day conflicts reuse `showTaskConflictDialog`, let the user choose insert/delay/skip, shift affected tasks only for insert, recalculate affected ancestor ranges, reload `TaskNewBloc`, and focus the last created task.
 - Local storage mode: description is persisted with the task; checklist and attachments require the DB-backed repositories/services.
 
 ### 4. Validation & Error Matrix
@@ -377,9 +380,13 @@ class LazyLogTaskEdit {
 |-----------|----------|
 | Model omits `description` | Use an empty description |
 | Model omits `checklist` | Use an empty checklist |
+| Model returns summary/progress/problem text but no task-like arrays | Create one fallback draft so the dialog does not get stuck at `create 0 tasks` |
+| One task has no matched existing parent | Leave parent blank by default; create the task as a root task unless the user manually chooses or enters a parent |
+| Multiple tasks have no matched existing parent | Create a short parent container so the generated tasks stay grouped |
 | Checklist preview has blank lines | Drop blank lines before persistence |
 | Attachment selected before task exists | Keep `PlatformFile` in preview state; save after task creation returns an id |
 | No `ChecklistRepository` available | Skip checklist persistence |
+| Lazy-log task conflicts with an existing same-day timed task | Show the conflict dialog before creating that task; insert keeps the new task time and shifts affected tasks, delay moves the new task to the calculated free slot, skip creates nothing for that task and continues the batch |
 
 ### 5. Good/Base/Bad Cases
 
@@ -391,6 +398,7 @@ class LazyLogTaskEdit {
 
 - Assert `LazyLogResult.fromJson` parses `tasks[].checklist`.
 - Assert task creation paths that change parent timing have regression coverage.
+- Assert normal task conflict-shift behavior remains covered; add lazy-log conflict-choice coverage if the creation flow is extracted from `home_page.dart`.
 - Widget/integration coverage should verify preview edits are reflected in `LazyLogCreationPlan` before confirmation.
 
 ### 7. Wrong vs Correct
@@ -412,6 +420,94 @@ for (final item in edit.checklist) {
 for (final file in edit.attachments) {
   await TaskAttachmentService().saveAttachment(task.id, file);
 }
+```
+
+---
+
+## Lazy Log Background Review Queue Contract
+
+### 1. Scope / Trigger
+
+- Trigger: lazy-log submission must not block the input surface while AI structures tasks.
+- Scope: `home_page.dart` submits a running draft immediately, `LazyLogDraftService` structures AI output in the background, `LazyLogDraftRepository` persists reviewable drafts, and `LazyLogDraftReviewSheet` owns user review/edit/approve actions.
+
+### 2. Signatures
+
+```dart
+class LazyLogDrafts extends Table {
+  TextColumn get id;
+  TextColumn get batchId;
+  TextColumn get sourceInput;
+  TextColumn get status; // running | pending_review | failed | approved | dismissed
+  IntColumn get needsReview; // 1 = visible in review queue
+  TextColumn? get projectId;
+  TextColumn? get parentTaskId;
+  TextColumn get parentTitle;
+  TextColumn get title;
+  TextColumn get description;
+  TextColumn get priority;
+  TextColumn get checklistJson;
+  IntColumn get startDate;
+  IntColumn get dueDate;
+}
+
+Future<void> LazyLogDraftService.structureIntoDrafts({
+  required String runningDraftId,
+  required String input,
+  required AssistantModelConfig config,
+  required String projectRoutingContext,
+  required LazyLogDraftBuilder buildDrafts,
+});
+```
+
+### 3. Contracts
+
+- Submit path: pressing Enter creates a `running` draft row and clears/unblocks the input immediately.
+- AI path: background structuring replaces the running row with one or more `pending_review` rows; empty/failed output marks the row `failed`.
+- Review list: only rows with `needsReview = 1` are visible; approved/dismissed rows must not count as pending.
+- Approval path: approving drafts creates normal tasks through `TaskRepository.create(...)`, then marks each draft `approved` with `needsReview = 0`.
+- Resource path: checklist items are created after the official task id exists; attachments are not persisted during draft review.
+- Conflict path: approval auto-finds the nearest available time while considering official tasks, other pending drafts, and earlier drafts in the same approval batch.
+
+### 4. Validation & Error Matrix
+
+| Condition | Behavior |
+|-----------|----------|
+| AI returns no tasks | Running row becomes `failed` and stays visible for retry/delete |
+| Draft lacks project in DB mode | Approval marks that draft failed; other selected drafts continue |
+| Draft overlaps existing task | Move to nearest available slot before official creation |
+| Draft overlaps another pending draft | Treat the other draft as occupied time |
+| Batch approval has internal overlaps | Earlier approved draft time blocks later drafts |
+| Approval succeeds | Draft is removed from pending review count immediately |
+
+### 5. Good/Base/Bad Cases
+
+- Good: user presses Enter, continues typing immediately, later reviews a polished queue with editable project/parent/priority/time fields.
+- Base: one generated task becomes one pending draft and approves into one official task.
+- Bad: showing the old blocking preview dialog after AI returns, or checking conflicts only against official tasks.
+
+### 6. Tests Required
+
+- Repository test: running draft -> pending review drafts -> approval removes it from pending review count.
+- Service/UI coverage when extracted: failed AI output remains retryable.
+- Approval coverage: batch conflicts against pending drafts are shifted before task creation.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dart
+final result = await lazyLogService.structure(...);
+final plan = await showPreviewDialog(result);
+await createTasks(plan);
+```
+
+#### Correct
+
+```dart
+final running = await draftRepository.createRunning(...);
+unawaited(draftService.structureIntoDrafts(runningDraftId: running.id, ...));
+// Later: review sheet approves selected drafts into official tasks.
 ```
 
 ---

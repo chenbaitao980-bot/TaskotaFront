@@ -6,6 +6,11 @@ Future<ConflictChoice?> showTaskConflictDialog(
   required ConflictInfo conflict,
   required DateTime newStart,
   required DateTime newEnd,
+  String cancelLabel = '取消',
+  String parallelLabel = '并行',
+  String autoInsertLabel = '自动插入',
+  String autoDelayLabel = '自动延后',
+  bool showParallel = true,
 }) {
   String fmt(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
@@ -20,19 +25,20 @@ Future<ConflictChoice?> showTaskConflictDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, ConflictChoice.cancel),
-          child: const Text('取消'),
+          child: Text(cancelLabel),
         ),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, ConflictChoice.parallel),
-          child: const Text('并行'),
-        ),
+        if (showParallel)
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ConflictChoice.parallel),
+            child: Text(parallelLabel),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(ctx, ConflictChoice.autoInsert),
-          child: const Text('自动插入'),
+          child: Text(autoInsertLabel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, ConflictChoice.autoDelay),
-          child: const Text('自动延后'),
+          child: Text(autoDelayLabel),
         ),
       ],
     ),

@@ -218,6 +218,44 @@ void main() {
     expect(expanded, containsAll({root.id, parent.id}));
   });
 
+  test('moving a task under a parent expands the new parent', () async {
+    final harness = await _BlocHarness.create();
+    addTearDown(harness.dispose);
+
+    final project = await harness.projectRepository.create(name: 'Project A');
+    final parent = await harness.taskRepository.create(
+      projectId: project.id,
+      title: 'Parent',
+      syncImmediately: false,
+    );
+    final child = await harness.taskRepository.create(
+      projectId: project.id,
+      title: 'Child',
+      syncImmediately: false,
+    );
+
+    harness.bloc.add(LoadTasks(projectIds: {project.id}, filter: 'all'));
+    final initial = await harness.nextLoaded();
+    expect(
+      initial.expandedNodes['main_tree'] ?? const <String>{},
+      isNot(contains(parent.id)),
+    );
+
+    harness.bloc.add(
+      MoveTaskToParent(taskId: child.id, newParentId: parent.id),
+    );
+    final moved = await harness.nextLoaded(
+      where: (state) => state.tasks.any(
+        (task) => task.id == child.id && task.parentId == parent.id,
+      ),
+    );
+
+    expect(
+      moved.expandedNodes['main_tree'] ?? const <String>{},
+      contains(parent.id),
+    );
+  });
+
   test('creating a dated subtask expands parent range to child end', () async {
     final harness = await _BlocHarness.create();
     addTearDown(harness.dispose);

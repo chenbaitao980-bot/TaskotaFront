@@ -17,7 +17,6 @@ import '../../widgets/upgrade_dialog.dart';
 import 'widgets/project_sidebar.dart';
 import 'widgets/task_list_view.dart';
 import 'widgets/mind_map_view.dart';
-import 'node_templates_page.dart';
 import 'widgets/task_create_sheet.dart';
 import 'task_detail/task_detail_page.dart';
 import '../../widgets/calendar_date_picker.dart';
@@ -113,11 +112,15 @@ class _TasksPageState extends State<TasksPage> {
         // M5: 仅当任务页面相关内容变化时才重建，避免任意 Bloc emission（勾选/进度/checklist等）全页重建
         if (prev is! TaskNewLoaded || curr is! TaskNewLoaded) return true;
         return prev.tasks != curr.tasks ||
+            prev.projects != curr.projects ||
+            prev.groups != curr.groups ||
             prev.viewMode != curr.viewMode ||
             prev.expandedNodes != curr.expandedNodes ||
             prev.selectedFilter != curr.selectedFilter ||
             prev.selectedStatusFilter != curr.selectedStatusFilter ||
             prev.selectedProjectIds != curr.selectedProjectIds ||
+            prev.projectProgress != curr.projectProgress ||
+            prev.groupProgress != curr.groupProgress ||
             prev.searchKeyword != curr.searchKeyword ||
             prev.showArchivedView != curr.showArchivedView ||
             prev.dateFrom != curr.dateFrom ||
@@ -131,7 +134,9 @@ class _TasksPageState extends State<TasksPage> {
           UpgradeDialog.show(context, message: state.message);
           if (_lastLoaded?.showArchivedView == true) {
             context.read<TaskNewBloc>().add(
-              LoadArchivedTasks(statusFilter: _lastLoaded?.selectedStatusFilter ?? 'all'),
+              LoadArchivedTasks(
+                statusFilter: _lastLoaded?.selectedStatusFilter ?? 'all',
+              ),
             );
           } else {
             context.read<TaskNewBloc>().add(LoadTasks());
@@ -220,7 +225,9 @@ class _TasksPageState extends State<TasksPage> {
                       onPressed: () async {
                         final taskId = await showSearch<String?>(
                           context: context,
-                          delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
+                          delegate: _TaskSearchDelegate(
+                            context.read<TaskNewBloc>(),
+                          ),
                         );
                         if (taskId != null && context.mounted) {
                           // 清除搜索状态
@@ -235,9 +242,9 @@ class _TasksPageState extends State<TasksPage> {
                     IconButton(
                       tooltip: '返回任务',
                       icon: const Icon(Icons.exit_to_app_rounded),
-                      onPressed: () => context
-                          .read<TaskNewBloc>()
-                          .add(LoadTasks(filter: 'all')),
+                      onPressed: () => context.read<TaskNewBloc>().add(
+                        LoadTasks(filter: 'all'),
+                      ),
                     ),
                     _buildViewModeButton(effective),
                     _buildExpandCollapseButton(effective),
@@ -249,7 +256,9 @@ class _TasksPageState extends State<TasksPage> {
                       onPressed: () async {
                         final taskId = await showSearch<String?>(
                           context: context,
-                          delegate: _TaskSearchDelegate(context.read<TaskNewBloc>()),
+                          delegate: _TaskSearchDelegate(
+                            context.read<TaskNewBloc>(),
+                          ),
                         );
                         if (taskId != null && context.mounted) {
                           context.read<TaskNewBloc>().add(SetSearchQuery(null));
@@ -305,21 +314,26 @@ class _TasksPageState extends State<TasksPage> {
             onCreateGroup: () => _showCreateGroupDialog(context),
             onEditGroup: (g) => _showEditGroupDialog(context, g),
             onDeleteGroup: (g) => _confirmDeleteGroup(context, g),
-            onCreateProjectInGroup: (g) => _showCreateProjectDialog(context, preselectedGroupId: g.id),
+            onCreateProjectInGroup: (g) =>
+                _showCreateProjectDialog(context, preselectedGroupId: g.id),
             onProjectSelected: (id) {
               Navigator.pop(context);
-              context.read<TaskNewBloc>().add(LoadTasks(
-                projectId: id,
-                filter: effective.isTemplateMode ? 'templates' : null,
-              ));
+              context.read<TaskNewBloc>().add(
+                LoadTasks(
+                  projectId: id,
+                  filter: effective.isTemplateMode ? 'templates' : null,
+                ),
+              );
             },
             onFilterSelected: (filter) {
               Navigator.pop(context);
-              context.read<TaskNewBloc>().add(LoadTasks(
-                filter: filter,
-                projectId: null,
-                projectIds: const {},
-              ));
+              context.read<TaskNewBloc>().add(
+                LoadTasks(
+                  filter: filter,
+                  projectId: null,
+                  projectIds: const {},
+                ),
+              );
             },
             onCreateProject: () => _showCreateProjectDialog(context),
             onEditProject: (project) =>
@@ -402,9 +416,16 @@ class _TasksPageState extends State<TasksPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.textHint),
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 64,
+              color: AppTheme.textHint,
+            ),
             const SizedBox(height: 16),
-            Text('暂无归档任务', style: TextStyle(color: AppTheme.textHint, fontSize: 16)),
+            Text(
+              '暂无归档任务',
+              style: TextStyle(color: AppTheme.textHint, fontSize: 16),
+            ),
           ],
         ),
       );
@@ -428,14 +449,10 @@ class _TasksPageState extends State<TasksPage> {
         onTaskTap: (id) => _openTaskDetail(id, state),
         onTaskToggle: (id) => _handleToggleTaskStatus(id, state),
         onTaskDelete: (id) => _confirmDeleteTask(id),
-        onToggleExpand: (id) => context.read<TaskNewBloc>().add(
-          ToggleTaskExpand(taskId: id),
-        ),
-        onMoveToParent: (taskId, newParentId) => _handleMoveToParent(
-          taskId,
-          newParentId,
-          state.selectedProjectId,
-        ),
+        onToggleExpand: (id) =>
+            context.read<TaskNewBloc>().add(ToggleTaskExpand(taskId: id)),
+        onMoveToParent: (taskId, newParentId) =>
+            _handleMoveToParent(taskId, newParentId, state.selectedProjectId),
         onAddSubtask: (parentId) =>
             _showCreateTaskSheet(context, parentId: parentId),
       );
@@ -452,7 +469,9 @@ class _TasksPageState extends State<TasksPage> {
             task.title,
             style: TextStyle(
               decoration: task.status == 2 ? TextDecoration.lineThrough : null,
-              color: task.status == 2 ? AppTheme.textHint : AppTheme.textPrimary,
+              color: task.status == 2
+                  ? AppTheme.textHint
+                  : AppTheme.textPrimary,
             ),
           ),
           subtitle: Text(
@@ -511,7 +530,9 @@ class _TasksPageState extends State<TasksPage> {
         final cur = context.read<TaskNewBloc>().state;
         final isArchived = cur is TaskNewLoaded && cur.showArchivedView;
         if (isArchived) {
-          context.read<TaskNewBloc>().add(LoadArchivedTasks(statusFilter: value));
+          context.read<TaskNewBloc>().add(
+            LoadArchivedTasks(statusFilter: value),
+          );
         } else {
           context.read<TaskNewBloc>().add(
             LoadTasks(
@@ -632,7 +653,10 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Widget _buildExpandCollapseButton(TaskNewLoaded state) {
-    final parentIdSet = state.tasks.map((t) => t.parentId).whereType<String>().toSet();
+    final parentIdSet = state.tasks
+        .map((t) => t.parentId)
+        .whereType<String>()
+        .toSet();
     final allParentIds = state.tasks
         .where((t) => parentIdSet.contains(t.id))
         .map((t) => t.id)
@@ -1069,7 +1093,10 @@ class _TasksPageState extends State<TasksPage> {
     }
   }
 
-  Future<void> _showCreateProjectDialog(BuildContext context, {String? preselectedGroupId}) async {
+  Future<void> _showCreateProjectDialog(
+    BuildContext context, {
+    String? preselectedGroupId,
+  }) async {
     final controller = TextEditingController();
     final taskBloc = context.read<TaskNewBloc>();
     final blocState = taskBloc.state;
@@ -1143,13 +1170,16 @@ class _TasksPageState extends State<TasksPage> {
           _knownProjectGroupIds = {..._knownProjectGroupIds, groupId};
         });
       }
-      final isTemplate = taskBloc.state is TaskNewLoaded &&
+      final isTemplate =
+          taskBloc.state is TaskNewLoaded &&
           (taskBloc.state as TaskNewLoaded).isTemplateMode;
-      taskBloc.add(CreateProject(
-        name: result.name,
-        groupId: result.groupId,
-        isTemplate: isTemplate,
-      ));
+      taskBloc.add(
+        CreateProject(
+          name: result.name,
+          groupId: result.groupId,
+          isTemplate: isTemplate,
+        ),
+      );
     }
   }
 
@@ -1423,8 +1453,7 @@ class _TasksPageState extends State<TasksPage> {
             ? blocState.templateProjects
             : const [],
         initialParentId: parentId,
-        isTemplateMode: blocState is TaskNewLoaded &&
-            blocState.isTemplateMode,
+        isTemplateMode: blocState is TaskNewLoaded && blocState.isTemplateMode,
         availableParentTasks: blocState is TaskNewLoaded
             ? blocState.tasks.where((t) => t.status == 0).toList()
             : [],
@@ -1433,7 +1462,8 @@ class _TasksPageState extends State<TasksPage> {
 
     if (result != null && context.mounted) {
       final templateProjectId = result['templateProjectId'] as String?;
-      final targetProjectId = (result['projectId'] as String?) ??
+      final targetProjectId =
+          (result['projectId'] as String?) ??
           parentProjectId ??
           initialProjectId ??
           'inbox';
@@ -1444,7 +1474,8 @@ class _TasksPageState extends State<TasksPage> {
           ApplyTemplate(
             templateProjectId: templateProjectId,
             targetProjectId: targetProjectId,
-            startTimeMillis: result['startDate'] as int? ??
+            startTimeMillis:
+                result['startDate'] as int? ??
                 DateTime.now().millisecondsSinceEpoch,
             parentId: resultParentId,
           ),
@@ -1461,12 +1492,12 @@ class _TasksPageState extends State<TasksPage> {
             parentId: resultParentId,
             shiftedTasks:
                 (result['shiftedTasks'] as List<ScheduledTaskShift>?) ??
-                    const [],
+                const [],
             pendingImages:
                 (result['pendingImages'] as List<PlatformFile>?) ?? const [],
             templatePayload:
                 (result['templatePayload'] as NodeTemplatePayload?) ??
-                    NodeTemplatePayload.empty,
+                NodeTemplatePayload.empty,
             remindBeforeMinutes: result['remindBeforeMinutes'] as int? ?? 15,
             reminderEnabled: result['reminderEnabled'] as int? ?? 1,
           ),

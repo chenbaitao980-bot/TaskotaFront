@@ -10,11 +10,14 @@ import '../../core/utils/file_logger.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../data/database/app_database.dart';
 import '../../data/repositories/task_repository.dart';
-import '../../presentation/pages/tasks/task_detail/task_detail_page.dart' as task_db;
+import '../../presentation/pages/tasks/task_detail/task_detail_page.dart'
+    as task_db;
 import '../../services/local_storage_service.dart';
 import 'window_state.dart';
 
 enum DesktopWindowMode { full, floating }
+
+const Size _floatingWindowSize = Size(360, 112);
 
 class DesktopFloatingTaskSummary {
   final String taskId;
@@ -82,17 +85,21 @@ class DesktopFloatingTabController extends ChangeNotifier {
 
   Future<void> handleCloseRequested() async {
     if (!isWindows || _isTransitioning) {
-      flog('[FloatingTab] handleCloseRequested: 非Windows或转换中 -> hideToTray '
-          '(isWindows=$isWindows, transitioning=$_isTransitioning)');
+      flog(
+        '[FloatingTab] handleCloseRequested: 非Windows或转换中 -> hideToTray '
+        '(isWindows=$isWindows, transitioning=$_isTransitioning)',
+      );
       await hideToTray();
       return;
     }
     await ensureInitialized();
 
     if (!_canShowFloatingTab || !_defaultEnabled || _dismissedUntilRestore) {
-      flog('[FloatingTab] handleCloseRequested: 闸门未通过 -> hideToTray '
-          '(canShow=$_canShowFloatingTab, enabled=$_defaultEnabled, '
-          'dismissed=$_dismissedUntilRestore)');
+      flog(
+        '[FloatingTab] handleCloseRequested: 闸门未通过 -> hideToTray '
+        '(canShow=$_canShowFloatingTab, enabled=$_defaultEnabled, '
+        'dismissed=$_dismissedUntilRestore)',
+      );
       await hideToTray();
       return;
     }
@@ -104,8 +111,10 @@ class DesktopFloatingTabController extends ChangeNotifier {
       return;
     }
 
-    flog('[FloatingTab] handleCloseRequested: 命中候选 taskId=${candidate.taskId} '
-        'title="${candidate.title}" extra=${candidate.extraTaskCount} -> 进入悬浮模式');
+    flog(
+      '[FloatingTab] handleCloseRequested: 命中候选 taskId=${candidate.taskId} '
+      'title="${candidate.title}" extra=${candidate.extraTaskCount} -> 进入悬浮模式',
+    );
     await _enterFloatingMode(candidate);
   }
 
@@ -141,16 +150,19 @@ class DesktopFloatingTabController extends ChangeNotifier {
   Future<void> _enterFloatingMode(DesktopFloatingTaskSummary summary) async {
     _isTransitioning = true;
     try {
-      _lastFullBounds = await windowManager.getBounds();
-      _lastFullWasMaximized = await windowManager.isMaximized();
-      if (_lastFullWasMaximized) {
-        await windowManager.unmaximize();
+      if (_mode != DesktopWindowMode.floating) {
+        _lastFullBounds = await windowManager.getBounds();
+        _lastFullWasMaximized = await windowManager.isMaximized();
+        if (_lastFullWasMaximized) {
+          await windowManager.unmaximize();
+        }
       }
 
       _currentTask = summary;
       _mode = DesktopWindowMode.floating;
       notifyListeners();
 
+      await windowManager.restore();
       await windowManager.setTitleBarStyle(
         TitleBarStyle.hidden,
         windowButtonVisibility: false,
@@ -158,7 +170,9 @@ class DesktopFloatingTabController extends ChangeNotifier {
       await windowManager.setResizable(false);
       await windowManager.setAlwaysOnTop(true);
       await windowManager.setSkipTaskbar(true);
-      await windowManager.setSize(const Size(320, 88));
+      await windowManager.setMinimumSize(_floatingWindowSize);
+      await windowManager.setMaximumSize(_floatingWindowSize);
+      await windowManager.setSize(_floatingWindowSize);
       await windowManager.setAlignment(Alignment.topRight);
       await windowManager.show();
       await windowManager.focus();
@@ -177,6 +191,8 @@ class DesktopFloatingTabController extends ChangeNotifier {
 
       await windowManager.setSkipTaskbar(false);
       await windowManager.setAlwaysOnTop(false);
+      await windowManager.setMinimumSize(const Size(320, 240));
+      await windowManager.setMaximumSize(const Size(10000, 10000));
       await windowManager.setResizable(true);
       await windowManager.setTitleBarStyle(
         TitleBarStyle.normal,
@@ -202,14 +218,14 @@ class DesktopFloatingTabController extends ChangeNotifier {
     // 确保紧急的子任务也能被选中展示。
     final allTasks = await repository.getAllRaw();
     final activeTasks = allTasks
-        .where((task) =>
-            task.status == 0 && task.deleted == 0 && task.archived == 0)
+        .where(
+          (task) => task.status == 0 && task.deleted == 0 && task.archived == 0,
+        )
         .toList();
     if (activeTasks.isEmpty) return null;
 
     // 有子任务就只看子任务：子任务是可执行的工作项，父任务仅作回退。
-    final childTasks =
-        activeTasks.where((t) => t.parentId != null).toList();
+    final childTasks = activeTasks.where((t) => t.parentId != null).toList();
     final candidates = childTasks.isNotEmpty
         ? childTasks
         : activeTasks.where((t) => t.parentId == null).toList();
@@ -283,9 +299,7 @@ class DesktopFloatingTabController extends ChangeNotifier {
       navigator?.pushNamedAndRemoveUntil('/', (route) => false);
       Future<void>.delayed(const Duration(milliseconds: 100), () {
         AppRouter.navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => task_db.TaskDetailPage(task: task),
-          ),
+          MaterialPageRoute(builder: (_) => task_db.TaskDetailPage(task: task)),
         );
       });
     });

@@ -120,6 +120,65 @@ void main() {
     expect(task.dueTime, DateTime(2026, 7, 19, 18));
   });
 
+  test(
+    'instructs model to keep checklist grounded in explicit log items',
+    () async {
+      String? capturedSystemPrompt;
+      final dio = Dio()
+        ..interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (options, handler) {
+              final data = options.data as Map<String, dynamic>;
+              final messages = data['messages'] as List<dynamic>;
+              capturedSystemPrompt =
+                  (messages.first as Map<String, dynamic>)['content']
+                      as String?;
+              handler.resolve(
+                Response<Map<String, dynamic>>(
+                  requestOptions: options,
+                  data: {
+                    'choices': [
+                      {
+                        'message': {
+                          'content': jsonEncode({
+                            'summary': '安排懒人日志优化',
+                            'tasks': [
+                              {
+                                'title': '优化懒人日志检查项',
+                                'description': '不要生成日志没有写的检查项',
+                                'priority': 'P2',
+                                'checklist': [],
+                              },
+                            ],
+                            'schedules': [],
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                ),
+              );
+            },
+          ),
+        );
+
+      final result = await HomeLazyLogService(dio: dio).structure(
+        config: const AssistantModelConfig(
+          baseUrl: 'https://example.com',
+          apiKey: 'key',
+          model: 'model',
+        ),
+        input: '懒人日志检查项太发散，没有写就不要生成',
+        now: DateTime(2026, 7, 15, 10),
+      );
+
+      expect(result.tasks.single.checklist, isEmpty);
+      expect(capturedSystemPrompt, contains('只有用户原文明确列出步骤、验收点或待检查事项时才填写'));
+      expect(capturedSystemPrompt, contains('不要因为任务看起来复杂就自行拆解、补充或推断检查点'));
+      expect(capturedSystemPrompt, isNot(contains('任务步骤比较多、验收点明确或执行较复杂')));
+    },
+  );
+
   test('persists assistant CLAUDE.md preferences in model config json', () {
     const config = AssistantModelConfig(
       baseUrl: 'https://example.com',

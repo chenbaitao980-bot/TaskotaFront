@@ -599,8 +599,9 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
               _selectedTemplatePayload = NodeTemplatePayload.empty;
               if (project != null) {
                 final rootTasks = allTasks
-                    .where((t) =>
-                        t.projectId == project.id && t.parentId == null)
+                    .where(
+                      (t) => t.projectId == project.id && t.parentId == null,
+                    )
                     .toList();
                 if (rootTasks.isNotEmpty) {
                   final root = rootTasks.first;
@@ -766,9 +767,7 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
         Duration(minutes: (_durationValue * 60).round()),
       );
     } else {
-      _dueDate = _startDate!.add(
-        Duration(days: _durationValue.round()),
-      );
+      _dueDate = _startDate!.add(Duration(days: _durationValue.round()));
     }
   }
 
@@ -800,8 +799,8 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
     final divisions = _durationModeIsHours ? 23 : 14;
     final label = _durationModeIsHours
         ? (_durationValue % 1 == 0
-            ? '${_durationValue.toInt()} 小时'
-            : '${_durationValue} 小时')
+              ? '${_durationValue.toInt()} 小时'
+              : '${_durationValue} 小时')
         : '${_durationValue.toInt()} 天';
 
     return Container(
@@ -973,8 +972,7 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
       'templatePayload': _selectedTemplatePayload,
       if (_selectedTemplateProject != null)
         'templateProjectId': _selectedTemplateProject!.id,
-      'remindBeforeMinutes':
-          _reminderEnabled ? _remindBeforeMinutes : null,
+      'remindBeforeMinutes': _reminderEnabled ? _remindBeforeMinutes : null,
       'reminderEnabled': _reminderEnabled ? 1 : 0,
     });
   }
@@ -1111,7 +1109,8 @@ class _TaskCreateSheetState extends State<TaskCreateSheet> {
 @visibleForTesting
 bool isSubtaskTimingOccupantForTaskCreateSheet(Task t, {String? parentTaskId}) {
   if (t.startDate == null || t.dueDate == null) return false;
-  if (t.status == 2 || t.deleted != 0) return false;
+  if (t.status == 2 || t.deleted != 0 || t.archived != 0) return false;
+  if (t.parentId == null) return false;
   if (t.id == parentTaskId) return false;
   if (_TaskCreateSheetState._isMultiDay(t)) return false;
   return true;

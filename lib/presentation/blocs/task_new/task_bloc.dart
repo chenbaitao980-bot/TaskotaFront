@@ -331,9 +331,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           preservedStatusFilter =
               localPrefs['selectedStatusFilter'] as String? ?? 'all';
           preservedViewMode = localPrefs['viewMode'] as String? ?? 'mindmap';
-          preservedProjectIds = (localPrefs['projectIds'] as List<dynamic>? ?? [])
-              .cast<String>()
-              .toSet();
+          preservedProjectIds =
+              (localPrefs['projectIds'] as List<dynamic>? ?? [])
+                  .cast<String>()
+                  .toSet();
           preservedDateFrom = localPrefs['dateFrom'] as int?;
           preservedDateTo = localPrefs['dateTo'] as int?;
         }
@@ -344,9 +345,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final templateProjIds = templateProjects.map((p) => p.id).toSet();
       final allTasks = (await taskRepository.getAll())
           .where((t) => !excludedProjectIds.contains(t.projectId))
-          .where((t) => isTemplateMode
-              ? templateProjIds.contains(t.projectId)
-              : !templateProjIds.contains(t.projectId))
+          .where(
+            (t) => isTemplateMode
+                ? templateProjIds.contains(t.projectId)
+                : !templateProjIds.contains(t.projectId),
+          )
           .toList();
       final selectedProjectIds =
           (event.hasProjectSelectionOverride
@@ -362,7 +365,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final selectedDateTo = event.clearDateRange
           ? null
           : (event.dateTo ?? preservedDateTo);
-      final selectedSearchKeyword = event.hasSearchKeyword ? event.searchKeyword : preservedSearchKeyword;
+      final selectedSearchKeyword = event.hasSearchKeyword
+          ? event.searchKeyword
+          : preservedSearchKeyword;
       List<Task> tasks;
       if (selectedFilter == 'today') {
         tasks = (await taskRepository.getToday())
@@ -401,7 +406,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
       // Search keyword filtering: intersect with DB search results
       if (selectedSearchKeyword != null && selectedSearchKeyword.isNotEmpty) {
-        final matchedIds = await taskRepository.searchTaskIds(selectedSearchKeyword);
+        final matchedIds = await taskRepository.searchTaskIds(
+          selectedSearchKeyword,
+        );
         tasks = tasks.where((t) => matchedIds.contains(t.id)).toList();
       }
 
@@ -421,8 +428,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final newExpanded = Map<String, Set<String>>.from(preservedExpanded);
       if (!newExpanded.containsKey('main_tree')) {
         // M6: parentIdSet O(n) 替代嵌套 any O(n²)
-        final parentIdSet = tasks.map((t) => t.parentId).whereType<String>().toSet();
-        final allParentIds = tasks.where((t) => parentIdSet.contains(t.id)).map((t) => t.id).toSet();
+        final parentIdSet = tasks
+            .map((t) => t.parentId)
+            .whereType<String>()
+            .toSet();
+        final allParentIds = tasks
+            .where((t) => parentIdSet.contains(t.id))
+            .map((t) => t.id)
+            .toSet();
         newExpanded['main_tree'] = allParentIds;
       }
       if (event.focusTaskId != null) {
@@ -455,7 +468,8 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           focusTaskId: event.focusTaskId,
           focusRequestToken: event.focusRequestToken,
           searchKeyword: selectedSearchKeyword,
-          showArchivedView: event.hasProjectSelectionOverride || event.filter != null
+          showArchivedView:
+              event.hasProjectSelectionOverride || event.filter != null
               ? false
               : preservedShowArchivedView,
         ),
@@ -494,7 +508,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   }
 
   /// W4: 后台拉取云端偏好，与本地不一致时静默更新（下次 LoadTasks 或筛选变更时生效）
-  Future<void> _syncCloudPrefsAfterLoad(Map<String, dynamic>? localPrefs) async {
+  Future<void> _syncCloudPrefsAfterLoad(
+    Map<String, dynamic>? localPrefs,
+  ) async {
     try {
       final cloudPrefs = await supabaseService?.fetchPreferences();
       if (cloudPrefs != null && cloudPrefs != localPrefs) {
@@ -552,9 +568,11 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       await action();
       await _emitTaskSnapshot(previous, emit, adjustSnapshot: adjustSnapshot);
       // W1: syncAll 改为后台执行，不阻塞用户后续操作（失败由下次对账兜底）
-      unawaited(TaskSyncService.instance.syncAll().catchError((e) {
-        flog('[TaskBloc] syncAll failed (non-fatal): $e');
-      }));
+      unawaited(
+        TaskSyncService.instance.syncAll().catchError((e) {
+          flog('[TaskBloc] syncAll failed (non-fatal): $e');
+        }),
+      );
     } on QuotaExceededException catch (e) {
       emit(TaskNewError(e.toString(), isQuotaExceeded: true));
     } catch (e) {
@@ -577,13 +595,15 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     final templateProjIds = isTemplate
         ? projects.map((p) => p.id).toSet()
         : (await projectRepository.getTemplateProjects())
-            .map((p) => p.id)
-            .toSet();
+              .map((p) => p.id)
+              .toSet();
     final allTasks = (await taskRepository.getAll())
         .where((t) => !excludedProjectIds.contains(t.projectId))
-        .where((t) => isTemplate
-            ? templateProjIds.contains(t.projectId)
-            : !templateProjIds.contains(t.projectId))
+        .where(
+          (t) => isTemplate
+              ? templateProjIds.contains(t.projectId)
+              : !templateProjIds.contains(t.projectId),
+        )
         .toList();
     final selectedProjectIds = previous.selectedProjectIds
         .where((id) => !excludedProjectIds.contains(id))
@@ -627,7 +647,9 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
 
     // Search keyword filtering
     if (previous.searchKeyword != null && previous.searchKeyword!.isNotEmpty) {
-      final matchedIds = await taskRepository.searchTaskIds(previous.searchKeyword!);
+      final matchedIds = await taskRepository.searchTaskIds(
+        previous.searchKeyword!,
+      );
       tasks = tasks.where((t) => matchedIds.contains(t.id)).toList();
     }
 
@@ -822,8 +844,6 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     });
   }
 
-
-
   Future<void> _onDeleteTask(
     DeleteTask event,
     Emitter<TaskNewState> emit,
@@ -835,16 +855,13 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     for (final id in allIds) {
       await notif.cancelReminderForSchedule(id);
     }
-    await _runOptimisticTaskChange(
-      emit,
-      () async {
-        await taskRepository.delete(event.id, syncImmediately: false);
-        // 立即推送上云，不依赖 syncAll push 循环传播墓碑
-        final raw = await taskRepository.getAllRaw();
-        final target = raw.where((t) => t.id == event.id).firstOrNull;
-        if (target != null) TaskSyncService.instance.push(target);
-      },
-    );
+    await _runOptimisticTaskChange(emit, () async {
+      await taskRepository.delete(event.id, syncImmediately: false);
+      // 立即推送上云，不依赖 syncAll push 循环传播墓碑
+      final raw = await taskRepository.getAllRaw();
+      final target = raw.where((t) => t.id == event.id).firstOrNull;
+      if (target != null) TaskSyncService.instance.push(target);
+    });
   }
 
   Future<void> _onToggleTaskStatus(
@@ -1177,50 +1194,66 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     MoveTaskToParent event,
     Emitter<TaskNewState> emit,
   ) async {
-    await _runOptimisticTaskChange(emit, () async {
-      if (event.newParentId != null && state is TaskNewLoaded) {
-        final tasks = (state as TaskNewLoaded).tasks;
-        if (_isDescendantOf(event.taskId, event.newParentId!, tasks)) {
-          return;
+    String? parentIdToExpand;
+    await _runOptimisticTaskChange(
+      emit,
+      () async {
+        if (event.newParentId != null && state is TaskNewLoaded) {
+          final tasks = (state as TaskNewLoaded).tasks;
+          if (_isDescendantOf(event.taskId, event.newParentId!, tasks)) {
+            return;
+          }
         }
-      }
-      await taskRepository.moveTask(
-        event.taskId,
-        event.newParentId,
-        syncImmediately: false,
-      );
+        await taskRepository.moveTask(
+          event.taskId,
+          event.newParentId,
+          syncImmediately: false,
+        );
+        parentIdToExpand = event.newParentId;
 
-      if (event.newParentId != null && state is TaskNewLoaded) {
-        final tasks = (state as TaskNewLoaded).tasks;
-        final parent = tasks
-            .where((t) => t.id == event.newParentId)
-            .firstOrNull;
-        final child = tasks.where((t) => t.id == event.taskId).firstOrNull;
-        if (parent != null && child != null) {
-          if (child.projectId != parent.projectId) {
-            await taskRepository.update(
-              child.id,
-              projectId: parent.projectId,
-              syncImmediately: false,
-            );
-          }
-          int? ns = parent.startDate;
-          int? nd = parent.dueDate;
-          final cs = child.startDate;
-          final cd = child.dueDate;
-          if (cs != null) ns = (ns == null || cs < ns) ? cs : ns;
-          if (cd != null) nd = (nd == null || cd > nd) ? cd : nd;
-          if (ns != parent.startDate || nd != parent.dueDate) {
-            await taskRepository.update(
-              parent.id,
-              startDate: ns,
-              dueDate: nd,
-              syncImmediately: false,
-            );
+        if (event.newParentId != null && state is TaskNewLoaded) {
+          final tasks = (state as TaskNewLoaded).tasks;
+          final parent = tasks
+              .where((t) => t.id == event.newParentId)
+              .firstOrNull;
+          final child = tasks.where((t) => t.id == event.taskId).firstOrNull;
+          if (parent != null && child != null) {
+            if (child.projectId != parent.projectId) {
+              await taskRepository.update(
+                child.id,
+                projectId: parent.projectId,
+                syncImmediately: false,
+              );
+            }
+            int? ns = parent.startDate;
+            int? nd = parent.dueDate;
+            final cs = child.startDate;
+            final cd = child.dueDate;
+            if (cs != null) ns = (ns == null || cs < ns) ? cs : ns;
+            if (cd != null) nd = (nd == null || cd > nd) ? cd : nd;
+            if (ns != parent.startDate || nd != parent.dueDate) {
+              await taskRepository.update(
+                parent.id,
+                startDate: ns,
+                dueDate: nd,
+                syncImmediately: false,
+              );
+            }
           }
         }
-      }
-    });
+      },
+      adjustSnapshot: (snapshot) {
+        final parentId = parentIdToExpand;
+        if (parentId == null) return snapshot;
+        final expandedNodes = Map<String, Set<String>>.from(
+          snapshot.expandedNodes,
+        );
+        final mainTree = Set<String>.from(expandedNodes['main_tree'] ?? {});
+        mainTree.add(parentId);
+        expandedNodes['main_tree'] = mainTree;
+        return snapshot.copyWith(expandedNodes: expandedNodes);
+      },
+    );
   }
 
   /// 妫€鏌?targetId 鏄惁鏄?ancestorId 鐨勫悗浠?
@@ -1275,8 +1308,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
       final current = state as TaskNewLoaded;
       final newExpanded = Map<String, Set<String>>.from(current.expandedNodes);
       // M6: parentIdSet O(n) 替代嵌套 any O(n²)
-      final parentIdSet = current.tasks.map((t) => t.parentId).whereType<String>().toSet();
-      final allParentIds = current.tasks.where((t) => parentIdSet.contains(t.id)).map((t) => t.id).toSet();
+      final parentIdSet = current.tasks
+          .map((t) => t.parentId)
+          .whereType<String>()
+          .toSet();
+      final allParentIds = current.tasks
+          .where((t) => parentIdSet.contains(t.id))
+          .map((t) => t.id)
+          .toSet();
       newExpanded['main_tree'] = allParentIds;
       emit(current.copyWith(expandedNodes: newExpanded));
     }
@@ -1397,22 +1436,26 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     if (state is TaskNewLoaded) {
       final current = state as TaskNewLoaded;
       if (current.showArchivedView) {
-        add(LoadArchivedTasks(
-          statusFilter: current.selectedStatusFilter,
-          searchKeyword: event.keyword,
-          dateFrom: current.dateFrom,
-          dateTo: current.dateTo,
-        ));
+        add(
+          LoadArchivedTasks(
+            statusFilter: current.selectedStatusFilter,
+            searchKeyword: event.keyword,
+            dateFrom: current.dateFrom,
+            dateTo: current.dateTo,
+          ),
+        );
       } else {
-        add(LoadTasks(
-          projectIds: current.selectedProjectIds,
-          filter: current.selectedFilter,
-          statusFilter: current.selectedStatusFilter,
-          dateFrom: current.dateFrom,
-          dateTo: current.dateTo,
-          searchKeyword: event.keyword,
-          hasSearchKeyword: true,
-        ));
+        add(
+          LoadTasks(
+            projectIds: current.selectedProjectIds,
+            filter: current.selectedFilter,
+            statusFilter: current.selectedStatusFilter,
+            dateFrom: current.dateFrom,
+            dateTo: current.dateTo,
+            searchKeyword: event.keyword,
+            hasSearchKeyword: true,
+          ),
+        );
       }
     }
   }
@@ -1428,9 +1471,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           .toList();
       if (tasksInTemplate.isEmpty) return;
 
-      final roots = tasksInTemplate
-          .where((t) => t.parentId == null)
-          .toList();
+      final roots = tasksInTemplate.where((t) => t.parentId == null).toList();
       if (roots.isEmpty) return;
 
       final earliestStart = roots
@@ -1455,9 +1496,7 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           final newStart = t.startDate != null
               ? t.startDate! + offsetMillis
               : null;
-          final newDue = t.dueDate != null
-              ? t.dueDate! + offsetMillis
-              : null;
+          final newDue = t.dueDate != null ? t.dueDate! + offsetMillis : null;
           final newTask = await taskRepository.create(
             projectId: event.targetProjectId,
             title: t.title,
@@ -1552,17 +1591,21 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
         archivedTasks = archivedTasks.where((t) => t.status == 2).toList();
       }
       // 定位到最近的任务：归档按 updatedAt desc 排序，第一个即为最近任务
-      final recentTaskId = archivedTasks.isNotEmpty ? archivedTasks.first.id : null;
-      emit(base.copyWith(
-        tasks: archivedTasks,
-        showArchivedView: true,
-        selectedStatusFilter: event.statusFilter,
-        searchKeyword: event.searchKeyword,
-        dateFrom: event.dateFrom,
-        dateTo: event.dateTo,
-        focusTaskId: recentTaskId,
-        focusRequestToken: DateTime.now().microsecondsSinceEpoch,
-      ));
+      final recentTaskId = archivedTasks.isNotEmpty
+          ? archivedTasks.first.id
+          : null;
+      emit(
+        base.copyWith(
+          tasks: archivedTasks,
+          showArchivedView: true,
+          selectedStatusFilter: event.statusFilter,
+          searchKeyword: event.searchKeyword,
+          dateFrom: event.dateFrom,
+          dateTo: event.dateTo,
+          focusTaskId: recentTaskId,
+          focusRequestToken: DateTime.now().microsecondsSinceEpoch,
+        ),
+      );
     } catch (e) {
       emit(TaskNewError(e.toString()));
     }

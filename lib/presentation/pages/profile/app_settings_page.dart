@@ -11,6 +11,7 @@ import '../../../services/battery_optimization_service.dart';
 import '../../../services/local_data_service.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../platform/window_manager_bridge.dart';
 import 'theme_settings_page.dart';
 
 class AppSettingsPage extends StatefulWidget {
@@ -44,6 +45,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   bool _isMiui = false; // 是否为小米/Redmi 设备
 
   bool _desktopFloatingTabEnabled = true;
+  bool _desktopAutoStart = false;
 
   @override
   void initState() {
@@ -78,6 +80,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       _skipWeekends = _storage.skipWeekends;
       _overdueNotifIntervalHours = _storage.overdueNotifIntervalHours;
       _desktopFloatingTabEnabled = _storage.desktopFloatingTabEnabled;
+      _desktopAutoStart = _storage.autoStart;
       _dataDirectory = dataDirectory;
       _notifGranted = notifGranted;
       _exactAlarmGranted = exactGranted;
@@ -576,6 +579,24 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   setState(() => _desktopFloatingTabEnabled = value);
                   await _storage.setDesktopFloatingTabEnabled(value);
                   await DesktopFloatingTabController.instance.refreshSettings();
+                },
+        ),
+        const SizedBox(height: 10),
+        SwitchListTile(
+          title: const Text('开机自动启动'),
+          subtitle: Text(
+            '开启后，Windows 开机时自动启动 Taskora 到系统托盘。',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          value: _ready && _desktopAutoStart,
+          activeThumbColor: AppTheme.primaryColor,
+          contentPadding: EdgeInsets.zero,
+          onChanged: !_ready
+              ? null
+              : (value) async {
+                  setState(() => _desktopAutoStart = value);
+                  await setStartupItem(value);
+                  await _storage.setAutoStart(value);
                 },
         ),
       ],

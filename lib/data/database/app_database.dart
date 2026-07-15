@@ -98,6 +98,38 @@ class ChecklistItems extends Table {
 
 // --- 数据库 ---
 
+class LazyLogDrafts extends Table {
+  TextColumn get id => text()();
+  TextColumn get batchId => text()();
+  TextColumn get sourceInput => text()();
+  TextColumn get status =>
+      text().customConstraint('NOT NULL DEFAULT \'pending_review\'')();
+  TextColumn? get errorMessage => text().nullable()();
+  TextColumn get summary => text().customConstraint('NOT NULL DEFAULT \'\'')();
+  TextColumn? get projectId => text().nullable()();
+  TextColumn? get parentTaskId => text().nullable()();
+  TextColumn get parentTitle =>
+      text().customConstraint('NOT NULL DEFAULT \'\'')();
+  TextColumn get title => text()();
+  TextColumn get description =>
+      text().customConstraint('NOT NULL DEFAULT \'\'')();
+  TextColumn get priority =>
+      text().customConstraint('NOT NULL DEFAULT \'P2\'')();
+  TextColumn get checklistJson =>
+      text().customConstraint('NOT NULL DEFAULT \'[]\'')();
+  IntColumn get startDate => integer()();
+  IntColumn get dueDate => integer()();
+  IntColumn get sortOrder => integer().customConstraint('NOT NULL DEFAULT 0')();
+  IntColumn get needsReview =>
+      integer().customConstraint('NOT NULL DEFAULT 1')();
+  TextColumn? get createdTaskId => text().nullable()();
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class NodeTemplates extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
@@ -127,13 +159,14 @@ class NodeTemplates extends Table {
     ProjectGroups,
     TaskAttachments,
     NodeTemplates,
+    LazyLogDrafts,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration {
@@ -186,22 +219,56 @@ class AppDatabase extends _$AppDatabase {
           }
         }
         if (from < 10) {
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks (project_id)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks (parent_id)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks (deleted)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks (due_date)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_checklist_items_task_id ON checklist_items (task_id)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_checklist_items_deleted ON checklist_items (deleted)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id ON task_attachments (task_id)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_projects_deleted ON projects (deleted)');
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_projects_group_id ON projects (group_id)');
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks (project_id)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks (parent_id)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks (deleted)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks (due_date)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_checklist_items_task_id ON checklist_items (task_id)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_checklist_items_deleted ON checklist_items (deleted)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id ON task_attachments (task_id)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_projects_deleted ON projects (deleted)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_projects_group_id ON projects (group_id)',
+          );
         }
         if (from < 11) {
           await m.addColumn(tasks, tasks.archived);
         }
         if (from < 12) {
-          await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks (deleted, archived)');
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks (deleted, archived)',
+          );
+        }
+        if (from < 13) {
+          await m.createTable(lazyLogDrafts);
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_lazy_log_drafts_status ON lazy_log_drafts (status, needs_review)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_lazy_log_drafts_batch ON lazy_log_drafts (batch_id, sort_order)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_lazy_log_drafts_time ON lazy_log_drafts (start_date, due_date)',
+          );
         }
       },
     );
@@ -213,6 +280,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(checklistItems).go();
       await delete(taskAttachments).go();
       await delete(nodeTemplates).go();
+      await delete(lazyLogDrafts).go();
       await delete(tasks).go();
       await delete(projects).go();
       await delete(projectGroups).go();

@@ -3964,6 +3964,1128 @@ class NodeTemplatesCompanion extends UpdateCompanion<NodeTemplate> {
   }
 }
 
+class $LazyLogDraftsTable extends LazyLogDrafts
+    with TableInfo<$LazyLogDraftsTable, LazyLogDraft> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LazyLogDraftsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _batchIdMeta = const VerificationMeta(
+    'batchId',
+  );
+  @override
+  late final GeneratedColumn<String> batchId = GeneratedColumn<String>(
+    'batch_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceInputMeta = const VerificationMeta(
+    'sourceInput',
+  );
+  @override
+  late final GeneratedColumn<String> sourceInput = GeneratedColumn<String>(
+    'source_input',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'pending_review\'',
+    defaultValue: const CustomExpression('\'pending_review\''),
+  );
+  static const VerificationMeta _errorMessageMeta = const VerificationMeta(
+    'errorMessage',
+  );
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+    'error_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _summaryMeta = const VerificationMeta(
+    'summary',
+  );
+  @override
+  late final GeneratedColumn<String> summary = GeneratedColumn<String>(
+    'summary',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'\'',
+    defaultValue: const CustomExpression('\'\''),
+  );
+  static const VerificationMeta _projectIdMeta = const VerificationMeta(
+    'projectId',
+  );
+  @override
+  late final GeneratedColumn<String> projectId = GeneratedColumn<String>(
+    'project_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _parentTaskIdMeta = const VerificationMeta(
+    'parentTaskId',
+  );
+  @override
+  late final GeneratedColumn<String> parentTaskId = GeneratedColumn<String>(
+    'parent_task_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _parentTitleMeta = const VerificationMeta(
+    'parentTitle',
+  );
+  @override
+  late final GeneratedColumn<String> parentTitle = GeneratedColumn<String>(
+    'parent_title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'\'',
+    defaultValue: const CustomExpression('\'\''),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'\'',
+    defaultValue: const CustomExpression('\'\''),
+  );
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<String> priority = GeneratedColumn<String>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'P2\'',
+    defaultValue: const CustomExpression('\'P2\''),
+  );
+  static const VerificationMeta _checklistJsonMeta = const VerificationMeta(
+    'checklistJson',
+  );
+  @override
+  late final GeneratedColumn<String> checklistJson = GeneratedColumn<String>(
+    'checklist_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'[]\'',
+    defaultValue: const CustomExpression('\'[]\''),
+  );
+  static const VerificationMeta _startDateMeta = const VerificationMeta(
+    'startDate',
+  );
+  @override
+  late final GeneratedColumn<int> startDate = GeneratedColumn<int>(
+    'start_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dueDateMeta = const VerificationMeta(
+    'dueDate',
+  );
+  @override
+  late final GeneratedColumn<int> dueDate = GeneratedColumn<int>(
+    'due_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  static const VerificationMeta _needsReviewMeta = const VerificationMeta(
+    'needsReview',
+  );
+  @override
+  late final GeneratedColumn<int> needsReview = GeneratedColumn<int>(
+    'needs_review',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 1',
+    defaultValue: const CustomExpression('1'),
+  );
+  static const VerificationMeta _createdTaskIdMeta = const VerificationMeta(
+    'createdTaskId',
+  );
+  @override
+  late final GeneratedColumn<String> createdTaskId = GeneratedColumn<String>(
+    'created_task_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    batchId,
+    sourceInput,
+    status,
+    errorMessage,
+    summary,
+    projectId,
+    parentTaskId,
+    parentTitle,
+    title,
+    description,
+    priority,
+    checklistJson,
+    startDate,
+    dueDate,
+    sortOrder,
+    needsReview,
+    createdTaskId,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'lazy_log_drafts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LazyLogDraft> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('batch_id')) {
+      context.handle(
+        _batchIdMeta,
+        batchId.isAcceptableOrUnknown(data['batch_id']!, _batchIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_batchIdMeta);
+    }
+    if (data.containsKey('source_input')) {
+      context.handle(
+        _sourceInputMeta,
+        sourceInput.isAcceptableOrUnknown(
+          data['source_input']!,
+          _sourceInputMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceInputMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('error_message')) {
+      context.handle(
+        _errorMessageMeta,
+        errorMessage.isAcceptableOrUnknown(
+          data['error_message']!,
+          _errorMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('summary')) {
+      context.handle(
+        _summaryMeta,
+        summary.isAcceptableOrUnknown(data['summary']!, _summaryMeta),
+      );
+    }
+    if (data.containsKey('project_id')) {
+      context.handle(
+        _projectIdMeta,
+        projectId.isAcceptableOrUnknown(data['project_id']!, _projectIdMeta),
+      );
+    }
+    if (data.containsKey('parent_task_id')) {
+      context.handle(
+        _parentTaskIdMeta,
+        parentTaskId.isAcceptableOrUnknown(
+          data['parent_task_id']!,
+          _parentTaskIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('parent_title')) {
+      context.handle(
+        _parentTitleMeta,
+        parentTitle.isAcceptableOrUnknown(
+          data['parent_title']!,
+          _parentTitleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    if (data.containsKey('checklist_json')) {
+      context.handle(
+        _checklistJsonMeta,
+        checklistJson.isAcceptableOrUnknown(
+          data['checklist_json']!,
+          _checklistJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(
+        _startDateMeta,
+        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startDateMeta);
+    }
+    if (data.containsKey('due_date')) {
+      context.handle(
+        _dueDateMeta,
+        dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dueDateMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('needs_review')) {
+      context.handle(
+        _needsReviewMeta,
+        needsReview.isAcceptableOrUnknown(
+          data['needs_review']!,
+          _needsReviewMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_task_id')) {
+      context.handle(
+        _createdTaskIdMeta,
+        createdTaskId.isAcceptableOrUnknown(
+          data['created_task_id']!,
+          _createdTaskIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LazyLogDraft map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LazyLogDraft(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      batchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}batch_id'],
+      )!,
+      sourceInput: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_input'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      errorMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_message'],
+      ),
+      summary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}summary'],
+      )!,
+      projectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}project_id'],
+      ),
+      parentTaskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_task_id'],
+      ),
+      parentTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_title'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      priority: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}priority'],
+      )!,
+      checklistJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}checklist_json'],
+      )!,
+      startDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_date'],
+      )!,
+      dueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}due_date'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      needsReview: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}needs_review'],
+      )!,
+      createdTaskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_task_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $LazyLogDraftsTable createAlias(String alias) {
+    return $LazyLogDraftsTable(attachedDatabase, alias);
+  }
+}
+
+class LazyLogDraft extends DataClass implements Insertable<LazyLogDraft> {
+  final String id;
+  final String batchId;
+  final String sourceInput;
+  final String status;
+  final String? errorMessage;
+  final String summary;
+  final String? projectId;
+  final String? parentTaskId;
+  final String parentTitle;
+  final String title;
+  final String description;
+  final String priority;
+  final String checklistJson;
+  final int startDate;
+  final int dueDate;
+  final int sortOrder;
+  final int needsReview;
+  final String? createdTaskId;
+  final int createdAt;
+  final int updatedAt;
+  const LazyLogDraft({
+    required this.id,
+    required this.batchId,
+    required this.sourceInput,
+    required this.status,
+    this.errorMessage,
+    required this.summary,
+    this.projectId,
+    this.parentTaskId,
+    required this.parentTitle,
+    required this.title,
+    required this.description,
+    required this.priority,
+    required this.checklistJson,
+    required this.startDate,
+    required this.dueDate,
+    required this.sortOrder,
+    required this.needsReview,
+    this.createdTaskId,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['batch_id'] = Variable<String>(batchId);
+    map['source_input'] = Variable<String>(sourceInput);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
+    }
+    map['summary'] = Variable<String>(summary);
+    if (!nullToAbsent || projectId != null) {
+      map['project_id'] = Variable<String>(projectId);
+    }
+    if (!nullToAbsent || parentTaskId != null) {
+      map['parent_task_id'] = Variable<String>(parentTaskId);
+    }
+    map['parent_title'] = Variable<String>(parentTitle);
+    map['title'] = Variable<String>(title);
+    map['description'] = Variable<String>(description);
+    map['priority'] = Variable<String>(priority);
+    map['checklist_json'] = Variable<String>(checklistJson);
+    map['start_date'] = Variable<int>(startDate);
+    map['due_date'] = Variable<int>(dueDate);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['needs_review'] = Variable<int>(needsReview);
+    if (!nullToAbsent || createdTaskId != null) {
+      map['created_task_id'] = Variable<String>(createdTaskId);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  LazyLogDraftsCompanion toCompanion(bool nullToAbsent) {
+    return LazyLogDraftsCompanion(
+      id: Value(id),
+      batchId: Value(batchId),
+      sourceInput: Value(sourceInput),
+      status: Value(status),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
+      summary: Value(summary),
+      projectId: projectId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(projectId),
+      parentTaskId: parentTaskId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentTaskId),
+      parentTitle: Value(parentTitle),
+      title: Value(title),
+      description: Value(description),
+      priority: Value(priority),
+      checklistJson: Value(checklistJson),
+      startDate: Value(startDate),
+      dueDate: Value(dueDate),
+      sortOrder: Value(sortOrder),
+      needsReview: Value(needsReview),
+      createdTaskId: createdTaskId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdTaskId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory LazyLogDraft.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LazyLogDraft(
+      id: serializer.fromJson<String>(json['id']),
+      batchId: serializer.fromJson<String>(json['batchId']),
+      sourceInput: serializer.fromJson<String>(json['sourceInput']),
+      status: serializer.fromJson<String>(json['status']),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
+      summary: serializer.fromJson<String>(json['summary']),
+      projectId: serializer.fromJson<String?>(json['projectId']),
+      parentTaskId: serializer.fromJson<String?>(json['parentTaskId']),
+      parentTitle: serializer.fromJson<String>(json['parentTitle']),
+      title: serializer.fromJson<String>(json['title']),
+      description: serializer.fromJson<String>(json['description']),
+      priority: serializer.fromJson<String>(json['priority']),
+      checklistJson: serializer.fromJson<String>(json['checklistJson']),
+      startDate: serializer.fromJson<int>(json['startDate']),
+      dueDate: serializer.fromJson<int>(json['dueDate']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      needsReview: serializer.fromJson<int>(json['needsReview']),
+      createdTaskId: serializer.fromJson<String?>(json['createdTaskId']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'batchId': serializer.toJson<String>(batchId),
+      'sourceInput': serializer.toJson<String>(sourceInput),
+      'status': serializer.toJson<String>(status),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
+      'summary': serializer.toJson<String>(summary),
+      'projectId': serializer.toJson<String?>(projectId),
+      'parentTaskId': serializer.toJson<String?>(parentTaskId),
+      'parentTitle': serializer.toJson<String>(parentTitle),
+      'title': serializer.toJson<String>(title),
+      'description': serializer.toJson<String>(description),
+      'priority': serializer.toJson<String>(priority),
+      'checklistJson': serializer.toJson<String>(checklistJson),
+      'startDate': serializer.toJson<int>(startDate),
+      'dueDate': serializer.toJson<int>(dueDate),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'needsReview': serializer.toJson<int>(needsReview),
+      'createdTaskId': serializer.toJson<String?>(createdTaskId),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  LazyLogDraft copyWith({
+    String? id,
+    String? batchId,
+    String? sourceInput,
+    String? status,
+    Value<String?> errorMessage = const Value.absent(),
+    String? summary,
+    Value<String?> projectId = const Value.absent(),
+    Value<String?> parentTaskId = const Value.absent(),
+    String? parentTitle,
+    String? title,
+    String? description,
+    String? priority,
+    String? checklistJson,
+    int? startDate,
+    int? dueDate,
+    int? sortOrder,
+    int? needsReview,
+    Value<String?> createdTaskId = const Value.absent(),
+    int? createdAt,
+    int? updatedAt,
+  }) => LazyLogDraft(
+    id: id ?? this.id,
+    batchId: batchId ?? this.batchId,
+    sourceInput: sourceInput ?? this.sourceInput,
+    status: status ?? this.status,
+    errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
+    summary: summary ?? this.summary,
+    projectId: projectId.present ? projectId.value : this.projectId,
+    parentTaskId: parentTaskId.present ? parentTaskId.value : this.parentTaskId,
+    parentTitle: parentTitle ?? this.parentTitle,
+    title: title ?? this.title,
+    description: description ?? this.description,
+    priority: priority ?? this.priority,
+    checklistJson: checklistJson ?? this.checklistJson,
+    startDate: startDate ?? this.startDate,
+    dueDate: dueDate ?? this.dueDate,
+    sortOrder: sortOrder ?? this.sortOrder,
+    needsReview: needsReview ?? this.needsReview,
+    createdTaskId: createdTaskId.present
+        ? createdTaskId.value
+        : this.createdTaskId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  LazyLogDraft copyWithCompanion(LazyLogDraftsCompanion data) {
+    return LazyLogDraft(
+      id: data.id.present ? data.id.value : this.id,
+      batchId: data.batchId.present ? data.batchId.value : this.batchId,
+      sourceInput: data.sourceInput.present
+          ? data.sourceInput.value
+          : this.sourceInput,
+      status: data.status.present ? data.status.value : this.status,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
+      summary: data.summary.present ? data.summary.value : this.summary,
+      projectId: data.projectId.present ? data.projectId.value : this.projectId,
+      parentTaskId: data.parentTaskId.present
+          ? data.parentTaskId.value
+          : this.parentTaskId,
+      parentTitle: data.parentTitle.present
+          ? data.parentTitle.value
+          : this.parentTitle,
+      title: data.title.present ? data.title.value : this.title,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      priority: data.priority.present ? data.priority.value : this.priority,
+      checklistJson: data.checklistJson.present
+          ? data.checklistJson.value
+          : this.checklistJson,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      needsReview: data.needsReview.present
+          ? data.needsReview.value
+          : this.needsReview,
+      createdTaskId: data.createdTaskId.present
+          ? data.createdTaskId.value
+          : this.createdTaskId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LazyLogDraft(')
+          ..write('id: $id, ')
+          ..write('batchId: $batchId, ')
+          ..write('sourceInput: $sourceInput, ')
+          ..write('status: $status, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('summary: $summary, ')
+          ..write('projectId: $projectId, ')
+          ..write('parentTaskId: $parentTaskId, ')
+          ..write('parentTitle: $parentTitle, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('priority: $priority, ')
+          ..write('checklistJson: $checklistJson, ')
+          ..write('startDate: $startDate, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('needsReview: $needsReview, ')
+          ..write('createdTaskId: $createdTaskId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    batchId,
+    sourceInput,
+    status,
+    errorMessage,
+    summary,
+    projectId,
+    parentTaskId,
+    parentTitle,
+    title,
+    description,
+    priority,
+    checklistJson,
+    startDate,
+    dueDate,
+    sortOrder,
+    needsReview,
+    createdTaskId,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LazyLogDraft &&
+          other.id == this.id &&
+          other.batchId == this.batchId &&
+          other.sourceInput == this.sourceInput &&
+          other.status == this.status &&
+          other.errorMessage == this.errorMessage &&
+          other.summary == this.summary &&
+          other.projectId == this.projectId &&
+          other.parentTaskId == this.parentTaskId &&
+          other.parentTitle == this.parentTitle &&
+          other.title == this.title &&
+          other.description == this.description &&
+          other.priority == this.priority &&
+          other.checklistJson == this.checklistJson &&
+          other.startDate == this.startDate &&
+          other.dueDate == this.dueDate &&
+          other.sortOrder == this.sortOrder &&
+          other.needsReview == this.needsReview &&
+          other.createdTaskId == this.createdTaskId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class LazyLogDraftsCompanion extends UpdateCompanion<LazyLogDraft> {
+  final Value<String> id;
+  final Value<String> batchId;
+  final Value<String> sourceInput;
+  final Value<String> status;
+  final Value<String?> errorMessage;
+  final Value<String> summary;
+  final Value<String?> projectId;
+  final Value<String?> parentTaskId;
+  final Value<String> parentTitle;
+  final Value<String> title;
+  final Value<String> description;
+  final Value<String> priority;
+  final Value<String> checklistJson;
+  final Value<int> startDate;
+  final Value<int> dueDate;
+  final Value<int> sortOrder;
+  final Value<int> needsReview;
+  final Value<String?> createdTaskId;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const LazyLogDraftsCompanion({
+    this.id = const Value.absent(),
+    this.batchId = const Value.absent(),
+    this.sourceInput = const Value.absent(),
+    this.status = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.summary = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.parentTaskId = const Value.absent(),
+    this.parentTitle = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.checklistJson = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.dueDate = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.needsReview = const Value.absent(),
+    this.createdTaskId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LazyLogDraftsCompanion.insert({
+    required String id,
+    required String batchId,
+    required String sourceInput,
+    this.status = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.summary = const Value.absent(),
+    this.projectId = const Value.absent(),
+    this.parentTaskId = const Value.absent(),
+    this.parentTitle = const Value.absent(),
+    required String title,
+    this.description = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.checklistJson = const Value.absent(),
+    required int startDate,
+    required int dueDate,
+    this.sortOrder = const Value.absent(),
+    this.needsReview = const Value.absent(),
+    this.createdTaskId = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       batchId = Value(batchId),
+       sourceInput = Value(sourceInput),
+       title = Value(title),
+       startDate = Value(startDate),
+       dueDate = Value(dueDate),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LazyLogDraft> custom({
+    Expression<String>? id,
+    Expression<String>? batchId,
+    Expression<String>? sourceInput,
+    Expression<String>? status,
+    Expression<String>? errorMessage,
+    Expression<String>? summary,
+    Expression<String>? projectId,
+    Expression<String>? parentTaskId,
+    Expression<String>? parentTitle,
+    Expression<String>? title,
+    Expression<String>? description,
+    Expression<String>? priority,
+    Expression<String>? checklistJson,
+    Expression<int>? startDate,
+    Expression<int>? dueDate,
+    Expression<int>? sortOrder,
+    Expression<int>? needsReview,
+    Expression<String>? createdTaskId,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (batchId != null) 'batch_id': batchId,
+      if (sourceInput != null) 'source_input': sourceInput,
+      if (status != null) 'status': status,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (summary != null) 'summary': summary,
+      if (projectId != null) 'project_id': projectId,
+      if (parentTaskId != null) 'parent_task_id': parentTaskId,
+      if (parentTitle != null) 'parent_title': parentTitle,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (priority != null) 'priority': priority,
+      if (checklistJson != null) 'checklist_json': checklistJson,
+      if (startDate != null) 'start_date': startDate,
+      if (dueDate != null) 'due_date': dueDate,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (needsReview != null) 'needs_review': needsReview,
+      if (createdTaskId != null) 'created_task_id': createdTaskId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LazyLogDraftsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? batchId,
+    Value<String>? sourceInput,
+    Value<String>? status,
+    Value<String?>? errorMessage,
+    Value<String>? summary,
+    Value<String?>? projectId,
+    Value<String?>? parentTaskId,
+    Value<String>? parentTitle,
+    Value<String>? title,
+    Value<String>? description,
+    Value<String>? priority,
+    Value<String>? checklistJson,
+    Value<int>? startDate,
+    Value<int>? dueDate,
+    Value<int>? sortOrder,
+    Value<int>? needsReview,
+    Value<String?>? createdTaskId,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return LazyLogDraftsCompanion(
+      id: id ?? this.id,
+      batchId: batchId ?? this.batchId,
+      sourceInput: sourceInput ?? this.sourceInput,
+      status: status ?? this.status,
+      errorMessage: errorMessage ?? this.errorMessage,
+      summary: summary ?? this.summary,
+      projectId: projectId ?? this.projectId,
+      parentTaskId: parentTaskId ?? this.parentTaskId,
+      parentTitle: parentTitle ?? this.parentTitle,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      priority: priority ?? this.priority,
+      checklistJson: checklistJson ?? this.checklistJson,
+      startDate: startDate ?? this.startDate,
+      dueDate: dueDate ?? this.dueDate,
+      sortOrder: sortOrder ?? this.sortOrder,
+      needsReview: needsReview ?? this.needsReview,
+      createdTaskId: createdTaskId ?? this.createdTaskId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (batchId.present) {
+      map['batch_id'] = Variable<String>(batchId.value);
+    }
+    if (sourceInput.present) {
+      map['source_input'] = Variable<String>(sourceInput.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
+    if (summary.present) {
+      map['summary'] = Variable<String>(summary.value);
+    }
+    if (projectId.present) {
+      map['project_id'] = Variable<String>(projectId.value);
+    }
+    if (parentTaskId.present) {
+      map['parent_task_id'] = Variable<String>(parentTaskId.value);
+    }
+    if (parentTitle.present) {
+      map['parent_title'] = Variable<String>(parentTitle.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<String>(priority.value);
+    }
+    if (checklistJson.present) {
+      map['checklist_json'] = Variable<String>(checklistJson.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<int>(startDate.value);
+    }
+    if (dueDate.present) {
+      map['due_date'] = Variable<int>(dueDate.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (needsReview.present) {
+      map['needs_review'] = Variable<int>(needsReview.value);
+    }
+    if (createdTaskId.present) {
+      map['created_task_id'] = Variable<String>(createdTaskId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LazyLogDraftsCompanion(')
+          ..write('id: $id, ')
+          ..write('batchId: $batchId, ')
+          ..write('sourceInput: $sourceInput, ')
+          ..write('status: $status, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('summary: $summary, ')
+          ..write('projectId: $projectId, ')
+          ..write('parentTaskId: $parentTaskId, ')
+          ..write('parentTitle: $parentTitle, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('priority: $priority, ')
+          ..write('checklistJson: $checklistJson, ')
+          ..write('startDate: $startDate, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('needsReview: $needsReview, ')
+          ..write('createdTaskId: $createdTaskId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3975,6 +5097,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $NodeTemplatesTable nodeTemplates = $NodeTemplatesTable(this);
+  late final $LazyLogDraftsTable lazyLogDrafts = $LazyLogDraftsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3986,6 +5109,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     projectGroups,
     taskAttachments,
     nodeTemplates,
+    lazyLogDrafts,
   ];
 }
 
@@ -6331,6 +7455,507 @@ typedef $$NodeTemplatesTableProcessedTableManager =
       NodeTemplate,
       PrefetchHooks Function()
     >;
+typedef $$LazyLogDraftsTableCreateCompanionBuilder =
+    LazyLogDraftsCompanion Function({
+      required String id,
+      required String batchId,
+      required String sourceInput,
+      Value<String> status,
+      Value<String?> errorMessage,
+      Value<String> summary,
+      Value<String?> projectId,
+      Value<String?> parentTaskId,
+      Value<String> parentTitle,
+      required String title,
+      Value<String> description,
+      Value<String> priority,
+      Value<String> checklistJson,
+      required int startDate,
+      required int dueDate,
+      Value<int> sortOrder,
+      Value<int> needsReview,
+      Value<String?> createdTaskId,
+      required int createdAt,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$LazyLogDraftsTableUpdateCompanionBuilder =
+    LazyLogDraftsCompanion Function({
+      Value<String> id,
+      Value<String> batchId,
+      Value<String> sourceInput,
+      Value<String> status,
+      Value<String?> errorMessage,
+      Value<String> summary,
+      Value<String?> projectId,
+      Value<String?> parentTaskId,
+      Value<String> parentTitle,
+      Value<String> title,
+      Value<String> description,
+      Value<String> priority,
+      Value<String> checklistJson,
+      Value<int> startDate,
+      Value<int> dueDate,
+      Value<int> sortOrder,
+      Value<int> needsReview,
+      Value<String?> createdTaskId,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$LazyLogDraftsTableFilterComposer
+    extends Composer<_$AppDatabase, $LazyLogDraftsTable> {
+  $$LazyLogDraftsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get batchId => $composableBuilder(
+    column: $table.batchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceInput => $composableBuilder(
+    column: $table.sourceInput,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get summary => $composableBuilder(
+    column: $table.summary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get projectId => $composableBuilder(
+    column: $table.projectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get parentTaskId => $composableBuilder(
+    column: $table.parentTaskId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get parentTitle => $composableBuilder(
+    column: $table.parentTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get needsReview => $composableBuilder(
+    column: $table.needsReview,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdTaskId => $composableBuilder(
+    column: $table.createdTaskId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LazyLogDraftsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LazyLogDraftsTable> {
+  $$LazyLogDraftsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get batchId => $composableBuilder(
+    column: $table.batchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceInput => $composableBuilder(
+    column: $table.sourceInput,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get summary => $composableBuilder(
+    column: $table.summary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get projectId => $composableBuilder(
+    column: $table.projectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get parentTaskId => $composableBuilder(
+    column: $table.parentTaskId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get parentTitle => $composableBuilder(
+    column: $table.parentTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get needsReview => $composableBuilder(
+    column: $table.needsReview,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdTaskId => $composableBuilder(
+    column: $table.createdTaskId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LazyLogDraftsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LazyLogDraftsTable> {
+  $$LazyLogDraftsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get batchId =>
+      $composableBuilder(column: $table.batchId, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceInput => $composableBuilder(
+    column: $table.sourceInput,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get summary =>
+      $composableBuilder(column: $table.summary, builder: (column) => column);
+
+  GeneratedColumn<String> get projectId =>
+      $composableBuilder(column: $table.projectId, builder: (column) => column);
+
+  GeneratedColumn<String> get parentTaskId => $composableBuilder(
+    column: $table.parentTaskId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get parentTitle => $composableBuilder(
+    column: $table.parentTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  GeneratedColumn<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<int> get dueDate =>
+      $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get needsReview => $composableBuilder(
+    column: $table.needsReview,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get createdTaskId => $composableBuilder(
+    column: $table.createdTaskId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$LazyLogDraftsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LazyLogDraftsTable,
+          LazyLogDraft,
+          $$LazyLogDraftsTableFilterComposer,
+          $$LazyLogDraftsTableOrderingComposer,
+          $$LazyLogDraftsTableAnnotationComposer,
+          $$LazyLogDraftsTableCreateCompanionBuilder,
+          $$LazyLogDraftsTableUpdateCompanionBuilder,
+          (
+            LazyLogDraft,
+            BaseReferences<_$AppDatabase, $LazyLogDraftsTable, LazyLogDraft>,
+          ),
+          LazyLogDraft,
+          PrefetchHooks Function()
+        > {
+  $$LazyLogDraftsTableTableManager(_$AppDatabase db, $LazyLogDraftsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LazyLogDraftsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LazyLogDraftsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LazyLogDraftsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> batchId = const Value.absent(),
+                Value<String> sourceInput = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                Value<String> summary = const Value.absent(),
+                Value<String?> projectId = const Value.absent(),
+                Value<String?> parentTaskId = const Value.absent(),
+                Value<String> parentTitle = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<String> priority = const Value.absent(),
+                Value<String> checklistJson = const Value.absent(),
+                Value<int> startDate = const Value.absent(),
+                Value<int> dueDate = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> needsReview = const Value.absent(),
+                Value<String?> createdTaskId = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LazyLogDraftsCompanion(
+                id: id,
+                batchId: batchId,
+                sourceInput: sourceInput,
+                status: status,
+                errorMessage: errorMessage,
+                summary: summary,
+                projectId: projectId,
+                parentTaskId: parentTaskId,
+                parentTitle: parentTitle,
+                title: title,
+                description: description,
+                priority: priority,
+                checklistJson: checklistJson,
+                startDate: startDate,
+                dueDate: dueDate,
+                sortOrder: sortOrder,
+                needsReview: needsReview,
+                createdTaskId: createdTaskId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String batchId,
+                required String sourceInput,
+                Value<String> status = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                Value<String> summary = const Value.absent(),
+                Value<String?> projectId = const Value.absent(),
+                Value<String?> parentTaskId = const Value.absent(),
+                Value<String> parentTitle = const Value.absent(),
+                required String title,
+                Value<String> description = const Value.absent(),
+                Value<String> priority = const Value.absent(),
+                Value<String> checklistJson = const Value.absent(),
+                required int startDate,
+                required int dueDate,
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> needsReview = const Value.absent(),
+                Value<String?> createdTaskId = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => LazyLogDraftsCompanion.insert(
+                id: id,
+                batchId: batchId,
+                sourceInput: sourceInput,
+                status: status,
+                errorMessage: errorMessage,
+                summary: summary,
+                projectId: projectId,
+                parentTaskId: parentTaskId,
+                parentTitle: parentTitle,
+                title: title,
+                description: description,
+                priority: priority,
+                checklistJson: checklistJson,
+                startDate: startDate,
+                dueDate: dueDate,
+                sortOrder: sortOrder,
+                needsReview: needsReview,
+                createdTaskId: createdTaskId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LazyLogDraftsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LazyLogDraftsTable,
+      LazyLogDraft,
+      $$LazyLogDraftsTableFilterComposer,
+      $$LazyLogDraftsTableOrderingComposer,
+      $$LazyLogDraftsTableAnnotationComposer,
+      $$LazyLogDraftsTableCreateCompanionBuilder,
+      $$LazyLogDraftsTableUpdateCompanionBuilder,
+      (
+        LazyLogDraft,
+        BaseReferences<_$AppDatabase, $LazyLogDraftsTable, LazyLogDraft>,
+      ),
+      LazyLogDraft,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6347,4 +7972,6 @@ class $AppDatabaseManager {
       $$TaskAttachmentsTableTableManager(_db, _db.taskAttachments);
   $$NodeTemplatesTableTableManager get nodeTemplates =>
       $$NodeTemplatesTableTableManager(_db, _db.nodeTemplates);
+  $$LazyLogDraftsTableTableManager get lazyLogDrafts =>
+      $$LazyLogDraftsTableTableManager(_db, _db.lazyLogDrafts);
 }

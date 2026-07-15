@@ -14,10 +14,13 @@ import '../../../data/database/app_database.dart';
 import '../../../data/repositories/checklist_repository.dart';
 import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/project_repository.dart';
+import '../../../data/repositories/lazy_log_draft_repository.dart';
 import '../../../data/repositories/task_repository.dart';
 import '../../../models/assistant/lazy_log_models.dart';
+import '../../../models/assistant/lazy_log_review_models.dart';
 import '../../../services/assistant_config_service.dart';
 import '../../../services/home_lazy_log_service.dart';
+import '../../../services/lazy_log_draft_service.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/permission_service.dart';
@@ -26,6 +29,7 @@ import '../../../services/checklist_sync_service.dart';
 import '../../../services/project_sync_service.dart';
 import '../../../services/task_attachment_service.dart';
 import '../../../services/task_sync_service.dart';
+import '../../../services/task_conflict_service.dart';
 import '../../../services/node_template_sync_service.dart';
 import '../../../services/subscription_service.dart';
 import '../../../services/aliyun_push_service.dart';
@@ -50,6 +54,7 @@ import '../tasks/task_detail/widgets/attachment_section.dart';
 import '../tasks/task_detail/widgets/checklist_section.dart';
 import '../tasks/tasks_page.dart';
 import 'lazy_log_creation_dialog.dart';
+import 'lazy_log_draft_review_sheet.dart';
 import 'package:smart_assistant/core/utils/snackbar_helper.dart';
 
 class HomePage extends StatefulWidget {
@@ -155,6 +160,7 @@ class _HomePageState extends State<HomePage> {
       RepaintBoundary(
         child: _HomeContent(
           storage: _storage,
+          database: widget.database,
           projectRepository: widget.projectRepository,
           projectGroupRepository: widget.projectGroupRepository,
           taskRepository: widget.taskRepository,
@@ -666,6 +672,7 @@ class _BottomNavWidget extends StatelessWidget {
 
 class _HomeContent extends StatefulWidget {
   final LocalStorageService storage;
+  final AppDatabase? database;
   final ProjectRepository? projectRepository;
   final ProjectGroupRepository? projectGroupRepository;
   final TaskRepository? taskRepository;
@@ -681,6 +688,7 @@ class _HomeContent extends StatefulWidget {
 
   const _HomeContent({
     required this.storage,
+    this.database,
     this.projectRepository,
     this.projectGroupRepository,
     this.taskRepository,
@@ -720,6 +728,8 @@ class _HomeContentState extends State<_HomeContent> {
   final AssistantConfigService _assistantConfigService =
       AssistantConfigService();
   final HomeLazyLogService _lazyLogService = HomeLazyLogService();
+  LazyLogDraftRepository? _lazyLogDraftRepository;
+  LazyLogDraftService? _lazyLogDraftService;
   bool _lazyLogSubmitting = false;
   late final ScrollController _timelineController;
   String _timelineMode = 'hour'; // 'day' | 'hour'
@@ -771,6 +781,13 @@ class _HomeContentState extends State<_HomeContent> {
   @override
   void initState() {
     super.initState();
+    if (widget.database != null) {
+      _lazyLogDraftRepository = LazyLogDraftRepository(widget.database!);
+      _lazyLogDraftService = LazyLogDraftService(
+        lazyLogService: _lazyLogService,
+        draftRepository: _lazyLogDraftRepository!,
+      );
+    }
     _timelineController = ScrollController()
       ..addListener(() {
         // H5: 滚动后只更新高度 notifier，不整页 setState
@@ -1587,6 +1604,7 @@ class _HomeContentState extends State<_HomeContent> {
                 ),
             ],
           ),
+          _buildLazyLogQueueStatus(),
           const SizedBox(height: 10),
           Focus(
             onKeyEvent: (node, event) {
@@ -1604,7 +1622,6 @@ class _HomeContentState extends State<_HomeContent> {
               maxLines: 5,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _submitLazyLog(),
-              enabled: !_lazyLogSubmitting,
               decoration: InputDecoration(
                 hintText: '随手写：今天做了什么、遇到什么、接下来要安排什么...',
                 filled: true,
@@ -1622,7 +1639,7 @@ class _HomeContentState extends State<_HomeContent> {
             children: [
               Expanded(
                 child: Text(
-                  'AI 会先生成预览，确认后再创建任务和日程。',
+                  '回车后立即进入后台队列；生成完成后在待审核列表确认。',
                   style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                 ),
               ),
@@ -1639,116 +1656,361 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
+  Widget _buildLazyLogQueueStatus() {
+    final repository = _lazyLogDraftRepository;
+    if (repository == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          StreamBuilder<int>(
+            stream: repository.watchRunningCount(),
+            initialData: 0,
+            builder: (context, snapshot) {
+              final count = snapshot.data ?? 0;
+              if (count <= 0) return const SizedBox.shrink();
+              return _lazyLogStatusPill(
+                icon: Icons.hourglass_top_rounded,
+                label: '创建中 $count 个任务',
+                color: AppTheme.primaryColor,
+                onTap: _showLazyLogDraftReview,
+              );
+            },
+          ),
+          StreamBuilder<int>(
+            stream: repository.watchPendingReviewCount(),
+            initialData: 0,
+            builder: (context, snapshot) {
+              final count = snapshot.data ?? 0;
+              if (count <= 0) return const SizedBox.shrink();
+              return _lazyLogStatusPill(
+                icon: Icons.fact_check_outlined,
+                label: '待审核 $count 个任务',
+                color: AppTheme.warning,
+                onTap: _showLazyLogDraftReview,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _lazyLogStatusPill({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _submitLazyLog() async {
     final input = _lazyLogController.text.trim();
     if (input.isEmpty || _lazyLogSubmitting) return;
+    final repository = _lazyLogDraftRepository;
+    final service = _lazyLogDraftService;
+    if (repository == null || service == null) {
+      showAppSnackBar(context, '当前模式暂不支持懒人日志后台审核队列');
+      return;
+    }
     setState(() => _lazyLogSubmitting = true);
     try {
-      final config = await _assistantConfigService.loadConfig();
-      final result = await _lazyLogService.structure(
-        config: config,
-        input: input,
-        projectRoutingContext: _lazyLogProjectRoutingContext(),
+      final batchId = DateTime.now().microsecondsSinceEpoch.toString();
+      final running = await repository.createRunning(
+        sourceInput: input,
+        batchId: batchId,
       );
-      if (!mounted) return;
-      if (result.isEmpty) {
-        showAppSnackBar(context, '没有整理出可创建的内容');
-        return;
+      _lazyLogController.clear();
+      if (mounted) {
+        showAppSnackBar(context, '已加入后台队列，整理完成后进入待审核列表');
       }
-      final plan = await _showLazyLogPreview(result);
-      if (plan != null && mounted) {
-        await _applyLazyLogPlan(plan);
-        _lazyLogController.clear();
-      }
+      final config = await _assistantConfigService.loadConfig();
+      final routingContext = _lazyLogProjectRoutingContext();
+      unawaited(
+        service.structureIntoDrafts(
+          runningDraftId: running.id,
+          input: input,
+          config: config,
+          projectRoutingContext: routingContext,
+          buildDrafts: (result) async {
+            if (!mounted) return const <LazyLogDraftWrite>[];
+            return _buildLazyLogDraftWrites(
+              result,
+              sourceInput: input,
+              batchId: batchId,
+            );
+          },
+        ),
+      );
     } catch (error) {
-      if (mounted) showAppSnackBar(context, '整理失败：$error');
+      if (mounted) showAppSnackBar(context, '加入队列失败：$error');
     } finally {
       if (mounted) setState(() => _lazyLogSubmitting = false);
     }
   }
 
-  Future<LazyLogCreationPlan?> _showLazyLogPreview(LazyLogResult result) {
+  List<LazyLogDraftWrite> _buildLazyLogDraftWrites(
+    LazyLogResult result, {
+    required String sourceInput,
+    required String batchId,
+  }) {
     final tasks = _effectiveLazyLogTasks(result);
     final parentTitle = _lazyLogParentTitle(result, tasks);
-    return showDialog<LazyLogCreationPlan>(
+    final plan = _buildLazyLogPlan(result, tasks, parentTitle);
+    return [
+      for (var i = 0; i < plan.tasks.length; i++)
+        LazyLogDraftWrite(
+          batchId: batchId,
+          sourceInput: sourceInput,
+          summary: result.summary,
+          projectId: plan.projectId,
+          parentTaskId: plan.parentTaskId,
+          parentTitle: plan.parentTitle,
+          title: plan.tasks[i].title,
+          description: plan.tasks[i].description,
+          priority: plan.tasks[i].priority,
+          checklist: plan.tasks[i].checklist,
+          start: plan.tasks[i].start,
+          end: plan.tasks[i].end,
+          sortOrder: i,
+        ),
+    ];
+  }
+
+  Future<void> _showLazyLogDraftReview() async {
+    final repository = _lazyLogDraftRepository;
+    if (repository == null) return;
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (_) => LazyLogCreationDialog(
-        summary: result.summary,
-        completed: result.completed,
-        blockers: result.blockers,
-        nextActions: result.nextActions,
-        usedFallback: result.usedFallback,
-        initialPlan: _buildLazyLogPlan(result, tasks, parentTitle),
-        projects: _lazyLogProjectOptions(),
-        parents: _lazyLogParentOptions(),
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppTheme.bgScaffold,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.86,
+        child: LazyLogDraftReviewSheet(
+          repository: repository,
+          projects: _lazyLogProjectOptions(),
+          parents: _lazyLogParentOptions(),
+          onApprove: _approveLazyLogDrafts,
+          onRetry: _retryLazyLogDraft,
+        ),
       ),
     );
   }
 
-  Future<void> _applyLazyLogPlan(LazyLogCreationPlan plan) async {
-    var createdTasks = 0;
-    var skippedTasks = 0;
-
-    if (widget.taskRepository == null) {
-      final parent = await _resolveLocalLazyLogParentTaskId(
-        plan.parentTitle,
-        _planTaskDrafts(plan),
-        existingParentId: plan.parentTaskId,
-      );
-      final parentTaskId = parent.id;
-      if (parent.created) createdTasks++;
-      for (final task in plan.tasks) {
-        await widget.storage.createTask(
-          userId: _homeUserId(),
-          title: task.title,
-          description: task.description,
-          level: parentTaskId == null ? 'task' : 'subtask',
-          startDate: task.start,
-          endDate: task.end,
-          priority: task.priority,
-          parentTaskId: parentTaskId,
-        );
-        createdTasks++;
-      }
-    } else {
-      final projectId =
-          plan.projectId ??
-          (_projectCache.isEmpty ? await _defaultLazyLogProjectId() : null);
-      if (plan.tasks.isNotEmpty && projectId == null) {
-        skippedTasks = plan.tasks.length;
-      } else if (projectId != null) {
-        final parent = await _resolveDbLazyLogParentTaskId(
-          plan.parentTitle,
-          projectId,
-          _planTaskDrafts(plan),
-          existingParentId: plan.parentTaskId,
-        );
-        final parentId = parent.id;
-        if (parent.created) createdTasks++;
-        for (final task in plan.tasks) {
-          final createdTask = await widget.taskRepository!.create(
-            projectId: projectId,
-            title: task.title,
-            description: task.description,
-            priority: _priorityToDbValue(task.priority),
-            startDate: task.start.millisecondsSinceEpoch,
-            dueDate: task.end.millisecondsSinceEpoch,
-            parentId: parentId,
+  Future<void> _retryLazyLogDraft(LazyLogDraft draft) async {
+    final repository = _lazyLogDraftRepository;
+    final service = _lazyLogDraftService;
+    if (repository == null || service == null) return;
+    await repository.retry(draft.id);
+    final config = await _assistantConfigService.loadConfig();
+    final routingContext = _lazyLogProjectRoutingContext();
+    unawaited(
+      service.structureIntoDrafts(
+        runningDraftId: draft.id,
+        input: draft.sourceInput,
+        config: config,
+        projectRoutingContext: routingContext,
+        buildDrafts: (result) async {
+          if (!mounted) return const <LazyLogDraftWrite>[];
+          return _buildLazyLogDraftWrites(
+            result,
+            sourceInput: draft.sourceInput,
+            batchId: draft.batchId,
           );
-          await _createLazyLogTaskResources(createdTask.id, task);
-          createdTasks++;
+        },
+      ),
+    );
+  }
+
+  Future<void> _approveLazyLogDrafts(List<LazyLogDraft> drafts) async {
+    final repository = _lazyLogDraftRepository;
+    if (repository == null || drafts.isEmpty) return;
+    if (widget.taskRepository == null) {
+      showAppSnackBar(context, '当前模式暂不支持审核入库');
+      return;
+    }
+
+    final selectedIds = drafts.map((draft) => draft.id).toSet();
+    final occupied = <({DateTime start, DateTime end})>[];
+    final allTasks = await widget.taskRepository!.getAll();
+    for (final task in allTasks.where(
+      (task) => TaskConflictService.isTimingOccupant(task),
+    )) {
+      occupied.add((
+        start: DateTime.fromMillisecondsSinceEpoch(task.startDate!),
+        end: DateTime.fromMillisecondsSinceEpoch(task.dueDate!),
+      ));
+    }
+    final otherDrafts = await repository.getPendingReview(
+      excludeIds: selectedIds,
+    );
+    for (final draft in otherDrafts) {
+      occupied.add((
+        start: DateTime.fromMillisecondsSinceEpoch(draft.startDate),
+        end: DateTime.fromMillisecondsSinceEpoch(draft.dueDate),
+      ));
+    }
+
+    var created = 0;
+    var failed = 0;
+    var shifted = 0;
+    String? lastCreatedTaskId;
+    for (final draft in drafts) {
+      try {
+        final originalStart = DateTime.fromMillisecondsSinceEpoch(
+          draft.startDate,
+        );
+        final originalEnd = DateTime.fromMillisecondsSinceEpoch(draft.dueDate);
+        final range = _nextAvailableLazyLogDraftRange(
+          originalStart,
+          originalEnd,
+          occupied,
+        );
+        if (range.start != originalStart || range.end != originalEnd) {
+          shifted++;
+          await repository.updateDraft(
+            draft.id,
+            start: range.start,
+            end: range.end,
+          );
+        }
+        final createdTaskId = await _createTaskFromLazyLogDraft(
+          draft,
+          start: range.start,
+          end: range.end,
+        );
+        await repository.approve(draft.id, createdTaskId: createdTaskId);
+        occupied.add((start: range.start, end: range.end));
+        lastCreatedTaskId = createdTaskId;
+        created++;
+      } catch (error) {
+        failed++;
+        await repository.markFailed(draft.id, error.toString());
+      }
+    }
+
+    if (!mounted) return;
+    context.read<TaskNewBloc>().add(
+      LoadTasks(
+        focusTaskId: lastCreatedTaskId,
+        focusRequestToken: lastCreatedTaskId == null
+            ? null
+            : DateTime.now().microsecondsSinceEpoch,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    await _loadData();
+    if (!mounted) return;
+    final shiftedText = shifted > 0 ? '，已自动调整 $shifted 个任务时间' : '';
+    final failedText = failed > 0 ? '，$failed 个失败已保留待处理' : '';
+    showAppSnackBar(context, '已创建 $created 个任务$shiftedText$failedText');
+  }
+
+  ({DateTime start, DateTime end}) _nextAvailableLazyLogDraftRange(
+    DateTime start,
+    DateTime end,
+    List<({DateTime start, DateTime end})> occupied,
+  ) {
+    final minutes = end.difference(start).inMinutes.clamp(1, 24 * 60);
+    var nextStart = start;
+    var nextEnd = end.isAfter(start)
+        ? end
+        : start.add(Duration(minutes: minutes));
+    for (var i = 0; i < 96; i++) {
+      ({DateTime start, DateTime end})? conflict;
+      for (final slot in occupied) {
+        if (slot.start.isBefore(nextEnd) && slot.end.isAfter(nextStart)) {
+          conflict = slot;
+          break;
         }
       }
+      if (conflict == null) return (start: nextStart, end: nextEnd);
+      nextStart = conflict.end;
+      nextEnd = nextStart.add(Duration(minutes: minutes));
     }
+    return (start: nextStart, end: nextEnd);
+  }
 
-    if (mounted) {
-      context.read<TaskNewBloc>().add(LoadTasks());
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-      await _loadData();
-      if (!mounted) return;
-      final skippedText = skippedTasks > 0 ? '，$skippedTasks 个任务因没有项目未创建' : '';
-      showAppSnackBar(context, '已创建 $createdTasks 个任务$skippedText');
+  Future<String> _createTaskFromLazyLogDraft(
+    LazyLogDraft draft, {
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    var projectId = draft.projectId;
+    projectId ??= _projectCache.isEmpty
+        ? await _defaultLazyLogProjectId()
+        : null;
+    if (projectId == null) {
+      throw StateError('任务「${draft.title}」缺少项目，无法创建');
     }
+    final taskDraft = LazyLogTaskDraft(
+      title: draft.title,
+      description: draft.description,
+      priority: draft.priority,
+      checklist: LazyLogDraftRepository.checklistOf(draft),
+      startTime: start,
+      dueTime: end,
+    );
+    final parent = await _resolveDbLazyLogParentTaskId(
+      draft.parentTitle,
+      projectId,
+      [taskDraft],
+      existingParentId: draft.parentTaskId,
+    );
+    final createdTask = await widget.taskRepository!.create(
+      projectId: projectId,
+      title: draft.title,
+      description: draft.description,
+      priority: _priorityToDbValue(draft.priority),
+      startDate: start.millisecondsSinceEpoch,
+      dueDate: end.millisecondsSinceEpoch,
+      parentId: parent.id,
+    );
+    await _createLazyLogTaskResources(
+      createdTask.id,
+      LazyLogTaskEdit(
+        title: draft.title,
+        description: draft.description,
+        priority: draft.priority,
+        checklist: LazyLogDraftRepository.checklistOf(draft),
+        start: start,
+        end: end,
+      ),
+    );
+    return createdTask.id;
   }
 
   Future<void> _createLazyLogTaskResources(
@@ -1863,20 +2125,6 @@ class _HomeContentState extends State<_HomeContent> {
           id: parent.taskId,
           title: parent.title,
           projectId: parent.projectId,
-        ),
-    ];
-  }
-
-  List<LazyLogTaskDraft> _planTaskDrafts(LazyLogCreationPlan plan) {
-    return [
-      for (final task in plan.tasks)
-        LazyLogTaskDraft(
-          title: task.title,
-          description: task.description,
-          priority: task.priority,
-          checklist: task.checklist,
-          startTime: task.start,
-          dueTime: task.end,
         ),
     ];
   }
@@ -2022,7 +2270,7 @@ class _HomeContentState extends State<_HomeContent> {
       ),
     ].where((task) => task.title.trim().isNotEmpty).toList();
     if (tasks.isNotEmpty) return tasks;
-    return result.nextActions
+    final nextActionTasks = result.nextActions
         .map(
           (action) => LazyLogTaskDraft(
             title: _lazyActionTitle(action),
@@ -2031,6 +2279,8 @@ class _HomeContentState extends State<_HomeContent> {
         )
         .where((task) => task.title.trim().isNotEmpty)
         .toList();
+    if (nextActionTasks.isNotEmpty) return nextActionTasks;
+    return _lazyLogFallbackTasks(result);
   }
 
   String _lazyActionTitle(String value) {
@@ -2042,10 +2292,44 @@ class _HomeContentState extends State<_HomeContent> {
     return title.length <= 36 ? title : '${title.substring(0, 36)}...';
   }
 
+  List<LazyLogTaskDraft> _lazyLogFallbackTasks(LazyLogResult result) {
+    final titleSource = _firstLazyLogFallbackLine([
+      ...result.completed,
+      ...result.blockers,
+      result.summary,
+    ]);
+    if (titleSource.isEmpty) return const [];
+    final detailLines = <String>[
+      if (result.summary.trim().isNotEmpty) result.summary.trim(),
+      ...result.completed.map((item) => '进展：${item.trim()}'),
+      ...result.blockers.map((item) => '问题：${item.trim()}'),
+    ].where((line) => line.trim().isNotEmpty).toList();
+    final seen = <String>{};
+    final description = [
+      for (final line in detailLines)
+        if (seen.add(line)) line,
+    ].join('\n');
+    return [
+      LazyLogTaskDraft(
+        title: _lazyActionTitle(titleSource),
+        description: description,
+      ),
+    ];
+  }
+
+  String _firstLazyLogFallbackLine(List<String> values) {
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
+
   String _lazyLogParentTitle(
     LazyLogResult result,
     List<LazyLogTaskDraft> tasks,
   ) {
+    if (tasks.length <= 1) return '';
     final explicit = _normalizeLazyLogParentTitle(result.parentTitle);
     if (explicit.isNotEmpty) return explicit;
     final source = [
@@ -2067,6 +2351,14 @@ class _HomeContentState extends State<_HomeContent> {
       final title = _normalizeLazyLogParentTitle(relatedMatch.group(1) ?? '');
       if (title.isNotEmpty) return title;
     }
+    final fallback = _normalizeLazyLogParentTitle(
+      _firstLazyLogFallbackLine([
+        result.summary,
+        ...result.completed,
+        ...tasks.map((task) => task.title),
+      ]),
+    );
+    if (fallback.isNotEmpty) return fallback;
     return '';
   }
 
@@ -2077,32 +2369,6 @@ class _HomeContentState extends State<_HomeContent> {
     );
     if (trimmed.isEmpty) return '';
     return trimmed.length <= 40 ? trimmed : trimmed.substring(0, 40);
-  }
-
-  Future<({String? id, bool created})> _resolveLocalLazyLogParentTaskId(
-    String parentTitle,
-    List<LazyLogTaskDraft> tasks, {
-    String? existingParentId,
-  }) async {
-    if (existingParentId != null && existingParentId.isNotEmpty) {
-      return (id: existingParentId, created: false);
-    }
-    if (_shouldSkipLazyLogParent(parentTitle, tasks)) {
-      return (id: null, created: false);
-    }
-    final existing = _findLazyLogParentTask(parentTitle, source: 'storage');
-    if (existing != null) return (id: existing.taskId, created: false);
-    final range = _lazyLogParentRange(tasks);
-    final created = await widget.storage.createTask(
-      userId: _homeUserId(),
-      title: parentTitle,
-      description: '由懒人日志自动创建的父任务',
-      level: 'task',
-      startDate: range?.start,
-      endDate: range?.end,
-      priority: 'P2',
-    );
-    return (id: created.id, created: true);
   }
 
   Future<({String? id, bool created})> _resolveDbLazyLogParentTaskId(
@@ -2199,13 +2465,6 @@ class _HomeContentState extends State<_HomeContent> {
     final project = await repository.create(name: '默认项目');
     _projectCache = {project.id: project};
     return project.id;
-  }
-
-  String _homeUserId() {
-    final authState = context.read<AuthBloc>().state;
-    if (authState is LocalAuthenticated) return authState.email;
-    if (authState is Authenticated) return authState.user.id;
-    return 'local_user';
   }
 
   int _priorityToDbValue(String priority) => switch (priority) {

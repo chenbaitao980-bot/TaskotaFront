@@ -81,8 +81,8 @@ class NotificationService {
   // key: 通知 id；value: 发出通知时窗口是否处于隐藏状态（用于按钮回调后决定是否重新隐藏）
   final Map<int, bool> _windowWasHiddenWhenNotifSent = {};
   // key: 通知 id；value: 标题/正文/payload（用于稍后提醒重新调度）
-  final Map<int, ({String title, String body, String? payload})>
-      _notifStore = {};
+  final Map<int, ({String title, String body, String? payload})> _notifStore =
+      {};
 
   List<String> get diagnosticLog => List.unmodifiable(_diagnosticLog);
   String get diagnosticSummary => _diagnosticLog.join('\n');
@@ -146,7 +146,8 @@ class NotificationService {
               return;
             }
             if (action == 'snooze') {
-              final snoozeMin = int.tryParse(
+              final snoozeMin =
+                  int.tryParse(
                     (response.data['snoozeTime'] as String?) ?? '15',
                   ) ??
                   15;
@@ -167,16 +168,20 @@ class NotificationService {
               // foreground 激活是异步的，需等 showDesktopWindow 完成后再导航，
               // 否则 Flutter lifecycle 尚未 resume，pushNamedAndRemoveUntil 会静默失败
               (showDesktopWindow?.call() ?? Future.value()).then((_) {
-                AppRouter.navigatorKey.currentState
-                    ?.pushNamedAndRemoveUntil('/', (route) => false);
+                AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+                  '/',
+                  (route) => false,
+                );
               });
               return;
             }
             // 点击通知主体（非按钮）
             if (response.payload != null) pendingTaskId = response.payload;
             (showDesktopWindow?.call() ?? Future.value()).then((_) {
-              AppRouter.navigatorKey.currentState
-                  ?.pushNamedAndRemoveUntil('/', (route) => false);
+              AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+                '/',
+                (route) => false,
+              );
             });
           },
         );
@@ -206,14 +211,18 @@ class NotificationService {
           // 点击任何通知：先停掉对应的 alarm，再跳首页
           if (response.id != null) AlarmService().cancelAlarm(response.id!);
           if (response.payload == null) {
-            AppRouter.navigatorKey.currentState
-                ?.pushNamedAndRemoveUntil('/', (route) => false);
+            AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+              '/',
+              (route) => false,
+            );
             return;
           }
           // 所有非空 payload（含 overdue_navigate）：记录待定位 ID，首页加载后消费
           pendingTaskId = response.payload;
-          AppRouter.navigatorKey.currentState
-              ?.pushNamedAndRemoveUntil('/', (route) => false);
+          AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+            '/',
+            (route) => false,
+          );
         },
       );
 
@@ -302,10 +311,14 @@ class NotificationService {
     }
 
     // Android / iOS: zonedSchedule
-    _log('[Notif] sched id=$id useOs=$_useOsNotifications plugin=${_plugin != null}');
+    _log(
+      '[Notif] sched id=$id useOs=$_useOsNotifications plugin=${_plugin != null}',
+    );
     if (_useOsNotifications && _plugin != null) {
       final perm = await _ensureMobileNotificationPermissions();
-      _log('[Notif] sched perm notif=${perm.notificationsGranted} exact=${perm.exactAlarmGranted}');
+      _log(
+        '[Notif] sched perm notif=${perm.notificationsGranted} exact=${perm.exactAlarmGranted}',
+      );
       if (!perm.notificationsGranted) {
         _log('[Notif] sched BLOCKED: notifications not granted');
         _pendingNotifications.add(
@@ -439,7 +452,9 @@ class NotificationService {
   }) {
     // Windows: 统一走系统 Toast，不论窗口是否可见
     if (Platform.isWindows && _useNativeWindowsNotifications) {
-      unawaited(_showWindowsPluginNotification(id, title, body, payload: payload));
+      unawaited(
+        _showWindowsPluginNotification(id, title, body, payload: payload),
+      );
       return;
     }
     // macOS/Linux: 前台时弹应用内 Overlay，后台时走 OS 通知
@@ -497,8 +512,13 @@ class NotificationService {
           body: item.body,
           onClose: closeOverlay,
           onMarkDone: () => _handleMarkDone(item.payload),
-          onSnooze: (delay) =>
-              _rescheduleNotification(item.id, item.title, item.body, item.payload, delay),
+          onSnooze: (delay) => _rescheduleNotification(
+            item.id,
+            item.title,
+            item.body,
+            item.payload,
+            delay,
+          ),
           onViewDetail: () => _handleViewDetail(item.payload),
         ),
       ),
@@ -506,14 +526,21 @@ class NotificationService {
     overlay.insert(_currentOverlayEntry!);
   }
 
-  void _showOsNotificationFallback(int id, String title, String body, {String? payload}) {
+  void _showOsNotificationFallback(
+    int id,
+    String title,
+    String body, {
+    String? payload,
+  }) {
     try {
       final channel = resolveDesktopNotificationChannel(
         isWindows: Platform.isWindows,
         hasNativeWindowsPlugin: _useNativeWindowsNotifications,
       );
       if (channel == DesktopNotificationChannel.nativePlugin) {
-        unawaited(_showWindowsPluginNotification(id, title, body, payload: payload));
+        unawaited(
+          _showWindowsPluginNotification(id, title, body, payload: payload),
+        );
       } else if (channel == DesktopNotificationChannel.windowsScript) {
         _showWindowsNotification(title, body);
       } else if (Platform.isMacOS) {
@@ -538,8 +565,10 @@ class NotificationService {
     if (payload == 'overdue_navigate') return;
     _log('[Notif] viewDetail navigate payload=$payload');
     NotificationService.pendingTaskId = payload;
-    AppRouter.navigatorKey.currentState
-        ?.pushNamedAndRemoveUntil('/', (route) => false);
+    AppRouter.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
   }
 
   /// 在指定延迟后重新触发提醒
@@ -570,7 +599,8 @@ class NotificationService {
       return;
     }
     try {
-      final hasTask = payload != null &&
+      final hasTask =
+          payload != null &&
           payload.isNotEmpty &&
           payload != 'overdue_navigate';
 
@@ -652,7 +682,9 @@ class NotificationService {
           '${Directory.systemTemp.path}\\sa_notify_${DateTime.now().microsecondsSinceEpoch}.ps1';
       final safeTitle = title.replaceAll("'", "''").replaceAll('"', '&quot;');
       final safeBody = body.replaceAll("'", "''").replaceAll('"', '&quot;');
-      final iconFile = File('data/flutter_assets/assets/icons/app_icon_1024.png');
+      final iconFile = File(
+        'data/flutter_assets/assets/icons/app_icon_1024.png',
+      );
       final iconPath = iconFile.absolute.path;
       final iconUri = 'file:///${iconPath.replaceAll('\\', '/')}';
       File(psPath).writeAsStringSync(
@@ -727,7 +759,9 @@ class NotificationService {
       return false;
     }
     final perm = await _ensureMobileNotificationPermissions();
-    _log('[Notif] test: notif=${perm.notificationsGranted} exact=${perm.exactAlarmGranted} useOs=$_useOsNotifications');
+    _log(
+      '[Notif] test: notif=${perm.notificationsGranted} exact=${perm.exactAlarmGranted} useOs=$_useOsNotifications',
+    );
     if (!perm.notificationsGranted) {
       _log('[Notif] test FAILED: notifications not granted');
       return false;
@@ -737,7 +771,10 @@ class NotificationService {
         9999,
         'Test Notification',
         'Notification pipeline is working!',
-        tz.TZDateTime.from(DateTime.now().add(const Duration(seconds: 1)), tz.local),
+        tz.TZDateTime.from(
+          DateTime.now().add(const Duration(seconds: 1)),
+          tz.local,
+        ),
         _notifDetails,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       );
@@ -791,7 +828,10 @@ class NotificationService {
       await ios?.requestPermissions(alert: true, badge: true, sound: true);
       final result = await ios?.checkPermissions();
       final granted = result?.isEnabled ?? false;
-      return _MobilePermResult(granted, granted); // iOS: no separate exact alarm
+      return _MobilePermResult(
+        granted,
+        granted,
+      ); // iOS: no separate exact alarm
     }
     return const _MobilePermResult(true, true);
   }
@@ -813,8 +853,8 @@ class NotificationService {
     if (!remindAt.isBefore(now)) {
       await scheduleNotification(
         id: notificationIdForSchedule(scheduleId),
-        title: 'Upcoming: $title',
-        body: description ?? 'Your schedule starts in $remindBeforeMinutes minutes',
+        title: '即将开始：$title',
+        body: description ?? '$remindBeforeMinutes 分钟后开始',
         scheduledDate: remindAt,
         payload: scheduleId,
       );
@@ -823,8 +863,8 @@ class NotificationService {
     if (!startTime.isBefore(now)) {
       await scheduleNotification(
         id: notificationIdForSchedule(scheduleId, offset: 1),
-        title: 'Starting: $title',
-        body: description ?? 'Your schedule is starting now',
+        title: '开始提醒：$title',
+        body: description ?? '现在开始',
         scheduledDate: startTime,
         payload: scheduleId,
       );
@@ -840,7 +880,6 @@ class NotificationService {
         intervalMs: repeatInterval * 60 * 1000,
       );
     }
-
   }
 
   Future<void> cancelReminderForSchedule(String scheduleId) async {
@@ -933,7 +972,9 @@ class NotificationService {
       scheduled++;
     }
     await _showOverdueDigest(overdueTaskIds.length);
-    _log('[Notif] rescheduleTaskReminders: ${tasks.length} tasks, $scheduled scheduled, ${overdueTaskIds.length} overdue');
+    _log(
+      '[Notif] rescheduleTaskReminders: ${tasks.length} tasks, $scheduled scheduled, ${overdueTaskIds.length} overdue',
+    );
   }
 
   Future<void> _clearOverdueAlarms(Iterable<String> overdueIds) async {

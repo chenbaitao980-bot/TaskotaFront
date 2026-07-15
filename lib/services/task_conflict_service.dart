@@ -24,7 +24,8 @@ class TaskConflictService {
 
   static bool isTimingOccupant(Task t, {String? excludeParentId}) {
     if (t.startDate == null || t.dueDate == null) return false;
-    if (t.status == 2 || t.deleted != 0) return false;
+    if (t.status == 2 || t.deleted != 0 || t.archived != 0) return false;
+    if (t.parentId == null) return false;
     if (excludeParentId != null && t.id == excludeParentId) return false;
     if (_isMultiDay(t)) return false;
     return true;
@@ -73,9 +74,7 @@ class TaskConflictService {
     final duration = end.difference(start).inMinutes.clamp(1, 480);
     final all = await taskRepository.getAll();
     final occupants = all
-        .where(
-          (t) => isTimingOccupant(t, excludeParentId: excludeParentId),
-        )
+        .where((t) => isTimingOccupant(t, excludeParentId: excludeParentId))
         .where((t) => excludeTaskId == null || t.id != excludeTaskId)
         .toList();
     final scheduler = SubtaskScheduler(
@@ -96,9 +95,7 @@ class TaskConflictService {
   }) async {
     final all = await taskRepository.getAll();
     final occupants = all
-        .where(
-          (t) => isTimingOccupant(t, excludeParentId: excludeParentId),
-        )
+        .where((t) => isTimingOccupant(t, excludeParentId: excludeParentId))
         .where((t) => excludeTaskId == null || t.id != excludeTaskId)
         .toList();
     final scheduler = SubtaskScheduler(
