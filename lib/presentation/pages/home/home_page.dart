@@ -1620,8 +1620,6 @@ class _HomeContentState extends State<_HomeContent> {
               controller: _lazyLogController,
               minLines: 2,
               maxLines: 5,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _submitLazyLog(),
               decoration: InputDecoration(
                 hintText: '随手写：今天做了什么、遇到什么、接下来要安排什么...',
                 filled: true,
@@ -1644,6 +1642,8 @@ class _HomeContentState extends State<_HomeContent> {
                 ),
               ),
               const SizedBox(width: 12),
+              _buildLazyLogFailedButton(),
+              const SizedBox(width: 8),
               FilledButton.icon(
                 onPressed: _lazyLogSubmitting ? null : _submitLazyLog,
                 icon: const Icon(Icons.bolt_rounded, size: 17),
@@ -1653,6 +1653,28 @@ class _HomeContentState extends State<_HomeContent> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLazyLogFailedButton() {
+    final repository = _lazyLogDraftRepository;
+    if (repository == null) return const SizedBox.shrink();
+    return StreamBuilder<int>(
+      stream: repository.watchFailedCount(),
+      initialData: 0,
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 0;
+        if (count <= 0) return const SizedBox.shrink();
+        return OutlinedButton.icon(
+          onPressed: _showLazyLogDraftReview,
+          icon: const Icon(Icons.error_outline_rounded, size: 16),
+          label: Text('失败 $count'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.redAccent,
+            side: const BorderSide(color: Colors.redAccent),
+          ),
+        );
+      },
     );
   }
 

@@ -225,7 +225,8 @@ class _DraftReviewCardState extends State<_DraftReviewCard> {
   @override
   Widget build(BuildContext context) {
     final draft = widget.draft;
-    final canEdit = draft.status == LazyLogDraftStatus.pendingReview;
+    final canEdit = draft.status == LazyLogDraftStatus.pendingReview ||
+        draft.status == LazyLogDraftStatus.failed;
     final start = DateTime.fromMillisecondsSinceEpoch(draft.startDate);
     final end = DateTime.fromMillisecondsSinceEpoch(draft.dueDate);
     return Card(

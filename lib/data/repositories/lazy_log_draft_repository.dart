@@ -31,6 +31,16 @@ class LazyLogDraftRepository {
         .map((rows) => rows.length);
   }
 
+  Stream<int> watchFailedCount() {
+    return (_db.select(_db.lazyLogDrafts)..where(
+          (d) =>
+              d.status.equals(LazyLogDraftStatus.failed) &
+              d.needsReview.equals(1),
+        ))
+        .watch()
+        .map((rows) => rows.length);
+  }
+
   Stream<List<LazyLogDraft>> watchReviewable() {
     final query = _db.select(_db.lazyLogDrafts)
       ..where((d) => d.needsReview.equals(1))
