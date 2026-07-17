@@ -13,6 +13,7 @@ import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../platform/window_manager_bridge.dart';
 import 'theme_settings_page.dart';
+import 'keyword_mapping_page.dart';
 
 class AppSettingsPage extends StatefulWidget {
   final bool showLocalDataTools;
@@ -115,6 +116,20 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                         setState(() => _skipWeekends = value);
                         await _storage.setSkipWeekends(value);
                       },
+              ),
+              const SizedBox(height: 10),
+              _SettingsRow(
+                icon: Icons.tune_rounded,
+                title: '懒人日志关键字映射',
+                subtitle: '配置「下班→17:00」「XX项目→项目」等自动映射规则',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const KeywordMappingPage(),
+                    ),
+                  );
+                },
               ),
             ],
           ),

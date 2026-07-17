@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 
 import '../models/assistant/assistant_models.dart';
 import '../models/assistant/lazy_log_models.dart';
+import '../models/assistant/lazy_log_mapping.dart';
+import 'lazy_log_mapping_service.dart';
 
 class HomeLazyLogService {
   final Dio _dio;
@@ -21,7 +23,7 @@ class HomeLazyLogService {
     final trimmed = input.trim();
     if (trimmed.isEmpty) return const LazyLogResult();
     if (!config.isComplete) {
-      return _normalizeRelativeTaskRanges(
+      return _normalizeAll(
         _fallback(trimmed),
         input: trimmed,
         now: now ?? DateTime.now(),
@@ -43,7 +45,7 @@ class HomeLazyLogService {
           'messages': [
             {
               'role': 'system',
-              'content': _systemPrompt(
+              'content': await _systemPrompt(
                 now ?? DateTime.now(),
                 config.userInstructions,
                 projectRoutingContext,
@@ -56,7 +58,7 @@ class HomeLazyLogService {
       final content = _readContent(response.data);
       final decoded = jsonDecode(_stripFence(content));
       if (decoded is! Map) {
-        return _normalizeRelativeTaskRanges(
+        return _normalizeAll(
           _fallback(trimmed),
           input: trimmed,
           now: now ?? DateTime.now(),
@@ -65,19 +67,18 @@ class HomeLazyLogService {
       final result = LazyLogResult.fromJson(
         decoded.map((key, value) => MapEntry(key.toString(), value)),
       );
+      final nowDt = now ?? DateTime.now();
       return result.isEmpty
-          ? _normalizeRelativeTaskRanges(
-              _fallback(trimmed),
-              input: trimmed,
-              now: now ?? DateTime.now(),
-            )
-          : _normalizeRelativeTaskRanges(
-              result,
-              input: trimmed,
-              now: now ?? DateTime.now(),
-            );
-    } catch (_) {
-      return _normalizeRelativeTaskRanges(
+          ? _normalizeAll(_fallback(trimmed), input: trimmed, now: nowDt)
+          : _normalizeAll(result, input: trimmed, now: nowDt);
+    } catch (e) {
+      if (e is DioException) {
+        final code = e.response?.statusCode;
+        if (code == 401 || code == 403) {
+          rethrow;
+        }
+      }
+      return _normalizeAll(
         _fallback(trimmed),
         input: trimmed,
         now: now ?? DateTime.now(),
@@ -85,14 +86,34 @@ class HomeLazyLogService {
     }
   }
 
-  String _systemPrompt(
+  Future<LazyLogResult> _normalizeAll(
+    LazyLogResult result, {
+    required String input,
+    required DateTime now,
+  }) async {
+    final mappings = await LazyLogMappingService().loadTimeMappings();
+    return _normalizeAfterHoursKeywords(
+      _normalizeRelativeTaskRanges(
+        result,
+        input: input,
+        now: now,
+        mappings: mappings,
+      ),
+      input: input,
+      now: now,
+      mappings: mappings,
+    );
+  }
+
+  Future<String> _systemPrompt(
     DateTime now,
     String userInstructions,
     String projectRoutingContext,
-  ) {
+  ) async {
     final today = _dateOnly(now);
     final preferences = _userInstructionsBlock(userInstructions);
     final projectRouting = _projectRoutingBlock(projectRoutingContext);
+    final mappingRules = await _mappingRulesBlock();
     return '''
 你是 Taskora 首页懒人日志结构化助手。把用户随手输入整理成 JSON，不要输出 Markdown，不要解释。
 
@@ -141,6 +162,9 @@ JSON 格式必须是：
 10. 创建任务时，如果用户输入包含背景、目标、交付物、约束或原因，顺带生成 description。
 11. checklist 必须严格来自用户输入中明确写出的步骤、验收点、待检查事项或清单；不要因为任务看起来复杂就自行拆解、补充或推断检查点。没有明确检查项时，checklist 返回空数组。
 12. 如果某类没有内容，返回空数组。
+13. 当用户输入包含下班相关语义时，结合用户偏好中配置的下班时间设置任务时间。
+14. 当用户输入包含以下关键字时，自动映射对应时间（如果未指定具体时间）：
+$mappingRules
 $preferences
 $projectRouting
 ''';
@@ -167,12 +191,31 @@ $trimmed
 请优先使用这里的真实分组/项目名称填写 projectGroupHint/projectHint。''';
   }
 
+  Future<String> _mappingRulesBlock() async {
+    final mappings = await LazyLogMappingService().loadTimeMappings();
+    final enabled = mappings
+        .where((m) => m.enabled && m.afterHour != null)
+        .toList();
+    if (enabled.isEmpty) return '';
+    final lines = enabled.map((m) {
+      final triggers = m.triggers.join('、');
+      final time =
+          '${m.afterHour!.toString().padLeft(2, '0')}:${(m.afterMinute ?? 0).toString().padLeft(2, '0')}';
+      return '  - "$triggers" → $time';
+    });
+    final newline = '\n';
+    return '${lines.join(newline)}${newline}  遇到以上关键字且用户没有指定具体时间时，将任务时间设为对应时间。';
+  }
+
   LazyLogResult _normalizeRelativeTaskRanges(
     LazyLogResult result, {
     required String input,
     required DateTime now,
+    required List<LazyLogKeywordMapping> mappings,
   }) {
-    if (!_hasCurrentWeekPhrase(input) || _hasExplicitClock(input)) {
+    if (!_hasCurrentWeekPhrase(input) ||
+        _hasExplicitClock(input) ||
+        _hasAfterWorkPhrase(input, mappings)) {
       return result;
     }
 
@@ -228,6 +271,57 @@ $trimmed
 
   bool _hasCurrentWeekPhrase(String input) {
     return _containsAny(input, const ['这周', '本周', '这星期', '本星期']);
+  }
+
+  LazyLogResult _normalizeAfterHoursKeywords(
+    LazyLogResult result, {
+    required String input,
+    required DateTime now,
+    required List<LazyLogKeywordMapping> mappings,
+  }) {
+    final matched = _matchingTimeMapping(input, mappings);
+    if (matched == null) return result;
+    final afterStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      matched.afterHour!,
+      matched.afterMinute ?? 0,
+    );
+    final afterEnd = afterStart.add(const Duration(hours: 1));
+    final tasks = result.tasks.map((task) {
+      if (task.startTime != null || task.dueTime != null) return task;
+      return task.copyWith(startTime: afterStart, dueTime: afterEnd);
+    }).toList();
+    return LazyLogResult(
+      summary: result.summary,
+      completed: result.completed,
+      blockers: result.blockers,
+      nextActions: result.nextActions,
+      tasks: tasks,
+      schedules: result.schedules,
+      parentTitle: result.parentTitle,
+      projectHint: result.projectHint,
+      projectGroupHint: result.projectGroupHint,
+      usedFallback: result.usedFallback,
+    );
+  }
+
+  bool _hasAfterWorkPhrase(String input, List<LazyLogKeywordMapping> mappings) {
+    return _matchingTimeMapping(input, mappings) != null;
+  }
+
+  LazyLogKeywordMapping? _matchingTimeMapping(
+    String input,
+    List<LazyLogKeywordMapping> mappings,
+  ) {
+    for (final mapping in mappings) {
+      if (!mapping.enabled || mapping.afterHour == null) continue;
+      for (final trigger in mapping.triggers) {
+        if (input.contains(trigger)) return mapping;
+      }
+    }
+    return null;
   }
 
   bool _hasExplicitClock(String input) {

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter/services.dart';
@@ -618,6 +619,8 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
   late final _userInstructions = TextEditingController(
     text: widget.config.userInstructions,
   );
+  var _testing = false;
+  String? _testResult;
 
   @override
   void dispose() {
@@ -627,6 +630,44 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
     _model.dispose();
     _userInstructions.dispose();
     super.dispose();
+  }
+
+  Future<void> _testConnection() async {
+    setState(() { _testing = true; _testResult = null; });
+    try {
+      final config = AssistantModelConfig(
+        baseUrl: _baseUrl.text.trim(),
+        apiPath: _apiPath.text.trim(),
+        apiKey: _apiKey.text.trim(),
+        model: _model.text.trim(),
+      );
+      await Dio(BaseOptions(connectTimeout: const Duration(seconds: 10))).post(
+        config.endpoint,
+        options: Options(headers: {
+          'Authorization': 'Bearer ${config.apiKey.trim()}',
+          'Content-Type': 'application/json',
+        }),
+        data: {
+          'model': config.model.trim(),
+          'messages': [const {'role': 'user', 'content': 'Hi'}],
+          'max_tokens': 1,
+        },
+      );
+      if (mounted) setState(() => _testResult = '✅ 连接成功');
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final msg = switch (e.response?.statusCode) {
+        401 || 403 => '❌ 认证失败（Token 可能已过期）',
+        404 => '❌ API 地址不存在',
+        422 => '❌ 请求参数错误（模型 ID 可能不对）',
+        _ => '❌ 连接失败：${e.message ?? e.toString()}',
+      };
+      setState(() => _testResult = msg);
+    } catch (e) {
+      if (mounted) setState(() => _testResult = '❌ 错误：$e');
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
   }
 
   @override
@@ -663,6 +704,20 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
         ),
       ),
       actions: [
+        if (_testResult != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(_testResult!, style: const TextStyle(fontSize: 13)),
+          ),
+        TextButton(
+          onPressed: _testing ? null : _testConnection,
+          child: _testing
+              ? const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('测试连接'),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('取消'),
@@ -673,9 +728,7 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
               context,
               AssistantModelConfig(
                 baseUrl: _baseUrl.text.trim(),
-                apiPath: _apiPath.text.trim().isEmpty
-                    ? '/chat/completions'
-                    : _apiPath.text.trim(),
+                apiPath: _apiPath.text.trim(),
                 apiKey: _apiKey.text.trim(),
                 model: _model.text.trim(),
                 userInstructions: _userInstructions.text.trim(),

@@ -25,7 +25,8 @@ class AssistantModelConfig {
       baseUrl.trim().replaceFirst(RegExp(r'/+$'), ''),
     );
     if (base.endsWith('/chat/completions')) return base;
-    final path = apiPath.trim().isEmpty ? '/chat/completions' : apiPath.trim();
+    final path = apiPath.trim();
+    if (path.isEmpty) return base;
     return '$base${path.startsWith('/') ? path : '/$path'}';
   }
 

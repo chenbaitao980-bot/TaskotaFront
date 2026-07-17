@@ -846,10 +846,7 @@ class _HomeContentState extends State<_HomeContent> {
       _projectGroupCache = {for (final group in groups) group.id: group};
     }
 
-    // Load storage tasks
-    final storageTasks = widget.storage.getTasks();
-
-    // Load DB tasks
+    // Load DB tasks (primary source)
     List<Task> dbTasks = [];
     if (widget.taskRepository != null) {
       dbTasks = await widget.taskRepository!.getAll();
@@ -862,9 +859,11 @@ class _HomeContentState extends State<_HomeContent> {
     // Build timeline items
     final timelineItems = <_TimelineTask>[];
     final now = DateTime.now();
+    final dbTaskIds = dbTasks.map((t) => t.id).toSet();
 
-    // From storage (TaskBreakdown)
-    for (final t in storageTasks) {
+    // From storage (TaskBreakdown) — only tasks not already in DB
+    for (final t in widget.storage.getTasks()) {
+      if (dbTaskIds.contains(t.id)) continue;
       final date = t.startDate ?? t.endDate ?? now;
       timelineItems.add(
         _TimelineTask(
@@ -883,7 +882,7 @@ class _HomeContentState extends State<_HomeContent> {
       );
     }
 
-    // From DB (Task)
+    // From DB (Task) — primary source
     for (final t in dbTasks) {
       final date = t.startDate != null
           ? DateTime.fromMillisecondsSinceEpoch(t.startDate!)
@@ -917,21 +916,7 @@ class _HomeContentState extends State<_HomeContent> {
       return a.title.compareTo(b.title);
     });
 
-    // Deduplicate: keep only the last occurrence per taskId (DB version overrides storage)
-    final seen = <String>{};
-    final deduped = <_TimelineTask>[];
-    for (final item in timelineItems.reversed) {
-      if (seen.add(item.taskId)) {
-        deduped.add(item);
-      }
-    }
-    deduped.sort((a, b) {
-      final cmp = a.date.compareTo(b.date);
-      if (cmp != 0) return cmp;
-      return a.title.compareTo(b.title);
-    });
-
-    _timelineTasks = deduped;
+    _timelineTasks = timelineItems;
 
     // 恢复持久化的首页项目筛选
     if (_filterProjectIds.isEmpty) {
@@ -1791,6 +1776,11 @@ class _HomeContentState extends State<_HomeContent> {
               batchId: batchId,
             );
           },
+          onError: (error) {
+            if (mounted) {
+              showAppSnackBar(context, 'AI 配置认证失败（Token 可能已过期），请在设置中重新配置 AI 模型');
+            }
+          },
         ),
       );
     } catch (error) {
@@ -1872,6 +1862,11 @@ class _HomeContentState extends State<_HomeContent> {
             sourceInput: draft.sourceInput,
             batchId: draft.batchId,
           );
+        },
+        onError: (error) {
+          if (mounted) {
+            showAppSnackBar(context, 'AI 配置认证失败（Token 可能已过期），请在设置中重新配置 AI 模型');
+          }
         },
       ),
     );

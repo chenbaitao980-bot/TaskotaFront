@@ -25,6 +25,7 @@ class LazyLogDraftService {
     required AssistantModelConfig config,
     required String projectRoutingContext,
     required LazyLogDraftBuilder buildDrafts,
+    void Function(String error)? onError,
   }) async {
     try {
       final result = await _lazyLogService.structure(
@@ -47,6 +48,7 @@ class LazyLogDraftService {
       );
     } catch (error) {
       await _draftRepository.markFailed(runningDraftId, error.toString());
+      onError?.call(error.toString());
     }
   }
 }
