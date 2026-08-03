@@ -165,11 +165,16 @@ class DesktopFloatingTaskTab extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             Column(
+                              mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Tooltip(
                                   message: '打开任务',
                                   child: IconButton(
+                                    style: IconButton.styleFrom(
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
                                     constraints: const BoxConstraints.tightFor(
                                       width: 30,
                                       height: 30,
@@ -187,6 +192,10 @@ class DesktopFloatingTaskTab extends StatelessWidget {
                                 Tooltip(
                                   message: '关闭便签',
                                   child: IconButton(
+                                    style: IconButton.styleFrom(
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
                                     constraints: const BoxConstraints.tightFor(
                                       width: 30,
                                       height: 30,
