@@ -1,3 +1,70 @@
+## 2026-08-03 (V3 重构：desktop_multi_window 独立便签窗)
+
+### 架构重构
+- **独立便签窗替代"缩小主窗"**：关闭进托盘后，右上角便签由 `desktop_multi_window` 创建的**独立第二 Flutter 引擎窗口**承载（透明无边框 360x112 置顶跳过任务栏），主窗常驻不缩小/不重建。根治上一轮实测的三大固有缺陷：
+  - **黑线**：便签窗自身初始化 window_manager 并 `setBackgroundColor(透明)`（触发 Windows `ACCENT_ENABLE_TRANSPARENTGRADIENT`），消除 OS 非客户区深色边框，卡片四周透出桌面。
+  - **白屏**：主窗零缩放，规避 window_manager 0.5.1 hide→show 后 surface 不重绘（#155/#258/#571）。
+  - **点击卡顿**：主窗常驻零重建，无互斥 BlocBuilder 重建 + 串行 IPC 链。
+- **窗口间协议**（`WindowMethodChannel` 单向模式，主窗/便签窗各自注册 handler）：`taskora_note_update`（主→便签：notifyTask 推送摘要 / hideNote 隐藏）、`taskora_note_command`（便签→主：showMain 唤起定位 / dismissNote 关闭置 dismissed）。便签窗为纯展示壳不读 SQLite，摘要由主窗 `rankCandidates` 算好后经通道推送；首次创建摘要随 `WindowConfiguration.arguments` 注入规避注册竞态；便签窗懒建一次、后续复用（规避 #484 句柄泄漏）。
+
+### 修复
+- **便签候选排序改分层规则**：弃用「进行中优先」反直觉规则。候选池 = 未完成任务（待办+进行中，deleted/archived=0）；**层① 小时级任务（单日非全天）优先，层② 跨天/全天任务（isAllDay || 跨日）靠后**；每层内「进行中 → 距 startDate 最近 → 平局 updatedAt 最新」；**无 startDate 不入排序**（剔除）。
+
+### 影响文件
+- `pubspec.yaml` — + `desktop_multi_window: ^0.3.0`
+- `windows/runner/flutter_window.cpp` — + `DesktopMultiWindowSetWindowCreatedCallback`（第二引擎自动注册全部插件）
+- `lib/presentation/pages/floating_note/note_window_app.dart` — 新增便签引擎
+- `lib/core/desktop/desktop_floating_tab_controller.dart` — 删缩小/恢复逻辑；加便签窗生命周期 + 通道 handler + `rankCandidates` 分层规则
+- `lib/main.dart` — 加便签引擎分支；删 home 浮动便签分支
+- `test/floating_tab_controller_test.dart` — rankCandidates 分层规则用例（7 条）
+
+## 2026-08-03 (便签缺陷复盘：黑线/选任务/白屏/卡顿根因定位)
+
+### 复盘（4 子 agent 调研，本轮未提交代码，修复待确认）
+- **黑线根因纠正**：上一轮「三层叠加（深色阴影+48%描边+98%透明卡）」诊断不完整。真实根因 = window_manager 无边框窗口在 `TitleBarStyle.hidden` 时，Windows `WM_NCCALCSIZE` 内缩 8px 绘制 OS 非客户区深色边框（window_manager.cpp:165-179）；且窗口从未设透明（`ensureWindowManagerInitialized` 未传 `WindowOptions`，window_manager_bridge_desktop.dart:11），卡片四周 8px Padding 透出窗口背景色。修复方向：便签窗口 `setTransparent(true)` + 透明背景，恢复时还原 `setTransparent(false)`。
+- **便签非最近任务**：`rankCandidates`「池内存在进行中就只看进行中」→ 3 天前设进行中的旧任务压过今天到期的待办；无日期任务 anchor=now 距离恒 0 必赢。选任务规则需重定（待用户确认）。
+- **关闭便签再打开白屏**：window_manager 0.5.1 hide→show 后 Flutter surface 不重绘（GitHub issues #155/#258/#571，社区方案 = hide 前 `setOpacity(0)`、show 后 `setOpacity(1)` 强制重合成）；最大化恢复触发 #383。
+- **点击跳首页卡顿**：main.dart BlocBuilder 互斥重建 HomePage → 全量重查库 + Supabase 拉取 + 360 天时间轴重算 + 通知重调度（约占一半耗时）；restore 链 8~10 个串行 windowManager IPC。修复方向：Stack+Offstage 常驻 HomePage + chrome 调用并行化。
+- **架构确认**：便签 = 主窗口 `setSize(360x112)` 缩小 + 隐藏标题栏，非独立便签窗，整个 App 引擎随窗口运行。真实便签窗方案（`desktop_multi_window`，RustDesk/Mixin 生产级）列为 V2 单独立项评估。
+
+### 影响文件（本轮仅记录结论，未改动）
+- `lib/core/desktop/desktop_floating_tab_controller.dart` / `lib/platform/window_manager_bridge_desktop.dart` / `lib/main.dart` / `lib/presentation/widgets/desktop_floating_task_tab.dart` — 修复落地时改动
+
+## 2026-08-03 (懒人日志 AI 思考控制 + 审核页父任务树状选择)
+
+### 新增
+- **AI 思考等级控制**：助手模型配置新增「思考等级」下拉（自动/关闭/低/中/高，默认自动）。懒人日志调用 `HomeLazyLogService.structure()` 时按等级+模型前缀自动拼装请求体：关闭思考按厂商分发原生参数（GLM/DeepSeek→`thinking.type:disabled`、Qwen→`enable_thinking:false`、Kimi→`reasoning_effort:low`、OpenAI 新推理模型→`reasoning_effort:none`，未命中兜底 `reasoning_effort:low`）；低/中/高统一发 `reasoning_effort`；检测到 OpenAI 推理模型（o1/o3/gpt-5）时省略 temperature（避免 400 静默降级）。`AssistantModelConfig` 新增 `reasoningEffort` 字段（持久化向后兼容，旧配置默认 auto）。
+- **审核页父任务树状选择**：懒人日志草稿审核页父任务选择改为「先选项目」门控（未选项目禁用并提示）+ 底部弹层树状图。交互模型：点节点切换勾选（窗口保持打开）、底部「完成」按钮确认提交；**再点一次已选节点取消勾选**，点「完成」即清空父任务（`clearSelection` 哨兵区分于关闭弹层，关闭/点外不误清）；默认树形结构收缩（已选中项自动展开祖先路径），header 提供一键「全部展开/全部收起」；树支持展开/折叠、标题搜索；切换项目时自动清除不属于新项目的已选父任务；空项目显示空态。新增可复用组件 `TaskTreePickerSheet`；`LazyLogParentOption` 增加 `parentId`，父任务候选从「仅根任务」改为「全量任务（任意层级可选）」。
+
+### 影响文件
+- `lib/models/assistant/assistant_models.dart` — reasoningEffort 字段
+- `lib/presentation/pages/assistant/assistant_page.dart` — 思考等级下拉
+- `lib/services/home_lazy_log_service.dart` — 思考参数映射 + 推理模型去 temperature
+- `lib/presentation/pages/home/lazy_log_creation_dialog.dart` — LazyLogParentOption.parentId
+- `lib/presentation/pages/home/home_page.dart` — 候选全量任务 + 透传 parentId
+- `lib/presentation/pages/home/lazy_log_draft_review_sheet.dart` — 父任务门控 + 树按钮 + 切项目清失效
+- `lib/presentation/widgets/task_tree_picker_sheet.dart` — 新增树选择器
+- `test/home_lazy_log_service_test.dart` — 思考参数测试（9 条新增）
+- `test/task_tree_picker_sheet_test.dart` — 树选择器 widget 测试（10 条：切换勾选/完成提交/默认收缩/一键展开/关闭语义）
+
+## 2026-08-03 (桌面便签美化 + 点击跳首页定位 + 选任务简化)
+
+### 修复
+- **便签黑线**：卡片「深色挤出阴影 + 48% 优先级色整圈描边 + 98% 不透明底」三层叠加在深色背景下呈黑/深线。改为方案A——无彩色整圈描边、阴影迁到 `AppTheme.cardShadow`、卡片 100% 不透明 `bgCard`、圆角 8→12，优先级只留左侧色条 + 标题前 6px 色点。零新依赖。
+- **点便签进详情页**：改为恢复窗口后跳首页 tab0 并定位到该任务。控制器新增一次性 `pendingFocusTaskId`+token，`restoreFullWindow` 写入，`_HomeContentState._loadData` postFrame 消费（`_processFloatingTabFocusTask`），命中即 `_selectTask`+`_scrollToTask` 并清空；删除 `_openTaskDetail` 的详情页导航。
+- **时间轴维度不联动**：`_selectTask` 增加跨天/isAllDay 优先切 day 维度（修复"跨天 start 今天"被推进 hour 的缺陷）。
+- **四象限不联动**：象限 item 增加 `isSelected` 高亮（主色描边 + 淡底辉光），选中任务所在象限项高亮。
+
+### 新增
+- 便签候选任务改「进行中优先 → 时间最近」：候选池 = 未完成（待办+进行中）；有进行中先选进行中，否则按 anchor time（startDate??dueDate）距 now 最近，平局取 updatedAt 最新；弃用旧 `priority*2+urgency` 打分。核心排序抽 `rankCandidates`/`anchorDateOf`（@visibleForTesting）便于单测。
+- `_TimelineTask` 增加 `isAllDay` 字段（穿透 DB `Task.isAllDay`）。
+
+### 影响文件
+- `lib/presentation/widgets/desktop_floating_task_tab.dart` — 无描边 + 阴影分层 + 圆角12 + 标题色点
+- `lib/core/desktop/desktop_floating_tab_controller.dart` — pending focus 字段 + 选任务重写 + 删导航
+- `lib/presentation/pages/home/home_page.dart` — isAllDay 穿透 + postFrame 消费 focus + R1 切 day + 象限高亮
+- `test/floating_tab_controller_test.dart` — 新增 9 个单测
+
 ## 2026-06-18 (桌面悬浮页签修复 x5)
 
 ### 修复

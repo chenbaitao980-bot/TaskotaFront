@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "懒人日志 AI 思考控制 + 审核页父任务树选择",
+    "subtitle": "需求1：思考等级最低 · 需求2：父任务树状选择",
+    "output": "fix-overview-lazy-log-ai-tree.html",
+    "viewBox": [720, 940]
+  },
+  "lanes": [
+    { "id": "config", "label": "配置层" },
+    { "id": "service", "label": "AI 服务层" },
+    { "id": "review", "label": "审核页" },
+    { "id": "tree", "label": "树选择器" }
+  ],
+  "nodes": [
+    { "id": "cfgEffort", "lane": "config", "col": 0, "type": "frontend", "label": "配置弹窗", "sublabel": "思考等级下拉" },
+    { "id": "cfgModel", "lane": "config", "col": 2, "type": "backend", "label": "模型配置", "sublabel": "reasoningEffort 字段" },
+    { "id": "thinking", "lane": "service", "col": 2, "type": "backend", "label": "思考分发", "sublabel": "_thinkingParams 厂商关闭/effort" },
+    { "id": "omitTemp", "lane": "service", "col": 4, "type": "backend", "label": "去temperature", "sublabel": "_omitTemperature o1/o3/gpt-5" },
+    { "id": "reqBody", "lane": "service", "col": 5, "type": "cloud", "label": "AI 请求体", "sublabel": "思考参数 + temperature" },
+    { "id": "homeCands", "lane": "review", "col": 0, "type": "database", "label": "home_page", "sublabel": "候选 + parentId" },
+    { "id": "gate", "lane": "review", "col": 2, "type": "security", "label": "父任务门控", "sublabel": "未选项目禁用" },
+    { "id": "openPicker", "lane": "review", "col": 3, "type": "frontend", "label": "_openPicker", "sublabel": "打开弹层" },
+    { "id": "consume", "lane": "review", "col": 5, "type": "backend", "label": "消费契约", "sublabel": "null/哨兵/节点" },
+    { "id": "tree", "lane": "tree", "col": 3, "type": "backend", "label": "树选择器", "sublabel": "TaskTreePickerSheet 点选不关+完成" },
+    { "id": "sentinel", "lane": "tree", "col": 5, "type": "security", "label": "clearSelection", "sublabel": "再点取消" },
+    { "id": "persist", "lane": "tree", "col": 0, "type": "database", "label": "updateDraft", "sublabel": "写入/清除" }
+  ],
+  "edges": [
+    { "from": "cfgEffort", "to": "cfgModel", "label": "effort", "variant": "default" },
+    { "from": "cfgModel", "to": "thinking", "label": "分发", "variant": "emphasis" },
+    { "from": "cfgModel", "to": "omitTemp", "variant": "dashed" },
+    { "from": "thinking", "to": "reqBody", "variant": "emphasis" },
+    { "from": "omitTemp", "to": "reqBody", "variant": "dashed" },
+    { "from": "homeCands", "to": "gate", "label": "候选", "variant": "default" },
+    { "from": "gate", "to": "openPicker", "label": "已选", "variant": "emphasis" },
+    { "from": "openPicker", "to": "tree", "variant": "default" },
+    { "from": "tree", "to": "sentinel", "variant": "security" },
+    { "from": "tree", "to": "consume", "variant": "emphasis" },
+    { "from": "sentinel", "to": "consume", "variant": "security" },
+    { "from": "consume", "to": "persist", "variant": "default" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "需求1：关思考模式",
+      "items": [
+        "reasoningEffort 思考等级最低",
+        "off 按厂商分发原生关闭参数",
+        "推理模型省略 temperature 防 400"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "需求2：父任务树",
+      "items": [
+        "未选项目父任务按钮禁用",
+        "点选不关窗口，完成按钮提交",
+        "再点已选 → 哨兵取消选择"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "消费契约不变",
+      "items": [
+        "null忽略 / 哨兵清空 / 节点选中",
+        "切项目清失效父任务",
+        "parentId 支撑树层级"
+      ]
+    }
+  ]
+}

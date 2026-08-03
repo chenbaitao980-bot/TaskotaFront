@@ -1,0 +1,19 @@
+# 边界决策记录（本轮增量：点选不关闭 + 完成按钮提交 + 默认收缩 + 一键展开）
+## 功能边界
+1. 点任意节点主体（InkWell）→ 切换勾选：未选→勾选，已选→清空；窗口保持打开，不 pop
+2. 点 chevron（有子节点行）→ 仅展开/折叠，不切换勾选（内层 GestureDetector 赢手势）
+3. 底部"完成"按钮 → 有勾选 pop 该节点；无勾选（含刚取消）pop clearSelection 哨兵
+4. 关闭按钮(X)/barrier 点外 → pop null，保持忽略（不误清父任务）
+5. 搜索态下同一逻辑生效（_nodeRow 共用，勾选态按 _selectedId）
+6. 默认收缩：不预展开根节点；仅自动展开选中项的祖先路径（让当前勾选可见，用户已确认）
+7. 一键展开/收起按钮：_expanded 为空 → 展开所有有子节点项；否则收起全部
+## 影响范围
+1. 仅改 task_tree_picker_sheet.dart 单文件源；审核页 _ParentTaskButton 零改动
+2. pop 契约保持 null/clearSelection/node 三分支，LazyLogParentOption 定义不变（const 哨兵身份比较）
+3. 空项目/空态、项目门控、切项目清失效父任务均不受影响
+## 失败策略
+1. 完成按钮确认时 _selectedId 指向的节点不在候选集（理论不发生）→ 兜底 pop clearSelection
+2. 无选中项直接点完成（未做任何操作）→ pop clearSelection，审核页 onChanged(null) 为无害幂等
+## 默认行为
+1. selectedId 为 null（无当前父任务）→ 打开全收缩，仅根节点可见
+2. selectedId 非 null → 展开其祖先链，其余分支收缩

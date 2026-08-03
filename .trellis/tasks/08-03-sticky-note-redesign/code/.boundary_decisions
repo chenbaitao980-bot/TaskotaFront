@@ -1,0 +1,22 @@
+# 边界决策记录（V3 独立便签窗重构）
+## 功能边界
+1. 非 Windows（macOS/Linux）：handleCloseRequested/restoreFullWindow 走 hideToTray 兜底，不创建便签窗（isWindows 守卫保留）
+2. Web：desktop_multi_window 调用点全部 if (!kIsWeb && isDesktop) 守卫；包为纯 Dart 编译安全；flutter build web 必须保持绿
+3. 无候选任务（全未完成都无 startDate 或空池）→ 只隐藏主窗，不弹便签（C1 兜底）
+4. 便签窗创建失败（插件异常）→ try/catch + hideToTray 兜底，不阻塞主窗隐藏
+5. _dismissedUntilRestore 语义保留：便签关闭→置位；主窗恢复→重置
+6. pendingFocusTaskId 一次性消费流程保留（restoreFullWindow 写入 → 首页 _loadData postFrame 消费）
+7. rankCandidates 无 startDate 任务直接剔除（不入任何层），候选池因此可能为空
+## 影响范围
+1. window_manager_bridge_desktop.dart 只调 restoreFullWindow/hideToTray/handleCloseRequested → 签名不变，零改动
+2. app_settings_page.dart 只调 refreshSettings() → 零改动
+3. main.dart 的 isFloating/currentTask 消费随浮动分支一并删除；DesktopFloatingTaskTab 导入改由 note_window_app.dart 持有
+4. DesktopFloatingTaskSummary 加 toJson/fromJson（新增，不破坏既有构造）
+5. rankCandidates 行为变更：从"进行中优先"改为"分层规则"；删除 _selectTaskForFloatingTab 的子任务优先过滤（按确认规则候选池=未完成任务）
+## 失败策略
+1. 通道 invoke 失败（CHANNEL_UNREGISTERED 等）→ try/catch + flog，非致命
+2. 便签窗 show/hide 异常 → catch + flog，主窗隐藏不受影响
+3. notifyTask 首次创建竞态 → 初始摘要经 create args 传递，二次复用才走通道推送
+## 默认行为
+1. 便签默认启用（沿用 desktopFloatingTabEnabled 设置）
+2. 便签窗 360x112 / 置顶 / 跳过任务栏 / 透明无边框 / 右上角对齐

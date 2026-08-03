@@ -21,11 +21,13 @@ class LazyLogParentOption {
   final String id;
   final String title;
   final String? projectId;
+  final String? parentId;
 
   const LazyLogParentOption({
     required this.id,
     required this.title,
     this.projectId,
+    this.parentId,
   });
 }
 

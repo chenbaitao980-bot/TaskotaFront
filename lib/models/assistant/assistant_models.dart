@@ -7,12 +7,16 @@ class AssistantModelConfig {
   final String model;
   final String userInstructions;
 
+  /// 思考等级: auto(跟随模型默认) / off(关闭思考) / low / medium / high
+  final String reasoningEffort;
+
   const AssistantModelConfig({
     this.baseUrl = '',
     this.apiPath = '/chat/completions',
     this.apiKey = '',
     this.model = '',
     this.userInstructions = '',
+    this.reasoningEffort = 'auto',
   });
 
   bool get isComplete =>
@@ -48,6 +52,7 @@ class AssistantModelConfig {
     String? apiKey,
     String? model,
     String? userInstructions,
+    String? reasoningEffort,
   }) {
     return AssistantModelConfig(
       baseUrl: baseUrl ?? this.baseUrl,
@@ -55,6 +60,7 @@ class AssistantModelConfig {
       apiKey: apiKey ?? this.apiKey,
       model: model ?? this.model,
       userInstructions: userInstructions ?? this.userInstructions,
+      reasoningEffort: reasoningEffort ?? this.reasoningEffort,
     );
   }
 
@@ -64,6 +70,7 @@ class AssistantModelConfig {
     'apiKey': apiKey,
     'model': model,
     'userInstructions': userInstructions,
+    'reasoningEffort': reasoningEffort,
   };
 
   factory AssistantModelConfig.fromJson(Map<String, dynamic> json) {
@@ -73,6 +80,7 @@ class AssistantModelConfig {
       apiKey: json['apiKey'] as String? ?? '',
       model: json['model'] as String? ?? '',
       userInstructions: json['userInstructions'] as String? ?? '',
+      reasoningEffort: json['reasoningEffort'] as String? ?? 'auto',
     );
   }
 }

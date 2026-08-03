@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -29,7 +31,7 @@ import 'presentation/blocs/task_new/task_bloc.dart' as task_new;
 import 'presentation/pages/auth/login_page.dart';
 import 'presentation/pages/home/home_page.dart';
 import 'presentation/pages/privacy/privacy_consent_page.dart';
-import 'presentation/widgets/desktop_floating_task_tab.dart';
+import 'presentation/pages/floating_note/note_window_app.dart';
 import 'services/attachment_sync_service.dart';
 import 'services/checklist_sync_service.dart';
 import 'services/notification_service.dart';
@@ -60,6 +62,12 @@ void main() async {
         FileLogger.instance.filePath.then((p) => debugPrint('Log path: $p')),
       );
       flog('[App] ===== 应用启动 =====');
+
+      // 便签引擎分支：独立第二 Flutter 引擎，跳过全部业务初始化。
+      if (!kIsWeb && isDesktop && await _isNoteWindowRole()) {
+        await runNoteWindow();
+        return;
+      }
 
       if (!kIsWeb && isDesktop) {
         await _initWindowManager();
@@ -133,6 +141,18 @@ Future<void> _initWindowManager() async {
   await ensureWindowManagerInitialized();
   if (!kIsWeb && isDesktop) {
     await setupCloseToTray();
+  }
+}
+
+/// 检测当前引擎是否为便签引擎（第二引擎启动时由 desktop_multi_window 注入 arguments）。
+Future<bool> _isNoteWindowRole() async {
+  try {
+    final controller = await WindowController.fromCurrentEngine();
+    if (controller.arguments.isEmpty) return false;
+    final decoded = jsonDecode(controller.arguments);
+    return decoded is Map && decoded['role'] == 'note';
+  } catch (_) {
+    return false;
   }
 }
 
@@ -305,26 +325,6 @@ class _MyAppState extends State<MyApp> {
                         _desktopFloatingTabController.setCanShowFloatingTab(
                           canShowFloatingTab,
                         );
-                        if ((state is Authenticated ||
-                                state is LocalAuthenticated) &&
-                            isDesktop &&
-                            _desktopFloatingTabController.isFloating &&
-                            _desktopFloatingTabController.currentTask != null) {
-                          return DesktopFloatingTaskTab(
-                            task: _desktopFloatingTabController.currentTask!,
-                            onTap: () {
-                              _desktopFloatingTabController.restoreFullWindow(
-                                openTaskId: _desktopFloatingTabController
-                                    .currentTask
-                                    ?.taskId,
-                              );
-                            },
-                            onClose: () {
-                              return _desktopFloatingTabController
-                                  .closeFloatingTab();
-                            },
-                          );
-                        }
                         if (state is Authenticated ||
                             state is LocalAuthenticated) {
                           return HomePage(

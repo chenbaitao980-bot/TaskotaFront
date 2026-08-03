@@ -1,0 +1,4 @@
+# 历史回归测试索引
+3237d44 | create lazy log tasks with parent context | test_regr_lazy_log_parent.dart | 2026-08-03
+0d55b30 | route lazy log projects by group hints | test_regr_lazy_log_parent.dart | 2026-08-03
+23d8cb6 | lazy log shift+enter newline and failed task entry | test_regr_lazy_log_parent.dart | 2026-08-03

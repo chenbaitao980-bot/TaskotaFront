@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/lazy_log_draft_repository.dart';
 import '../../../models/assistant/lazy_log_review_models.dart';
+import '../../widgets/task_tree_picker_sheet.dart';
 import 'lazy_log_creation_dialog.dart';
 
 class LazyLogDraftReviewSheet extends StatefulWidget {
@@ -288,14 +289,27 @@ class _DraftReviewCardState extends State<_DraftReviewCard> {
                   value: draft.projectId,
                   projects: widget.projects,
                   enabled: canEdit,
-                  onChanged: (value) => widget.repository.updateDraft(
-                    draft.id,
-                    projectId: value,
-                    clearProjectId: value == null,
-                  ),
+                  onChanged: (value) {
+                    // 切换项目时，若已选父任务不属于新项目，一并清除
+                    final clearParent =
+                        value != null &&
+                        draft.parentTaskId != null &&
+                        !widget.parents.any(
+                          (p) =>
+                              p.id == draft.parentTaskId &&
+                              p.projectId == value,
+                        );
+                    widget.repository.updateDraft(
+                      draft.id,
+                      projectId: value,
+                      clearProjectId: value == null,
+                      clearParentTaskId: clearParent,
+                    );
+                  },
                 ),
-                _ParentDropdown(
+                _ParentTaskButton(
                   value: draft.parentTaskId,
+                  projectId: draft.projectId,
                   parents: widget.parents,
                   enabled: canEdit,
                   onChanged: (value) => widget.repository.updateDraft(
@@ -518,14 +532,16 @@ class _ProjectDropdown extends StatelessWidget {
   }
 }
 
-class _ParentDropdown extends StatelessWidget {
+class _ParentTaskButton extends StatelessWidget {
   final String? value;
+  final String? projectId;
   final List<LazyLogParentOption> parents;
   final bool enabled;
   final ValueChanged<String?> onChanged;
 
-  const _ParentDropdown({
+  const _ParentTaskButton({
     required this.value,
+    required this.projectId,
     required this.parents,
     required this.enabled,
     required this.onChanged,
@@ -533,19 +549,55 @@ class _ParentDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButton<String?>(
-      value: parents.any((parent) => parent.id == value) ? value : null,
-      hint: const Text('父任务'),
-      onChanged: enabled ? onChanged : null,
-      items: [
-        const DropdownMenuItem<String?>(value: null, child: Text('无父任务')),
-        for (final parent in parents)
-          DropdownMenuItem<String?>(
-            value: parent.id,
-            child: Text(parent.title),
-          ),
-      ],
+    // 父任务可选项门控：未选项目时禁用并提示"先选项目"
+    final projectParents = projectId == null
+        ? const <LazyLogParentOption>[]
+        : parents.where((p) => p.projectId == projectId).toList();
+    final current = value == null
+        ? null
+        : projectParents.where((p) => p.id == value).firstOrNull;
+    final selectable = enabled && projectId != null;
+    return OutlinedButton.icon(
+      onPressed:
+          selectable ? () => _openPicker(context, projectParents) : null,
+      icon: Icon(
+        projectId == null ? Icons.lock_outline : Icons.account_tree_outlined,
+        size: 16,
+        color: projectId == null ? AppTheme.textHint : null,
+      ),
+      label: Text(
+        projectId == null
+            ? '先选项目'
+            : current != null
+                ? current.title
+                : '选择父任务',
+      ),
     );
+  }
+
+  Future<void> _openPicker(
+    BuildContext context,
+    List<LazyLogParentOption> projectParents,
+  ) async {
+    final picked = await showModalBottomSheet<LazyLogParentOption>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppTheme.bgScaffold,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.6,
+        child: TaskTreePickerSheet(parents: projectParents, selectedId: value),
+      ),
+    );
+    if (picked == null || !context.mounted) return; // 关闭弹层 → 不处理
+    if (picked == TaskTreePickerSheet.clearSelection) {
+      onChanged(null); // 再点已选节点 → 取消选择父任务
+      return;
+    }
+    onChanged(picked.id);
   }
 }
 

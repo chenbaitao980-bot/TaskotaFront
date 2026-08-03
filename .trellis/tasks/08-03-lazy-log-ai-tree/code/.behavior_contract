@@ -1,0 +1,27 @@
+┌───────┬──────────────────────────────────────────────┬──────────────────────────────────────────┐
+│ 契约  │ 输入                                         │ 预期输出                                  │
+├───────┼──────────────────────────────────────────────┼──────────────────────────────────────────┤
+│ R1-1  │ reasoningEffort=off, model=glm-4.6           │ 请求体含 {'thinking':{'type':'disabled'}} │
+│ R1-2  │ reasoningEffort=off, model=deepseek-v4-flash │ 请求体含 {'thinking':{'type':'disabled'}} │
+│ R1-3  │ reasoningEffort=off, model=qwen3-plus        │ 请求体含 {'enable_thinking':false}        │
+│ R1-4  │ reasoningEffort=off, model=kimi-k3           │ 请求体含 {'reasoning_effort':'low'}       │
+│ R1-5  │ reasoningEffort=off, model=o1-mini           │ 请求体含 {'reasoning_effort':'none'} 且不含 temperature │
+│ R1-6  │ reasoningEffort=off, model=unknown-xyz       │ 兜底请求体含 {'reasoning_effort':'low'}    │
+│ R1-7  │ reasoningEffort=low, model=gpt-4o-mini       │ 请求体含 {'reasoning_effort':'low'} 且含 temperature │
+│ R1-8  │ reasoningEffort=auto（默认）, model=gpt-4o-mini │ 请求体不含 thinking/reasoning_effort/enable_thinking，含 temperature │
+│ R1-9  │ AssistantModelConfig.fromJson(旧JSON无该键)   │ reasoningEffort 默认为 'auto'            │
+│ R2-1  │ 审核卡未选项目                                │ 父任务入口禁用，文案"先选项目"            │
+│ R2-2  │ 选定项目 A 后打开父任务                        │ 弹层仅含项目 A 的任务树（含子任务，带层级缩进）│
+│ R2-3  │ 已选父任务 P(属项目A)，切换到项目 B            │ updateDraft 收到 clearParentTaskId:true  │
+│ R2-4  │ 树弹层搜索"关键字"                            │ 仅显示标题含关键字的节点，点击即回填       │
+│ R2-5  │ 项目 A 无任务，打开父任务弹层                   │ 显示空态"该项目暂无任务"                  │
+│ R2-6  │ LazyLogParentOption 构造含 parentId           │ parentId 字段透传（默认 null）            │
+│ D1    │ 无选中项打开弹层                              │ 默认收缩：根节点可见，子任务隐藏          │
+│ D2    │ 点未选中节点 B1（有选中 A1）                  │ B1 勾选（check 图标出现）、窗口仍在；点"完成" → pop 结果 == B1 节点 │
+│ D3    │ 再点已选节点 A1                               │ A1 取消勾选（check 消失）、窗口仍在；点"完成" → pop 结果 == clearSelection │
+│ D4    │ 全收缩时点一键展开按钮                        │ 全部展开（子任务可见）；再点 → 全部收起（子任务隐藏）│
+│ D5    │ 选中 A1 后点 header 关闭X                     │ pop 结果 == null（关闭不保存）            │
+│ D6    │ 有选中项 A1 打开弹层                          │ 自动展开 A 祖先链（A1 可见带勾选）；B 分支仍收缩 │
+│ D7    │ 无勾选直接点"完成"（未操作）                  │ pop 结果 == clearSelection（审核页幂等清空，无害）│
+└───────┴──────────────────────────────────────────────┴──────────────────────────────────────────┘
+增量验证: D1-D6 widget 测试（task_tree_picker_sheet_test.dart），D7 代码审查+测试；审核页消费契约保持 C5(null忽略/clearSelection清空/节点选中) 不变

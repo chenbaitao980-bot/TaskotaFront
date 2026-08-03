@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
+import '../../../core/desktop/desktop_floating_tab_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/checklist_repository.dart';
@@ -914,6 +915,7 @@ class _HomeContentState extends State<_HomeContent> {
           date: date,
           endDate: end,
           isCompleted: t.status == 2,
+          isAllDay: t.isAllDay == 1,
           priority: _dbPriorityToLabel(t.priority),
           source: 'db',
           projectId: t.projectId,
@@ -1005,7 +1007,8 @@ class _HomeContentState extends State<_HomeContent> {
     // Auto-scroll to nearest task after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _processPendingNotificationTask();
-      _scrollToNow(animated: false);
+      final focused = _processFloatingTabFocusTask();
+      if (!focused) _scrollToNow(animated: false);
     });
   }
 
@@ -1038,6 +1041,27 @@ class _HomeContentState extends State<_HomeContent> {
       _selectTask(task);
       _scrollToTask(task);
     }
+  }
+
+  /// 消费桌面便签点击待定位任务；命中并定位返回 true（此时跳过默认滚到 now）。
+  bool _processFloatingTabFocusTask() {
+    final controller = DesktopFloatingTabController.instance;
+    final taskId = controller.pendingFocusTaskId;
+    if (taskId == null) return false;
+    controller.pendingFocusTaskId = null;
+    controller.pendingFocusRequestToken = null;
+
+    _TimelineTask? task;
+    for (final t in _timelineTasks) {
+      if (t.id == taskId || t.taskId == taskId) {
+        task = t;
+        break;
+      }
+    }
+    if (task == null) return false;
+    _selectTask(task);
+    _scrollToTask(task);
+    return true;
   }
 
   void _navigateToFirstOverdueTask() {
@@ -1201,6 +1225,15 @@ class _HomeContentState extends State<_HomeContent> {
     // 模式切换守卫：用户手动点击天/小时模式切换时不触发自动切换
     if (_modeSwitchGuard) {
       _scrollToTask(task);
+      return;
+    }
+
+    // 跨天或全天任务优先切到 day 维度（修复"跨天 start 今天"被推进 hour 的缺陷）
+    if ((_isMultiDayNode(task) || task.isAllDay) && _timelineMode == 'hour') {
+      setState(() => _timelineMode = 'day');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToTask(task);
+      });
       return;
     }
 
@@ -2159,6 +2192,7 @@ class _HomeContentState extends State<_HomeContent> {
           id: parent.taskId,
           title: parent.title,
           projectId: parent.projectId,
+          parentId: parent.parentId,
         ),
     ];
   }
@@ -2225,6 +2259,7 @@ class _HomeContentState extends State<_HomeContent> {
     return bestScore >= 60 && bestScoreCount == 1 ? bestProject?.id : null;
   }
 
+  /// 懒人日志父任务候选：返回 source 下全量任务（根+后代，任意层级都可选为父任务）。
   List<_TimelineTask> _lazyLogParentCandidates({
     required String source,
     String? projectId,
@@ -2233,7 +2268,6 @@ class _HomeContentState extends State<_HomeContent> {
         .where(
           (task) =>
               task.source == source &&
-              task.parentId == null &&
               (projectId == null || task.projectId == projectId),
         )
         .toList()
@@ -5362,10 +5396,24 @@ class _HomeContentState extends State<_HomeContent> {
 
     Widget taskItem(_TimelineTask task) {
       final isOverdueItem = (task.endDate ?? task.date).isBefore(today);
+      final isSelected = task.id == _selectedTaskId;
       return GestureDetector(
         onTap: () => _selectTask(task),
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: EdgeInsets.symmetric(
+            horizontal: isSelected ? 6 : 0,
+            vertical: isSelected ? 2 : 0,
+          ),
+          decoration: isSelected
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.7),
+                  ),
+                )
+              : null,
           child: Row(
             children: [
               if (isOverdueItem)
@@ -5479,6 +5527,7 @@ class _TimelineTask {
   final DateTime date;
   final DateTime? endDate;
   final bool isCompleted;
+  final bool isAllDay;
   final String priority;
   final String source; // 'storage' or 'db'
   final String? projectId;
@@ -5492,6 +5541,7 @@ class _TimelineTask {
     required this.date,
     this.endDate,
     required this.isCompleted,
+    this.isAllDay = false,
     required this.priority,
     required this.source,
     this.projectId,

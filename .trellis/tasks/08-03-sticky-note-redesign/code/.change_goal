@@ -1,0 +1,9 @@
+目标: V3 重构独立便签窗 — 用 desktop_multi_window 第二引擎承载便签，根治黑线/白屏/卡顿
+改动:
+  1. pubspec.yaml 加 desktop_multi_window: ^0.3.0 + flutter pub get
+  2. windows/runner/flutter_window.cpp 加 DesktopMultiWindowSetWindowCreatedCallback（第二引擎自动重注册插件）
+  3. 新增 lib/presentation/pages/floating_note/note_window_app.dart（NoteWindowApp：透明无边框置顶 360x112 便签引擎）
+  4. lib/core/desktop/desktop_floating_tab_controller.dart：删 _enterFloatingMode/_restoreWindowChromeAndBounds/_mode 等缩小/恢复逻辑；加便签窗生命周期(懒建 WindowController.create(hiddenAtLaunch) + show/hide 复用) + 主窗方法handler(showMain/dismissNote) + notifyTask 推送 + rankCandidates 改分层规则（小时级任务优先→进行中→时间最近，无 startDate 不入排序；跨天/全天任务同规则靠后）
+  5. lib/main.dart：main() 顶部加便签引擎分支（role==note → runApp(NoteWindowApp)）；_MyAppState.build home 删 DesktopFloatingTaskTab 浮动分支
+  6. test/floating_tab_controller_test.dart：重写 rankCandidates 用例为分层规则语义
+排除: 便签卡片 UI(desktop_floating_task_tab.dart) 不动；不碰 lazy-log/assistant 等其他任务文件；不动存量 analyze error(test/widget_test.dart:48)

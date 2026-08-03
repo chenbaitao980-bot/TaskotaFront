@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>便签架构 V3 重构：缩小主窗 → desktop_multi_window 独立便签窗</title>
+<style>body{font-family:sans-serif;background:#0e0f11;color:#e6e6e6;padding:24px}pre{white-space:pre-wrap}</style>
+</head>
+<body>
+<h2>便签架构 V3 重构（改前/改后）</h2>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<pre class="mermaid">
+flowchart TD
+  subgraph BEFORE["改前（红）——缩小主窗，3 大固有缺陷"]
+    A1[关闭主窗] --> A2[windowManager.setSize 360x112<br/>+ TitleBarStyle.hidden]
+    A2 --> A3[主窗引擎 缩成便签<br/>❌ 黑线：OS 非客户区深色边框<br/>❌ 白屏：hide→show surface 不重绘<br/>❌ 卡顿：HomePage 互斥重建全量加载]
+  end
+
+  subgraph AFTER["改后（绿）——desktop_multi_window 独立便签窗"]
+    B1[关闭主窗] --> B2[主窗 hideToTray 常驻不缩放]
+    B2 --> B3[主引擎算候选 rankCandidates 分层规则]
+    B3 --> B4[WindowController.create 便签窗<br/>hiddenAtLaunch + arguments 摘要JSON]
+    B4 --> B5[便签引擎 runNoteWindow<br/>透明 ACCENT 无边框 360x112 置顶]
+    B5 <-->|"taskora_note_update<br/>notifyTask / hideNote"| B6[主引擎 DesktopFloatingTabController]
+    B5 <-->|"taskora_note_command<br/>showMain / dismissNote"| B6
+    B6 --> B7[showMain → 主窗 show+focus<br/>+ pendingFocusTaskId 首页定位]
+  end
+<h2>V4 崩溃+白屏修复（便签引擎渲染时序）</h2>
+<pre class="mermaid">
+sequenceDiagram
+  participant M as 主引擎
+  participant N as 便签引擎(第二引擎)
+  Note over M: 关闭主窗 → handleCloseRequested
+  M->>N: WindowController.create(hiddenAtLaunch: true)
+  M->>M: hideToTray() 隐藏主窗
+  Note over N: runNoteWindow()
+  N->>N: 注册通道 + 读 arguments 摘要
+  N->>N: runApp 渲染首帧
+  Note over N: 改前缺陷: chrome 初始化里直接 setSkipTaskbar<br/>taskbar_ 未初始化 → window_manager_plugin.dll 0xc0000005 崩溃 → 进程消失
+  N->>N: addPostFrameCallback(首帧渲染后)
+  N->>N: waitUntilReadyToShow() 初始化 taskbar_ ← 修崩溃
+  N->>N: 透明背景/无边框/置顶/360x112/右上角
+  N->>N: show() 渲染完成后自显示 ← 消白屏
+  Note over M,N: 二次关闭主窗: 主引擎 notifyTask 推送新摘要 + show() 复用便签窗
+</pre>
+<script>mermaid.initialize({startOnLoad:true,theme:'dark'});</script>
+</body>
+</html>

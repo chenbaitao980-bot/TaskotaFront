@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>父任务树选择器 — 交互模型改前/改后</title>
+<style>
+  body{font-family:'Microsoft YaHei',sans-serif;background:#f5f6f8;margin:24px;color:#2b3442}
+  h2{font-size:18px;color:#1a73e8}
+  .col{display:inline-block;vertical-align:top;width:46%;background:#fff;border:1px solid #e2e6ee;border-radius:10px;padding:14px 16px;margin-right:2%}
+  .badge{display:inline-block;font-size:12px;border-radius:4px;padding:1px 8px;color:#fff;margin-bottom:8px}
+  .badge.red{background:#d93025}.badge.green{background:#188038}
+  .step{margin:8px 0;padding:8px 10px;border-radius:6px;font-size:13px;line-height:1.5}
+  .red{background:#fce8e6;border:1px solid #f5c6c0}
+  .green{background:#e6f4ea;border:1px solid #b7dfc0}
+  .arrow{color:#9aa0a6;font-size:16px;text-align:center;margin:4px 0}
+  .tag{display:inline-block;background:#e8f0fe;color:#1a73e8;border-radius:4px;font-size:11px;padding:0 6px;margin-right:6px}
+</style>
+</head>
+<body>
+<h2>父任务树选择器 — 交互模型改前/改后（第三轮增量）</h2>
+
+<div class="col">
+  <span class="badge red">改前（点即关闭）</span>
+  <div class="step red"><span class="tag">打开</span>审核卡点父任务按钮 → 底部弹层，根节点默认全展开</div>
+  <div class="arrow">↓</div>
+  <div class="step red"><span class="tag">点未选中节点</span><code>Navigator.pop(node)</code> → 选中并<b>立即关闭弹层</b></div>
+  <div class="arrow">↓</div>
+  <div class="step red"><span class="tag">再点已选节点</span><code>Navigator.pop(clearSelection)</code> → 清空并<b>立即关闭弹层</b></div>
+  <div class="arrow">↓</div>
+  <div class="step red"><span class="tag">缺点</span>① 点一下就关，无法反复对比 ② 取消后想重选需重开 ③ 无一键展开/收起 ④ 根节点默认全展开</div>
+</div>
+
+<div class="col">
+  <span class="badge green">改后（点选不关闭 + 完成按钮）</span>
+  <div class="step green"><span class="tag">打开</span>弹层<b>默认收缩</b>；已选节点自动展开祖先路径（勾选可见）</div>
+  <div class="arrow">↓</div>
+  <div class="step green"><span class="tag">点节点</span>仅切换内部 <code>_selectedId</code> 勾选（已选→取消勾选，未选→勾选），<b>窗口保持打开</b></div>
+  <div class="arrow">↓</div>
+  <div class="step green"><span class="tag">一键展开/收起</span>header <code>unfold_more/less</code> 按钮：全折叠→展开全部，否则收起全部</div>
+  <div class="arrow">↓</div>
+  <div class="step green"><span class="tag">底部「完成」</span><code>Navigator.pop(node ?? clearSelection)</code> → 有勾选返回节点 / 无勾选返回清空哨兵</div>
+  <div class="arrow">↓</div>
+  <div class="step green"><span class="tag">X / 点外</span><code>Navigator.pop(null)</code> → 关闭不保存，不误清父任务</div>
+</div>
+
+<p style="margin-top:16px;font-size:12px;color:#5f6368">
+审核页 <code>_ParentTaskButton._openPicker</code> 消费契约不变（null 忽略 / clearSelection 清空 / 节点选中）→ <b>审核页零改动</b>。
+契约：D1 默认收缩 / D2 切换勾选+完成 / D3 再点取消+完成清空 / D4 一键展开收起 / D5 X关闭null / D6 选中路径展开 / D7 无勾选完成→哨兵。
+</p>
+</body>
+</html>

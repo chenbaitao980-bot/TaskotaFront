@@ -2,11 +2,15 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smart_assistant/models/assistant/assistant_models.dart';
 import 'package:smart_assistant/models/assistant/lazy_log_models.dart';
 import 'package:smart_assistant/services/home_lazy_log_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+
   test(
     'falls back to local structuring when model config is incomplete',
     () async {
@@ -194,4 +198,161 @@ void main() {
       'Prefer week ranges for current-week tasks.',
     );
   });
+
+  test('persists reasoningEffort in model config json and defaults to auto', () {
+    const config = AssistantModelConfig(
+      baseUrl: 'https://example.com',
+      apiKey: 'key',
+      model: 'model',
+      reasoningEffort: 'off',
+    );
+
+    final restored = AssistantModelConfig.fromJson(config.toJson());
+    expect(restored.reasoningEffort, 'off');
+
+    // 旧版本持久化 JSON 没有该字段 → 默认 'auto'
+    final legacy = AssistantModelConfig.fromJson({'baseUrl': 'x'});
+    expect(legacy.reasoningEffort, 'auto');
+  });
+
+  test('off thinking for glm sends thinking disabled', () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'glm-4.6',
+        reasoningEffort: 'off',
+      ),
+    );
+    expect(body['thinking'], {'type': 'disabled'});
+    expect(body.containsKey('temperature'), isTrue);
+  });
+
+  test('off thinking for deepseek sends thinking disabled', () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'deepseek-v4-flash',
+        reasoningEffort: 'off',
+      ),
+    );
+    expect(body['thinking'], {'type': 'disabled'});
+  });
+
+  test('off thinking for qwen sends enable_thinking false', () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'qwen3-plus',
+        reasoningEffort: 'off',
+      ),
+    );
+    expect(body['enable_thinking'], isFalse);
+  });
+
+  test('off thinking for kimi sends reasoning_effort low', () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'kimi-k3',
+        reasoningEffort: 'off',
+      ),
+    );
+    expect(body['reasoning_effort'], 'low');
+  });
+
+  test('off thinking for openai reasoning model omits temperature', () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'o1-mini',
+        reasoningEffort: 'off',
+      ),
+    );
+    expect(body['reasoning_effort'], 'none');
+    expect(body.containsKey('temperature'), isFalse);
+  });
+
+  test('off thinking falls back to reasoning_effort low for unknown model',
+      () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'unknown-xyz',
+        reasoningEffort: 'off',
+      ),
+    );
+    expect(body['reasoning_effort'], 'low');
+  });
+
+  test('low effort sends reasoning_effort low and keeps temperature', () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'gpt-4o-mini',
+        reasoningEffort: 'low',
+      ),
+    );
+    expect(body['reasoning_effort'], 'low');
+    expect(body.containsKey('temperature'), isTrue);
+  });
+
+  test('auto effort sends no thinking params but keeps temperature', () async {
+    final body = await _captureBody(
+      config: const AssistantModelConfig(
+        baseUrl: 'https://example.com',
+        apiKey: 'key',
+        model: 'gpt-4o-mini',
+      ),
+    );
+    expect(body.containsKey('thinking'), isFalse);
+    expect(body.containsKey('enable_thinking'), isFalse);
+    expect(body.containsKey('reasoning_effort'), isFalse);
+    expect(body.containsKey('temperature'), isTrue);
+  });
+}
+
+Future<Map<String, dynamic>> _captureBody({
+  required AssistantModelConfig config,
+  String input = '今天完成首页懒人日志',
+}) async {
+  late Map<String, dynamic> captured;
+  final dio = Dio()
+    ..interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          captured = options.data as Map<String, dynamic>;
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              data: {
+                'choices': [
+                  {
+                    'message': {
+                      'content': jsonEncode({
+                        'summary': '测试',
+                        'tasks': <dynamic>[],
+                        'schedules': <dynamic>[],
+                      }),
+                    },
+                  },
+                ],
+              },
+            ),
+          );
+        },
+      ),
+    );
+  await HomeLazyLogService(dio: dio).structure(
+    config: config,
+    input: input,
+    now: DateTime(2026, 7, 15, 10),
+  );
+  return captured;
 }

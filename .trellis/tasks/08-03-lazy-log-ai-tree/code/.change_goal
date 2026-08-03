@@ -1,0 +1,27 @@
+目标: 两个需求
+  需求1: 懒人日志 AI 调用支持"关闭思考 / 思考等级最低"
+    改动: AssistantModelConfig 加 reasoningEffort 字段(auto/off/low/medium/high, 默认 auto);
+          _AssistantConfigDialog 加"思考等级"下拉;
+          HomeLazyLogService.structure() 按字段+模型前缀自动拼装请求体
+          (off→按厂商分发原生关闭参数; low/medium/high→reasoning_effort; auto→不发; 未命中→reasoning_effort:"low");
+          检测到 OpenAI 推理模型(o1/o3/gpt-5)时去掉 temperature
+  需求2: 审核页父任务"先选项目"门控 + 树状图选择
+    改动: LazyLogParentOption 加 parentId 字段;
+          _lazyLogParentCandidates 返回所选项目下全量任务(根+后代), 不再只筛根任务;
+          _lazyLogParentOptions 透传 parentId;
+          审核页 _ParentDropdown 改为 _ParentTaskButton: 未选项目禁用+提示"先选项目";
+          切换项目时清除不属于新项目的已选父任务;
+          新增可复用组件 TaskTreePickerSheet(底部弹层+可展开/折叠树+搜索+单点回填)
+  需求2增量(本轮): 交互模型改为"点选不关闭 + 完成按钮提交"
+    改动: _nodeRow 点击不再 Navigator.pop; 改为切换内部 _selectedId 勾选态
+          (已选→清空, 未选→勾选), 窗口保持打开;
+          build 底部新增"完成"FilledButton → Navigator.pop(有勾选? 节点 : clearSelection哨兵);
+          header 关闭X/barrier 点外 → pop(null)(关闭不保存);
+          _ParentTaskButton._openPicker 消费契约不变(null忽略/clearSelection清空/节点选中)→ 审核页零改动;
+          initState 默认收缩(不再预展开根节点), 仅自动展开选中项祖先路径(用户已确认);
+          header 新增一键展开/收起按钮(全部折叠时展开全部, 否则收起全部)
+  排除: 不迁移树选择器到懒人日志创建弹窗(lazy_log_creation_dialog 保持现状, 字段兼容);
+      不改通用聊天 assistant_chat_service 的请求参数;
+      不处理"仅思考模型无法关闭"(靠换模型 ID, 只在映射兜底);
+      不改 LazyLogParentOption 定义; 不动需求1(AI思考控制)相关代码;
+      不改审核页 _ParentTaskButton 的 pop 契约与消费分支(已兼容)

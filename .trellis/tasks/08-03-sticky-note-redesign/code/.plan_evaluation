@@ -1,0 +1,30 @@
+# Phase 2 方案评估（Q1/Q2/Q3/Q4）— V3 独立便签窗重构
+# 前置 gitnexus impact：DesktopFloatingTabController upstream=LOW(4 direct)；详见 .blast_radius。
+
+## Q1 — 替代方案对比
+- 方案A(已确认, PRD V3): desktop_multi_window 独立第二引擎便签窗，主窗常驻不缩小
+  优势: 根治黑线(透明独立窗)/白屏(主窗零缩放、便签窗独立引擎)/卡顿(主窗零重建)；RustDesk/Mixin 生产级方案
+  劣势: 引入新依赖 + 原生 cpp 改动 + 跨引擎通道复杂度
+- 方案B: 保留缩小窗 + 快速修复(透明+opacity 0/1+Stack 常驻)
+  优势: 无新依赖、改动小
+  劣势: 白屏/卡顿仅缓解不根治（window_manager hide→show surface 不重绘为包级缺陷 #571）；黑线靠透明+WindowOptions 覆盖仍不稳
+结论: 选方案A，PRD 已用户确认；方案B 列为回滚备选。
+
+## Q2 — 连锁影响分析
+- 代码: desktop_floating_tab_controller.dart(重写) + main.dart(分支) + note_window_app.dart(新增) + flutter_window.cpp(原生) + pubspec.yaml(依赖)
+- 测试: test/floating_tab_controller_test.dart（rankCandidates 用例重写）
+- 配置: pubspec 加 desktop_multi_window: ^0.3.0
+- 文档: CHANGELOG.md + change_report.md
+- 类型定义: DesktopFloatingTaskSummary 加 toJson/fromJson（新增不破坏）
+
+## Q3 — 验证策略 + 行为契约
+- 现有测试: floating_tab_controller_test.dart 重写 rankCandidates 用例
+- 新增场景: 见 .behavior_contract（分层规则 R1-C1~C7、生命周期 C1~C5、便签窗 W1~W4）
+- 边界条件: 池空→空；无 startDate 剔除→候选空→便签不显示；便签窗创建失败→hideToTray 兜底；非 Windows→hideToTray
+- 验证手段: flutter analyze + flutter test + flutter build windows --debug + flutter build web（必须仍绿）
+
+## Q4 — 可维护性/可测试性
+- rankCandidates 保持 @visibleForTesting 纯函数（分层规则可单测）；anchorDateOf 保留
+- 通道协议封装为两个命名 WindowMethodChannel（unidirectional），主窗/便签窗各自注册 handler，职责清晰
+- 便签窗为纯展示壳（不读 SQLite），避免双引擎并发 DB；摘要经通道推送
+- 结论: 方案A 收益>成本，符合 PRD 已确认决策

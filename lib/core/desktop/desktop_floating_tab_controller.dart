@@ -1,23 +1,15 @@
-import 'dart:async';
-import 'dart:ui';
+import 'dart:convert';
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show Alignment, MaterialPageRoute;
 import 'package:window_manager/window_manager.dart';
 
-import '../../core/router/app_router.dart';
 import '../../core/utils/file_logger.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../data/database/app_database.dart';
 import '../../data/repositories/task_repository.dart';
-import '../../presentation/pages/tasks/task_detail/task_detail_page.dart'
-    as task_db;
 import '../../services/local_storage_service.dart';
 import 'window_state.dart';
-
-enum DesktopWindowMode { full, floating }
-
-const Size _floatingWindowSize = Size(360, 112);
 
 class DesktopFloatingTaskSummary {
   final String taskId;
@@ -35,7 +27,42 @@ class DesktopFloatingTaskSummary {
     required this.dueDate,
     required this.extraTaskCount,
   });
+
+  /// 序列化为跨引擎通道载荷（便签窗不读 SQLite，摘要由主窗计算后推送）。
+  Map<String, dynamic> toJson() => {
+        'taskId': taskId,
+        'title': title,
+        'priority': priority,
+        'anchorDate': anchorDate.toIso8601String(),
+        'dueDate': dueDate?.toIso8601String(),
+        'extraTaskCount': extraTaskCount,
+      };
+
+  factory DesktopFloatingTaskSummary.fromJson(Map<String, dynamic> json) {
+    return DesktopFloatingTaskSummary(
+      taskId: json['taskId'] as String,
+      title: json['title'] as String,
+      priority: json['priority'] as int,
+      anchorDate: DateTime.parse(json['anchorDate'] as String),
+      dueDate: json['dueDate'] == null
+          ? null
+          : DateTime.parse(json['dueDate'] as String),
+      extraTaskCount: json['extraTaskCount'] as int,
+    );
+  }
 }
+
+/// 主窗 → 便签窗通道：便签窗注册 handler，主窗 invoke（推送摘要 / 隐藏）。
+const WindowMethodChannel _noteUpdateChannel = WindowMethodChannel(
+  'taskora_note_update',
+  mode: ChannelMode.unidirectional,
+);
+
+/// 便签窗 → 主窗通道：主窗注册 handler，便签窗 invoke（唤起 / 关闭）。
+const WindowMethodChannel _noteCommandChannel = WindowMethodChannel(
+  'taskora_note_command',
+  mode: ChannelMode.unidirectional,
+);
 
 class DesktopFloatingTabController extends ChangeNotifier {
   DesktopFloatingTabController._();
@@ -45,20 +72,19 @@ class DesktopFloatingTabController extends ChangeNotifier {
 
   final LocalStorageService _storage = LocalStorageService();
 
-  DesktopWindowMode _mode = DesktopWindowMode.full;
-  DesktopFloatingTaskSummary? _currentTask;
   TaskRepository? _taskRepository;
-  Rect? _lastFullBounds;
-  bool _lastFullWasMaximized = false;
+  WindowController? _noteWindow;
   bool _storageReady = false;
   bool _defaultEnabled = true;
   bool _dismissedUntilRestore = false;
   bool _isTransitioning = false;
   bool _canShowFloatingTab = false;
+  bool _mainChannelRegistered = false;
 
-  DesktopWindowMode get mode => _mode;
-  DesktopFloatingTaskSummary? get currentTask => _currentTask;
-  bool get isFloating => _mode == DesktopWindowMode.floating;
+  /// 便签点击待定位任务：一次性消费，由首页 _loadData postFrame 读取后清空。
+  String? pendingFocusTaskId;
+  int? pendingFocusRequestToken;
+
   bool get defaultEnabled => _defaultEnabled;
 
   void bindTaskRepository(TaskRepository? repository) {
@@ -83,6 +109,7 @@ class DesktopFloatingTabController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 关闭主窗：命中候选则创建/复用便签窗并隐藏主窗；否则仅隐藏。
   Future<void> handleCloseRequested() async {
     if (!isWindows || _isTransitioning) {
       flog(
@@ -113,33 +140,37 @@ class DesktopFloatingTabController extends ChangeNotifier {
 
     flog(
       '[FloatingTab] handleCloseRequested: 命中候选 taskId=${candidate.taskId} '
-      'title="${candidate.title}" extra=${candidate.extraTaskCount} -> 进入悬浮模式',
+      'title="${candidate.title}" extra=${candidate.extraTaskCount} -> 显示便签窗并隐藏主窗',
     );
-    await _enterFloatingMode(candidate);
+
+    _isTransitioning = true;
+    try {
+      await _showNoteWindow(candidate);
+      await hideToTray();
+    } finally {
+      _isTransitioning = false;
+    }
   }
 
+  /// 恢复主窗：隐藏便签窗，show+focus 主窗。openTaskId 时写入待定位字段。
   Future<void> restoreFullWindow({String? openTaskId}) async {
     if (!isWindows || _isTransitioning) return;
-    _dismissedUntilRestore = false;
-    if (_mode == DesktopWindowMode.floating) {
-      await _restoreWindowChromeAndBounds();
+    if (openTaskId != null && openTaskId.isNotEmpty) {
+      pendingFocusTaskId = openTaskId;
+      pendingFocusRequestToken = DateTime.now().microsecondsSinceEpoch;
     }
+    _dismissedUntilRestore = false;
+    await _hideNoteWindow();
 
     await windowManager.show();
     await windowManager.focus();
     desktopWindowVisible = true;
-
-    if (openTaskId != null && openTaskId.isNotEmpty) {
-      _openTaskDetail(openTaskId);
-    }
   }
 
+  /// 便签"关闭"：置 dismissed，隐藏便签窗；主窗保持隐藏（下次关闭不弹便签）。
   Future<void> closeFloatingTab() async {
     _dismissedUntilRestore = true;
-    if (_mode == DesktopWindowMode.floating) {
-      await _restoreWindowChromeAndBounds();
-    }
-    await hideToTray();
+    await _hideNoteWindow();
   }
 
   Future<void> hideToTray() async {
@@ -147,66 +178,84 @@ class DesktopFloatingTabController extends ChangeNotifier {
     await windowManager.hide();
   }
 
-  Future<void> _enterFloatingMode(DesktopFloatingTaskSummary summary) async {
-    _isTransitioning = true;
+  /// 确保便签窗存在（懒建一次，后续复用规避 #484 句柄泄漏）。
+  Future<void> _ensureNoteWindow(DesktopFloatingTaskSummary summary) async {
+    if (_noteWindow != null) return;
+    await _registerMainWindowChannel();
     try {
-      if (_mode != DesktopWindowMode.floating) {
-        _lastFullBounds = await windowManager.getBounds();
-        _lastFullWasMaximized = await windowManager.isMaximized();
-        if (_lastFullWasMaximized) {
-          await windowManager.unmaximize();
-        }
-      }
-
-      _currentTask = summary;
-      _mode = DesktopWindowMode.floating;
-      notifyListeners();
-
-      await windowManager.restore();
-      await windowManager.setTitleBarStyle(
-        TitleBarStyle.hidden,
-        windowButtonVisibility: false,
+      _noteWindow = await WindowController.create(
+        WindowConfiguration(
+          hiddenAtLaunch: true,
+          arguments: jsonEncode({
+            'role': 'note',
+            'summary': summary.toJson(),
+          }),
+        ),
       );
-      await windowManager.setResizable(false);
-      await windowManager.setAlwaysOnTop(true);
-      await windowManager.setSkipTaskbar(true);
-      await windowManager.setMinimumSize(_floatingWindowSize);
-      await windowManager.setMaximumSize(_floatingWindowSize);
-      await windowManager.setSize(_floatingWindowSize);
-      await windowManager.setAlignment(Alignment.topRight);
-      await windowManager.show();
-      await windowManager.focus();
-      desktopWindowVisible = true;
-    } finally {
-      _isTransitioning = false;
+    } catch (e) {
+      flog('[FloatingTab] 便签窗创建失败: $e');
+      _noteWindow = null;
     }
   }
 
-  Future<void> _restoreWindowChromeAndBounds() async {
-    _isTransitioning = true;
+  /// 显示便签窗：首次创建时摘要随 arguments 注入、由便签引擎渲染首帧后自显示
+  /// （避免白屏）；复用时推送最新摘要并直接显示。
+  Future<void> _showNoteWindow(DesktopFloatingTaskSummary summary) async {
+    final wasCreated = _noteWindow != null;
+    await _ensureNoteWindow(summary);
+    final note = _noteWindow;
+    if (note == null) return;
+    if (wasCreated) {
+      // 复用：便签引擎常驻，handler 已注册，可安全推送并立即显示。
+      await _notifyNote(summary);
+      try {
+        await note.show();
+      } catch (e) {
+        flog('[FloatingTab] 便签窗 show 失败: $e');
+      }
+    }
+    // 首次创建：便签窗 hiddenAtLaunch，由便签引擎渲染首帧后自显示，避免白屏。
+  }
+
+  Future<void> _hideNoteWindow() async {
+    final note = _noteWindow;
+    if (note == null) return;
     try {
-      _mode = DesktopWindowMode.full;
-      _currentTask = null;
-      notifyListeners();
+      await _noteUpdateChannel.invokeMethod('hideNote');
+    } catch (_) {}
+    try {
+      await note.hide();
+    } catch (_) {}
+  }
 
-      await windowManager.setSkipTaskbar(false);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setMinimumSize(const Size(320, 240));
-      await windowManager.setMaximumSize(const Size(10000, 10000));
-      await windowManager.setResizable(true);
-      await windowManager.setTitleBarStyle(
-        TitleBarStyle.normal,
-        windowButtonVisibility: true,
-      );
+  Future<void> _notifyNote(DesktopFloatingTaskSummary summary) async {
+    try {
+      await _noteUpdateChannel.invokeMethod('notifyTask', summary.toJson());
+    } catch (e) {
+      flog('[FloatingTab] notifyTask 失败: $e');
+    }
+  }
 
-      if (_lastFullBounds != null) {
-        await windowManager.setBounds(_lastFullBounds);
-      }
-      if (_lastFullWasMaximized) {
-        await windowManager.maximize();
-      }
-    } finally {
-      _isTransitioning = false;
+  /// 主窗注册便签窗 → 主窗的通道 handler（唤起主窗 / 便签关闭）。
+  Future<void> _registerMainWindowChannel() async {
+    if (_mainChannelRegistered) return;
+    _mainChannelRegistered = true;
+    try {
+      await _noteCommandChannel.setMethodCallHandler((call) async {
+        switch (call.method) {
+          case 'showMain':
+            final args = call.arguments;
+            final openTaskId =
+                (args is Map) ? args['openTaskId'] as String? : null;
+            await restoreFullWindow(openTaskId: openTaskId);
+            break;
+          case 'dismissNote':
+            await closeFloatingTab();
+            break;
+        }
+      });
+    } catch (e) {
+      flog('[FloatingTab] 主窗通道注册失败: $e');
     }
   }
 
@@ -214,45 +263,29 @@ class DesktopFloatingTabController extends ChangeNotifier {
     final repository = _taskRepository;
     if (repository == null) return null;
 
-    // 用 getAllRaw() 取全量任务（含子任务），比 getAll() 多了子任务，
-    // 确保紧急的子任务也能被选中展示。
+    // 用 getAllRaw() 取全量任务（含子任务），确保紧急的子任务也能被选中展示。
     final allTasks = await repository.getAllRaw();
+    // 候选池 = 未完成任务（待办 status==0 + 进行中 status==1），
+    // 无 startDate 的任务由 rankCandidates 剔除，故不再单独过滤。
     final activeTasks = allTasks
         .where(
-          (task) => task.status == 0 && task.deleted == 0 && task.archived == 0,
+          (task) =>
+              (task.status == 0 || task.status == 1) &&
+              task.deleted == 0 &&
+              task.archived == 0,
         )
         .toList();
-    if (activeTasks.isEmpty) return null;
-
-    // 有子任务就只看子任务：子任务是可执行的工作项，父任务仅作回退。
-    final childTasks = activeTasks.where((t) => t.parentId != null).toList();
-    final candidates = childTasks.isNotEmpty
-        ? childTasks
-        : activeTasks.where((t) => t.parentId == null).toList();
-    if (candidates.isEmpty) return null;
 
     final now = DateTime.now();
-    candidates.sort((left, right) {
-      final scoreCompare = _scoreTask(
-        right,
-        now,
-      ).compareTo(_scoreTask(left, now));
-      if (scoreCompare != 0) return scoreCompare;
-
-      final leftDate = _anchorDate(left, now);
-      final rightDate = _anchorDate(right, now);
-      final dateCompare = leftDate.compareTo(rightDate);
-      if (dateCompare != 0) return dateCompare;
-
-      return right.updatedAt.compareTo(left.updatedAt);
-    });
+    final candidates = rankCandidates(activeTasks, now);
+    if (candidates.isEmpty) return null;
 
     final top = candidates.first;
     return DesktopFloatingTaskSummary(
       taskId: top.id,
       title: top.title,
       priority: top.priority,
-      anchorDate: _anchorDate(top, now),
+      anchorDate: anchorDateOf(top, now),
       dueDate: top.dueDate == null
           ? null
           : DateTime.fromMillisecondsSinceEpoch(top.dueDate!),
@@ -260,7 +293,9 @@ class DesktopFloatingTabController extends ChangeNotifier {
     );
   }
 
-  DateTime _anchorDate(Task task, DateTime now) {
+  /// 任务锚点时间：startDate ?? dueDate ?? now。供便签展示用。
+  @visibleForTesting
+  static DateTime anchorDateOf(Task task, DateTime now) {
     if (task.startDate != null) {
       return DateTime.fromMillisecondsSinceEpoch(task.startDate!);
     }
@@ -270,38 +305,55 @@ class DesktopFloatingTabController extends ChangeNotifier {
     return now;
   }
 
-  int _scoreTask(Task task, DateTime now) {
-    final anchor = _anchorDate(task, now);
-    final days = anchor.difference(now).inDays;
-    final urgency = days < 0
-        ? 10
-        : days <= 3
-        ? 5
-        : days <= 7
-        ? 2
-        : days <= 30
-        ? 0
-        : -2;
-    return task.priority * 2 + urgency;
+  /// 便签候选排序（分层规则，2026-08-03 确认）：
+  /// 层① 小时级任务（单日非全天）优先；层② 跨天/全天任务（isAllDay || 跨日）靠后。
+  /// 每层内：进行中(status==1)优先 → 距 startDate 最近 → 平局取 updatedAt 最新。
+  /// 无 startDate 的任务不进入排序（直接从候选剔除）。
+  @visibleForTesting
+  static List<Task> rankCandidates(List<Task> pool, DateTime now) {
+    final hourLevel = <Task>[];
+    final multiDayLevel = <Task>[];
+    for (final task in pool) {
+      if (task.startDate == null) continue; // 无 startDate 不入排序
+      if (task.isAllDay == 1 || _isMultiDayTask(task)) {
+        multiDayLevel.add(task);
+      } else {
+        hourLevel.add(task);
+      }
+    }
+    return [
+      ..._rankWithinLayer(hourLevel, now),
+      ..._rankWithinLayer(multiDayLevel, now),
+    ];
   }
 
-  Future<void> _openTaskDetail(String taskId) async {
-    // 从数据库取完整 Task 对象，导航到数据库版 TaskDetailPage
-    // （不能用 /task/:id 路由——那是本地 JSON 版详情页，数据源不同）
-    final task = await _taskRepository?.get(taskId);
-    if (task == null) {
-      flog('[FloatingTab] _openTaskDetail: taskId=$taskId 在数据库中未找到');
-      return;
+  static List<Task> _rankWithinLayer(List<Task> tasks, DateTime now) {
+    int byTimeThenUpdated(Task a, Task b) {
+      final distCompare = _startOf(a)
+          .difference(now)
+          .abs()
+          .compareTo(_startOf(b).difference(now).abs());
+      if (distCompare != 0) return distCompare;
+      return b.updatedAt.compareTo(a.updatedAt);
     }
 
-    scheduleMicrotask(() {
-      final navigator = AppRouter.navigatorKey.currentState;
-      navigator?.pushNamedAndRemoveUntil('/', (route) => false);
-      Future<void>.delayed(const Duration(milliseconds: 100), () {
-        AppRouter.navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => task_db.TaskDetailPage(task: task)),
-        );
-      });
-    });
+    final inProgress =
+        tasks.where((t) => t.status == 1).toList()..sort(byTimeThenUpdated);
+    final pending =
+        tasks.where((t) => t.status != 1).toList()..sort(byTimeThenUpdated);
+    return [...inProgress, ...pending];
   }
+
+  /// 跨天判定：startDate 与 dueDate 不同日（与首页 _isMultiDayNode 语义一致）。
+  static bool _isMultiDayTask(Task task) {
+    final start = task.startDate;
+    final due = task.dueDate;
+    if (start == null || due == null) return false;
+    final s = DateTime.fromMillisecondsSinceEpoch(start);
+    final e = DateTime.fromMillisecondsSinceEpoch(due);
+    return !(s.year == e.year && s.month == e.month && s.day == e.day);
+  }
+
+  static DateTime _startOf(Task task) =>
+      DateTime.fromMillisecondsSinceEpoch(task.startDate!);
 }

@@ -41,7 +41,8 @@ class HomeLazyLogService {
         ),
         data: {
           'model': config.model.trim(),
-          'temperature': 0.2,
+          if (!_omitTemperature(config.model.trim())) 'temperature': 0.2,
+          ..._thinkingParams(config),
           'messages': [
             {
               'role': 'system',
@@ -85,6 +86,34 @@ class HomeLazyLogService {
       );
     }
   }
+
+  /// 按思考等级 + 模型前缀生成请求体中的思考控制参数。
+  /// off 时按厂商分发原生关闭参数；未命中映射兜底发最低思考等级
+  /// reasoning_effort: low（OpenAI/DeepSeek 等对未知参数静默忽略，不会 400）。
+  Map<String, dynamic> _thinkingParams(AssistantModelConfig config) {
+    final effort = config.reasoningEffort.trim().toLowerCase();
+    if (effort.isEmpty || effort == 'auto') return const {};
+    final model = config.model.trim().toLowerCase();
+    if (effort == 'off') {
+      if (model.contains('glm') || model.contains('deepseek')) {
+        return {'thinking': {'type': 'disabled'}};
+      }
+      if (model.contains('qwen')) return {'enable_thinking': false};
+      if (model.contains('kimi')) return {'reasoning_effort': 'low'};
+      if (_isOpenAiReasoningModel(model)) {
+        return {'reasoning_effort': 'none'};
+      }
+      return {'reasoning_effort': 'low'};
+    }
+    return {'reasoning_effort': effort};
+  }
+
+  /// OpenAI 推理模型（o1/o3/gpt-5）要求省略 temperature，否则直接 400。
+  bool _omitTemperature(String model) =>
+      _isOpenAiReasoningModel(model.trim().toLowerCase());
+
+  bool _isOpenAiReasoningModel(String model) =>
+      model.contains('o1') || model.contains('o3') || model.contains('gpt-5');
 
   Future<LazyLogResult> _normalizeAll(
     LazyLogResult result, {

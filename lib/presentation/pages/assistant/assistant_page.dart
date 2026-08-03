@@ -619,6 +619,7 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
   late final _userInstructions = TextEditingController(
     text: widget.config.userInstructions,
   );
+  late String _reasoningEffort = widget.config.reasoningEffort;
   var _testing = false;
   String? _testResult;
 
@@ -690,6 +691,38 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
               const SizedBox(height: 12),
               _field(_model, '模型 ID', 'gpt-4o-mini'),
               const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _reasoningEffort,
+                decoration: const InputDecoration(
+                  labelText: '思考等级',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'auto',
+                    child: Text('自动（跟随模型默认）'),
+                  ),
+                  DropdownMenuItem(value: 'off', child: Text('关闭思考')),
+                  DropdownMenuItem(
+                    value: 'low',
+                    child: Text('低（reasoning_effort: low）'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'medium',
+                    child: Text('中（reasoning_effort: medium）'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'high',
+                    child: Text('高（reasoning_effort: high）'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _reasoningEffort = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
               _field(_apiKey, 'API Key', 'sk-...', obscure: true),
               const SizedBox(height: 12),
               _field(
@@ -732,6 +765,7 @@ class _AssistantConfigDialogState extends State<_AssistantConfigDialog> {
                 apiKey: _apiKey.text.trim(),
                 model: _model.text.trim(),
                 userInstructions: _userInstructions.text.trim(),
+                reasoningEffort: _reasoningEffort,
               ),
             );
           },

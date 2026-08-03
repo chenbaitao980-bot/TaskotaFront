@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   desktop_drop
+  desktop_multi_window
   flutter_timezone
   irondash_engine_context
   screen_retriever_windows

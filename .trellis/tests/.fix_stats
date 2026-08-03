@@ -1,0 +1,54 @@
+initial_failures=10
+total_fix_rounds=3
+total_fixes_applied=2
+final_status=PASSED
+weak_assertions=no
+# --- R-G-R 破坏性验证 ---
+destructive_validated_files:
+  - file: lib/services/home_lazy_log_service.dart
+    change: _thinkingParams 思考参数分发
+    test: test_thinking_params_boundary
+    a_result: FAIL (+3 -5, 思考参数丢失)
+    b_result: PASS (+8, 思考参数恢复)
+    restored: true
+  - file: lib/presentation/widgets/task_tree_picker_sheet.dart
+    change: _confirm 哨兵分发 node ?? clearSelection
+    test: D7 无勾选完成→哨兵
+    a_result: FAIL (+0 -1, 返回 null 而非哨兵)
+    b_result: PASS (+1, 哨兵恢复)
+    restored: true
+  - file: lib/models/assistant/assistant_models.dart
+    change: fromJson reasoningEffort 默认 auto
+    test: persists reasoningEffort defaults to auto
+    a_result: FAIL (+0 -1, 默认变 off)
+    b_result: PASS (+1, 默认 auto 恢复)
+    restored: true
+  - file: lib/presentation/pages/home/lazy_log_draft_review_sheet.dart
+    change: _ParentTaskButton 门控 selectable = enabled && projectId != null
+    test: 未选项目→禁用
+    a_result: FAIL (+0 -1, 未选项目可点)
+    b_result: PASS (+6, 门控恢复)
+    restored: true
+# --- 代码审查验证（无独立单测的 UI 层）---
+code_review_validated:
+  - file: lib/presentation/pages/home/home_page.dart
+    change: _lazyLogParentOptions 候选全量任务 + parentId 透传 (2186-2195)
+    verdict: 确认（链路被审核页/树测试间接覆盖）
+  - file: lib/presentation/pages/assistant/assistant_page.dart
+    change: 思考等级下拉 off/auto/低/中/高 → reasoningEffort (697-768)
+    verdict: 确认（reasoningEffort 契约被 service 测试覆盖）
+  - file: lib/presentation/pages/home/lazy_log_creation_dialog.dart
+    change: LazyLogParentOption 新增 projectId/parentId 字段 (20-30)
+    verdict: 确认（纯字段，被树/审核页测试构造消费）
+# --- 修复诊断（类型2 测试 bug）---
+failure_diagnostics:
+  - test: test_thinking_params_boundary.dart 全部
+    expected: 思考参数按 effort 分发
+    actual: MissingPluginException(shared_preferences 未 mock)
+    judgment: test_bug
+    fixed: true
+  - test: test_review_sheet_parent_gate.dart
+    expected: 门控/哨兵消费契约
+    actual: test 回调签名错误 + pumpAndSettle 卡死 + finder 歧义 + dropdown 文本
+    judgment: test_bug
+    fixed: true
