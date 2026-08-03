@@ -1033,3 +1033,37 @@ taskora-website: 修复所有 admin 页面右侧留白（Starlight right-sidebar
 ### Next Steps
 
 - None - task complete
+
+
+## Session 30: 懒人日志AI思考控制 + 审核页父任务树状选择
+
+**Date**: 2026-08-03
+**Task**: 懒人日志AI思考控制 + 审核页父任务树状选择
+**Branch**: `deploy-branch`
+
+### Summary
+
+需求1：懒人日志调用 AI 大模型支持关闭思考/思考等级最低（reasoningEffort，按厂商分发原生关闭参数，OpenAI 推理模型省略 temperature）；需求2：审核页必须先选项目才能选父任务，父任务列表改为树状选择器（点选不关窗口+完成按钮+默认收缩+一键展开+clearSelection 哨兵）。46 条测试全绿，R-G-R 破坏性验证通过，spec 补充哨兵模式与 drift 测试陷阱。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ea86621` | (see git log) |
+| `76e4c15` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
