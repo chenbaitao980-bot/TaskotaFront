@@ -1,4 +1,10 @@
-spec_file|规则原文|规则类型|验证结果|证据
-.trellis/spec/frontend/component-guidelines.md:202|折叠展开：用 _expandedGroupIds.contains(id) 条件渲染子列表（而非 AnimatedCrossFade）|组件规范|通过|task_tree_picker_sheet.dart _expanded Set + _buildTreeRows 条件渲染
-.trellis/spec/frontend/component-guidelines.md:210-229|多层级列表独立折叠状态 + 全部折叠/展开（仅针对有子任务的组）|组件规范|通过|_toggleAllExpanded 对 _allParentIds 全部展开/收起
-.trellis/spec/frontend/component-guidelines.md:154-161|分组多选 + 可折叠，Set 存展开态|组件规范|通过|_selectedId 勾选切换 + _expanded Set 展开态
+# Spec 合规审计（08-03-sticky-note-redesign）
+# 格式: spec_file | 规则原文 | 规则类型 | 验证结果 | 证据
+.trellis/spec/frontend/quality-guidelines.md | 通知防重复弹窗模式（缓存上次状态仅变化时弹窗） | 流程约束 | 通过 | _processPendingNotificationTask 未改动；postFrame 时序保持通知在前
+.trellis/spec/frontend/quality-guidelines.md | ValueNotifier+VLB 替代 setState 做局部重建 | 性能约束 | 通过 | 象限高亮为字段级 setState（isSelected），无新增子树重建；便签窗 noteSummaryNotifier 用 VLB
+.trellis/spec/frontend/quality-guidelines.md | build() 中 O(n²) 查找必须提取为 Set | 性能约束 | 通过 | _processFloatingTabFocusTask 对 _timelineTasks 单次线性扫描 O(n)
+.trellis/spec/frontend/quality-guidelines.md | SharedPreferences 写入必须防抖 | 性能约束 | 通过 | 本次无 SharedPreferences 写入改动
+.trellis/spec/frontend/quality-guidelines.md | 首屏数据本地优先 | 流程约束 | 通过 | 未触及首屏加载链路
+.trellis/spec/frontend/platform-compatibility.md | window_manager/desktop_multi_window 仅桌面条件导出 | 平台约束 | 通过 | main() 便签引擎分支 if (!kIsWeb && isDesktop) 守卫；note_window_app 仅桌面引擎调用
+.trellis/spec/frontend/platform-compatibility.md | Web 构建必须仍绿 | 平台约束 | 通过 | 便签分支与控制器方法均 kIsWeb 守卫；变更报告 V3 已验 flutter build web --release
+.trellis/spec/guides/index.md | 改任何值前先搜索 | 流程约束 | 通过 | 便签候选规则变更前 codegraph 全量搜索 _scoreTask/rankCandidates 引用

@@ -2,3 +2,12 @@
 3237d44 | create lazy log tasks with parent context | test_regr_lazy_log_parent.dart | 2026-08-03
 0d55b30 | route lazy log projects by group hints | test_regr_lazy_log_parent.dart | 2026-08-03
 23d8cb6 | lazy log shift+enter newline and failed task entry | test_regr_lazy_log_parent.dart | 2026-08-03
+f68060b | 悬浮进行中任务页签(便签候选旧规则 priority*2+urgency 起源) | test_regr_floating_tab_selection.dart | 2026-08-03
+ea86621 | 便签候选分层规则(小时级优先->进行中->时间最近->平局updatedAt；无startDate剔除) | test_regr_floating_tab_selection.dart | 2026-08-03
+c66ef28 | 时间轴自动切换Bug(_modeSwitchGuard 手动切换不被自动跳回) | test_regr_timeline_switch_guard.dart | 2026-08-03
+f11eb24 | 时间轴模式切换 | test_regr_timeline_switch_guard.dart | 2026-08-03
+c233936 | 时间轴去重 | test_regr_timeline_switch_guard.dart | 2026-08-03
+3554580 | 逾期以 dueDate 为基准，无 dueDate 永不逾期 | test_regr_overdue_date_base.dart | 2026-08-03
+eee4e76f | 逾期数也用 startDate 的遗漏 | test_regr_overdue_date_base.dart | 2026-08-03
+6cac55f | 过期任务通知弹窗修复(点击导航/防重复) | test_regr_notification_nav.dart | 2026-08-03
+0c8c6ed | 点击逾期提醒跳转最早逾期任务 | test_regr_notification_nav.dart | 2026-08-03

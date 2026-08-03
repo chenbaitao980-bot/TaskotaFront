@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "便签独立窗口重构 + V4 崩溃/白屏修复 变更总览",
+    "subtitle": "主窗常驻不缩放 · 第二引擎便签窗 · 跨窗协议 · 点击唤起首页定位",
+    "output": ".trellis/tasks/08-03-sticky-note-redesign/diagrams/fix-overview-sticky-note-window.html",
+    "viewBox": [
+      720,
+      1000
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "主引擎 main.dart"
+    },
+    {
+      "id": "ctrl",
+      "label": "控制器"
+    },
+    {
+      "id": "win",
+      "label": "窗口原生层 window_manager"
+    },
+    {
+      "id": "note",
+      "label": "便签引擎 note_window_app.dart"
+    },
+    {
+      "id": "home",
+      "label": "首页 HomePage"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "main",
+      "lane": "main",
+      "col": 1,
+      "type": "external",
+      "label": "main()",
+      "width": 110
+    },
+    {
+      "id": "role",
+      "lane": "main",
+      "col": 3,
+      "type": "backend",
+      "label": "_isNoteWindowRole",
+      "width": 127
+    },
+    {
+      "id": "ctrl",
+      "lane": "ctrl",
+      "col": 1,
+      "type": "backend",
+      "label": "handleCloseRequested",
+      "width": 150
+    },
+    {
+      "id": "create",
+      "lane": "ctrl",
+      "col": 3,
+      "type": "cloud",
+      "label": "WindowController.create",
+      "width": 168
+    },
+    {
+      "id": "chrome",
+      "lane": "win",
+      "col": 2,
+      "type": "security",
+      "label": "_initNoteWindowChrome",
+      "width": 154
+    },
+    {
+      "id": "noteEntry",
+      "lane": "note",
+      "col": 1,
+      "type": "frontend",
+      "label": "runNoteWindow",
+      "width": 110
+    },
+    {
+      "id": "noteUI",
+      "lane": "note",
+      "col": 3,
+      "type": "frontend",
+      "label": "NoteWindowApp",
+      "width": 120
+    },
+    {
+      "id": "cmdCh",
+      "lane": "note",
+      "col": 5,
+      "type": "messagebus",
+      "label": "command通道",
+      "width": 92
+    },
+    {
+      "id": "focus",
+      "lane": "home",
+      "col": 1,
+      "type": "backend",
+      "label": "focus消费",
+      "width": 110
+    },
+    {
+      "id": "timeline",
+      "lane": "home",
+      "col": 3,
+      "type": "database",
+      "label": "_selectTask R1",
+      "width": 130
+    }
+  ],
+  "edges": [
+    {
+      "from": "main",
+      "to": "ctrl",
+      "variant": "default"
+    },
+    {
+      "from": "role",
+      "to": "noteEntry",
+      "variant": "emphasis",
+      "label": "role==note"
+    },
+    {
+      "from": "ctrl",
+      "to": "create",
+      "variant": "default"
+    },
+    {
+      "from": "create",
+      "to": "noteEntry",
+      "variant": "default"
+    },
+    {
+      "from": "noteEntry",
+      "to": "chrome",
+      "variant": "default"
+    },
+    {
+      "from": "chrome",
+      "to": "noteUI",
+      "variant": "emphasis"
+    },
+    {
+      "from": "noteUI",
+      "to": "cmdCh",
+      "variant": "emphasis"
+    },
+    {
+      "from": "cmdCh",
+      "to": "ctrl",
+      "variant": "default"
+    },
+    {
+      "from": "ctrl",
+      "to": "focus",
+      "variant": "default"
+    },
+    {
+      "from": "focus",
+      "to": "timeline",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "修复的四个固有缺陷",
+      "items": [
+        "黑线: 独立透明窗 ACCENT(不再缩小主窗透出OS边框)",
+        "崩溃: setSkipTaskbar 前 waitUntilReadyToShow 初始化 taskbar_",
+        "白屏: 首帧渲染后自显示，复用才 show",
+        "卡顿: 主窗常驻零重建，restore 近瞬时"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "行为反转确认",
+      "items": [
+        "候选选择: priority*2+urgency → 分层时间最近(小时级优先→进行中→时间最近)",
+        "有意反转(用户 2026-08-03 确认)"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "点击定位链路",
+      "items": [
+        "点便签→showMain(openTaskId)→restoreFullWindow 写 pendingFocusTaskId",
+        "HomePage postFrame 消费→_selectTask(R1 维度切换)+_scrollToTask",
+        "_modeSwitchGuard 在 R1 前(不破坏 c66ef28)"
+      ]
+    }
+  ]
+}

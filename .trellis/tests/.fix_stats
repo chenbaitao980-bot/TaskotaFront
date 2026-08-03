@@ -1,54 +1,61 @@
-initial_failures=10
-total_fix_rounds=3
-total_fixes_applied=2
+initial_failures=4
+total_fix_rounds=1
+total_fixes_applied=1
 final_status=PASSED
-weak_assertions=no
-# --- R-G-R 破坏性验证 ---
-destructive_validated_files:
-  - file: lib/services/home_lazy_log_service.dart
-    change: _thinkingParams 思考参数分发
-    test: test_thinking_params_boundary
-    a_result: FAIL (+3 -5, 思考参数丢失)
-    b_result: PASS (+8, 思考参数恢复)
-    restored: true
-  - file: lib/presentation/widgets/task_tree_picker_sheet.dart
-    change: _confirm 哨兵分发 node ?? clearSelection
-    test: D7 无勾选完成→哨兵
-    a_result: FAIL (+0 -1, 返回 null 而非哨兵)
-    b_result: PASS (+1, 哨兵恢复)
-    restored: true
-  - file: lib/models/assistant/assistant_models.dart
-    change: fromJson reasoningEffort 默认 auto
-    test: persists reasoningEffort defaults to auto
-    a_result: FAIL (+0 -1, 默认变 off)
-    b_result: PASS (+1, 默认 auto 恢复)
-    restored: true
-  - file: lib/presentation/pages/home/lazy_log_draft_review_sheet.dart
-    change: _ParentTaskButton 门控 selectable = enabled && projectId != null
-    test: 未选项目→禁用
-    a_result: FAIL (+0 -1, 未选项目可点)
-    b_result: PASS (+6, 门控恢复)
-    restored: true
-# --- 代码审查验证（无独立单测的 UI 层）---
-code_review_validated:
-  - file: lib/presentation/pages/home/home_page.dart
-    change: _lazyLogParentOptions 候选全量任务 + parentId 透传 (2186-2195)
-    verdict: 确认（链路被审核页/树测试间接覆盖）
-  - file: lib/presentation/pages/assistant/assistant_page.dart
-    change: 思考等级下拉 off/auto/低/中/高 → reasoningEffort (697-768)
-    verdict: 确认（reasoningEffort 契约被 service 测试覆盖）
-  - file: lib/presentation/pages/home/lazy_log_creation_dialog.dart
-    change: LazyLogParentOption 新增 projectId/parentId 字段 (20-30)
-    verdict: 确认（纯字段，被树/审核页测试构造消费）
-# --- 修复诊断（类型2 测试 bug）---
+duration_seconds=600
+fixes:
+  - test: test_floating_tab_widget.dart (4 个用例)
+    bug: 便签卡片右侧图标按钮 Column 纵向溢出 4px（Material3 IconButton 最小 40px，两个=80>76px 内高；release 被 Clip 静默裁剪，debug/test 抛 RenderFlex overflow）
+    root_cause: IconButton constraints: tightFor(30,30) 被 Material 最小尺寸 enforce 覆盖（40x40），visualDensity.compact 不足以消除
+    fix: 两按钮加 style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap) + 图标列 mainAxisSize.min
+    judgment: code_bug
+    fixed: true
 failure_diagnostics:
-  - test: test_thinking_params_boundary.dart 全部
-    expected: 思考参数按 effort 分发
-    actual: MissingPluginException(shared_preferences 未 mock)
-    judgment: test_bug
+  - test: test_floating_tab_widget.dart::渲染标题
+    expected: 无 RenderFlex overflow；无 Border.all
+    actual: RenderFlex overflowed by 4.0px + Bad state: Too many elements（测试脆弱 ancestor 提取）
+    judgment: code_bug + test_bug（脆弱断言已改为全局扫描）
     fixed: true
-  - test: test_review_sheet_parent_gate.dart
-    expected: 门控/哨兵消费契约
-    actual: test 回调签名错误 + pumpAndSettle 卡死 + finder 歧义 + dropdown 文本
-    judgment: test_bug
+  - test: test_floating_tab_widget.dart::点击打开/关闭/卡片主体
+    expected: onTap/onClose 回调触发
+    actual: tap 后立即 pump 未越过 DragToMoveArea 双击识别器 300ms 竞技场持有期 → 回调未触发
+    judgment: test_bug（tap 后需 pump 350ms）
     fixed: true
+destructive_validated_files:
+  - file: lib/core/desktop/desktop_floating_tab_controller.dart
+    change: rankCandidates 分层规则
+    test: test_regr_floating_tab_selection.dart
+    a_result: FAIL（去分层返回原序 → 小时级优先断言变红）
+    b_result: PASS（分层规则）
+    restored: true
+  - file: lib/presentation/widgets/desktop_floating_task_tab.dart
+    change: shrinkWrap 修复溢出
+    test: test_floating_tab_widget.dart
+    a_result: FAIL（移除 shrinkWrap → 4 处 RenderFlex overflow）
+    b_result: PASS（无溢出）
+    restored: true
+  - file: lib/presentation/pages/floating_note/note_window_app.dart
+    change: waitUntilReadyToShow 先于 setSkipTaskbar（V4 崩溃修复）
+    test: test_regr_v4_crash_white_screen.dart
+    a_result: FAIL（移除 waitUntilReadyToShow → 顺序断言变红）
+    b_result: PASS（顺序正确）
+    restored: true
+  - file: lib/presentation/pages/home/home_page.dart
+    change: _selectTask R1 跨天/isAllDay→day 分支
+    test: test_regr_timeline_switch_guard.dart
+    a_result: FAIL（移除 R1 → 3 个守卫断言变红）
+    b_result: PASS（R1 存在且在守卫后）
+    restored: true
+  - file: lib/main.dart
+    change: 便签引擎 role==note 分支
+    test: test_regr_v4_crash_white_screen.dart（结构断言 runNoteWindow + _isNoteWindowRole）
+    a_result: FAIL（结构断言） / b_result: PASS
+    restored: true
+    note: 入口逻辑，无独立 R-G-R，用结构断言 + 编译验证
+reversals_confirmed:
+  - func: rankCandidates / _selectTaskForFloatingTab
+    old_behavior: priority*2+urgency 打分选候选（f68060b 引入）→ 选出陈旧高优先级任务
+    new_behavior: 分层时间最近（小时级优先→进行中→时间最近→平局 updatedAt；无 startDate 剔除）
+    old_direction_test: test_regr_floating_tab_selection.dart（断言新方向）
+    red_confirmed: true
+    verdict: intentional_reversal（用户 2026-08-03 最终确认分层规则）
