@@ -267,9 +267,18 @@ final allTasks = (await taskRepository.getAll())...; // 首发数据不依赖网
 
 ## Testing Requirements
 
-<!-- What level of testing is expected -->
+### Flutter widget 测试：drift `watch()` 流 + `pumpAndSettle` 陷阱
 
-(To be filled by the team)
+**Symptom**: 对基于 `StreamBuilder(stream: repository.watchXxx())`（drift 流）的页面做 widget 测试时，`pumpAndSettle()` 卡死直到超时，或测试结束时抛 `A Timer is still pending even after the widget tree was disposed`。
+
+**Cause**: drift 的 `watch()` 是持续流，`StreamBuilder` 订阅期间 widget 树存在 pending timer；`pumpAndSettle` 等待所有帧结束，而流始终活跃导致永不 settle；测试结束后订阅未取消则 `_verifyInvariants` 报 timer pending。
+
+**Fix**:
+- 用**固定时长 pump** 替代 `pumpAndSettle`（bottom sheet 动画：`pump()` + `pump(const Duration(milliseconds: 600))`）。
+- 每个 `testWidgets` 末尾**卸载 widget 树**取消流订阅：`await tester.pumpWidget(const SizedBox()); await tester.pump(const Duration(milliseconds: 100));`
+- 用 `NativeDatabase.memory()` 构造内存库，测试结束 `database.close()`。
+
+**Prevention**: 涉及 drift 流的页面测试统一走此模式；`pumpAndSettle` 只用于无持续流的纯 UI 动画测试。
 
 ---
 

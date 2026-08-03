@@ -269,6 +269,49 @@ int effectiveGroupSpan(String rootId) {
 
 **⚠️ 组内排序必须用 DFS 递归，禁止扁平化后直接排序**：将所有非 root 任务扁平化后按 `sortOrder/startDate` 排序，在多层级（祖→父→子）结构中会导致父任务被子任务压到下面。正确做法是 DFS 递归，保证任何父节点永远先于其子节点输出：
 
+### Pattern: 弹层结果哨兵（Bottom Sheet Result Sentinel）
+
+**Problem**: `showModalBottomSheet<T>` 需要返回三态结果——用户**关闭**（未做决定）、**确认清空选择**、**确认选中某项**。`null` 无法区分「关闭」与「清空」：两者都表示"没有选中"，但消费方需要不同处理（关闭→保留现状；清空→主动清除）。
+
+**Solution**: 定义一个 `static const` 哨兵对象作为「已确认清空」信号，与 `null`（关闭）区分。哨兵用身份比较（`identical`/`same`），不依赖字段值。
+
+```dart
+class TaskTreePickerSheet extends StatefulWidget {
+  // 哨兵：已确认清空（区别于 null=关闭不保存）
+  static const LazyLogParentOption clearSelection = LazyLogParentOption(
+    id: '__clear__',
+    title: '',
+  );
+}
+
+// 确认提交：有勾选返回节点，无勾选返回哨兵
+void _confirm() {
+  final node = _selectedId == null
+      ? null
+      : widget.parents.where((p) => p.id == _selectedId).firstOrNull;
+  Navigator.pop(context, node ?? TaskTreePickerSheet.clearSelection);
+}
+
+// 关闭按钮 / 点外部 → null
+Navigator.pop(context);
+```
+
+**消费方三分支**（null / 哨兵 / 节点）——零改动即可兼容「点选不关窗口 + 完成按钮提交」交互模型：
+
+```dart
+final picked = await showModalBottomSheet<LazyLogParentOption>(...);
+if (picked == null) return;                                  // 关闭，忽略
+if (identical(picked, TaskTreePickerSheet.clearSelection)) {
+  onChanged(null);                                           // 哨兵 → 清空
+} else {
+  onChanged(picked.id);                                      // 节点 → 选中
+}
+```
+
+**Why**: 弹层内部状态可变（`_selectedId` 切换勾选不 pop），提交动作与关闭动作分离，哨兵让消费方在**不感知弹层内部交互模型**的情况下正确区分三态。
+
+**约束**: 哨兵类型必须与弹层返回类型一致（`LazyLogParentOption`）；`LazyLogParentOption` 无 `==` override 时可用 Dart const canonicalization + `identical` 比较。
+
 ---
 
 ## Pointer / Gesture Patterns

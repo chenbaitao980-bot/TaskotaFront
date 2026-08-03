@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规范：树选择器折叠/多选/多层级列表规则"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理：setState 变更 + 仓库方法持久化"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend 层规范入口"}
+{"file": ".trellis/tasks/08-03-lazy-log-ai-tree/research/ai-thinking-control.md", "reason": "需求1研究：AI 思考控制参数分发"}
+{"file": ".trellis/tasks/08-03-lazy-log-ai-tree/research/flutter-tree-picker.md", "reason": "需求2研究：Flutter 树状选择器方案"}
