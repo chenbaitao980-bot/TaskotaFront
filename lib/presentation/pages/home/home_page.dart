@@ -217,17 +217,31 @@ class _HomePageState extends State<HomePage> {
     }
     _lastRescheduleTime = now;
     final notificationService = NotificationService();
+
+    // 先取消所有任务提醒（本地+数据库），再统一重新调度，
+    // 避免旧 timer 在创建新 timer 前触发导致同一个任务弹出两个"即将开始"通知
+    final localTasks = _storage.getTasks();
+    final dbTasks = await widget.taskRepository?.getAll() ?? [];
+    final allIds = <String>{
+      ...localTasks.map((t) => t.id),
+      ...dbTasks.map((t) => t.id),
+    };
+    for (final id in allIds) {
+      await notificationService.cancelReminderForSchedule(id);
+    }
+
+    // 提醒来源也统一取消+重调度
     await notificationService.rescheduleScheduleReminders(
       _storage.getSchedules(),
     );
-    await notificationService.rescheduleBreakdownTaskReminders(
-      _storage.getTasks(),
-    );
 
-    final taskRepository = widget.taskRepository;
-    if (taskRepository == null) return;
-    final tasks = await taskRepository.getAll();
-    await notificationService.rescheduleTaskReminders(tasks);
+    // 以数据库为权威源重新调度
+    await notificationService.rescheduleTaskReminders(dbTasks);
+    // 补上仅存于本地的任务
+    final localOnly = localTasks.where(
+      (t) => !dbTasks.any((d) => d.id == t.id),
+    );
+    await notificationService.rescheduleBreakdownTaskReminders(localOnly);
   }
 
   /// 监听 Supabase 登录状态：登录后才启动项目/分组同步
@@ -1778,7 +1792,10 @@ class _HomeContentState extends State<_HomeContent> {
           },
           onError: (error) {
             if (mounted) {
-              showAppSnackBar(context, 'AI 配置认证失败（Token 可能已过期），请在设置中重新配置 AI 模型');
+              showAppSnackBar(
+                context,
+                'AI 配置认证失败（Token 可能已过期），请在设置中重新配置 AI 模型',
+              );
             }
           },
         ),
