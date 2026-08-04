@@ -85,7 +85,10 @@ class NotificationService {
     int? repeatInterval,
   }) async {}
 
-  Future<void> cancelReminderForSchedule(String scheduleId) async {}
+  Future<void> cancelReminderForSchedule(
+    String scheduleId, {
+    bool cancelRepeats = true,
+  }) async {}
 
   Future<void> rescheduleTaskReminders(Iterable<Task> tasks) async {}
 

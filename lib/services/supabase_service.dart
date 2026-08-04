@@ -4,7 +4,10 @@ import '../models/entities/task_breakdown.dart';
 import '../models/entities/user_profile.dart';
 
 class SupabaseService {
-  final SupabaseClient _client = Supabase.instance.client;
+  // 不能字段初始化（prd P1-A）：Supabase.initialize 带 2s 超时，超时未完成时构造
+  // SupabaseService()（runApp 的 BlocProvider 即构造）会抛 LateInitializationError。
+  // 改为 getter 延迟到首次使用时才取客户端。
+  SupabaseClient get _client => Supabase.instance.client;
 
   // 注册人数上限
   static const int maxRegisteredUsers = 50;
@@ -56,7 +59,14 @@ class SupabaseService {
     await _client.auth.signOut();
   }
 
-  User? get currentUser => _client.auth.currentUser;
+  User? get currentUser {
+    // P1-A（prd）：Supabase 未初始化 / 2s 超时降级窗口内访问不抛异常，返回 null 走本地路径。
+    try {
+      return _client.auth.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 

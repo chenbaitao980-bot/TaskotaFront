@@ -1,3 +1,158 @@
+## 2026-08-04 (第六轮修复：任务栏退出慢 / 便签消失 / 启动重影 —— F1-F6 已编码落地，待 L4 实机验证)
+
+> 编码状态：F1-F6 已落地（见 `.trellis/tasks/08-04-brainstorm-sql-api/code/round6_change_report.md`），R2-4 用户确认实施。**L4 实机验证前不以完成态收尾**。
+
+### ⚠️ 症状（用户实测，第五轮 L4 验证后仍存）
+1. 任务栏图标右键"退出"不是实时退出，要等很久
+2. 关闭主窗→有便签→点便签→再关主窗→便签不再显示；任务栏"显示"无此 bug
+3. 打开软件很快，但打开一刹那有重影
+
+### 根因（3 并行子 agent + 代码级复核，证据链非假设；详见 `.trellis/tasks/08-04-brainstorm-sql-api/code/round6_diagnosis.md`）
+- **RC-1 退出慢**：`tray_service_desktop.dart:40-41` `await windowManager.destroy(); exit(0)`——destroy 发 PostQuitMessage 后 Future 永不完成 → `exit(0)` 死代码，退出靠引擎 teardown 兜底；WM_QUIT 若被托盘模态循环吞掉则挂住数秒。H4：X 关闭=隐藏到托盘（`flutter_window.cpp:75-78`），需确认用户入口
+- **RC-2 便签消失**：note 窗 `setPreventClose(true)` 在 `_initNoteWindowChrome:114`（首帧后才设）→ 创建到首帧无保护 → WM_CLOSE 击穿销毁引擎 → `note.show()` 抛 PlatformException 被静默 catch（`desktop_floating_tab_controller.dart:227-230`）；叠加 `restoreFullWindow` `_isTransitioning` 竞态早退（:157）+ `onWindowClose` 不 await（`window_manager_bridge_desktop.dart:50`）
+- **RC-3 启动重影**：首帧即最大化 `Show()=SW_MAXIMIZE`（`win32_window.cpp:152-154`）+ 无背景刷（:100 `hbrBackground=0`）→ DWM 缩放动画残影；`restoreFullWindow` z 序连爆 4 次 SetWindowPos（`desktop_floating_tab_controller.dart:165-176`）；C++ 单实例唤醒 SW_MAXIMIZE（`main.cpp:13-18`）
+
+### 修复方案（F1-F6 已全部编码落地）
+- R1 退出改**直接 `exit(0)`**（tray_service_desktop.dart，不再 await destroy()——destroy 发 PostQuitMessage 使主循环退出 → CRT 引擎 teardown 在便签第二引擎线程挂起 → 原 exit(0) 死代码，实测"窗口消失但进程仍存活"）；退出前同步写 `logs/task_exit.log` 打点作证据；R1-3 实机确认用户入口（托盘"退出" vs 任务栏"关闭"）
+- R2-1（主）note 创建即 `setPreventClose(true)` + onWindowClose 兜底只隐藏（note_window_app.dart）；R2-2 竞态 await + 代际 token + 主窗照常 show（window_manager_bridge_desktop.dart / desktop_floating_tab_controller.dart）；R2-3 windowId flog；R2-4 无候选复用 lastSummary（已实施）
+- R3-1 Show 改 SW_SHOW 正常尺寸（win32_window.cpp，用户确认）；R3-2 前台已就绪跳过 TOPMOST（desktop_floating_tab_controller.dart）；R3-3 C++ 单实例改 SW_SHOW（main.cpp）
+
+### find-skills 评估
+- `spjoshis/claude-code-plugins@flutter-performance`（14 installs，来源未知）**不安装**——三症状为 L4 窗口原生层（窗口生命周期/原生 runner/启动渲染），通用 Flutter 性能技能不覆盖；复用已装 `flutter-dart-code-review` 做改后审查。
+
+### ⏳ L4 实机验证（阻塞，重建后逐条实测）
+1. 退出延迟 flog 计时 + 确认用户点的是托盘"退出"还是任务栏"关闭"
+2. 复现便签消失读日志：`failed to find target window` ⇒ 证实 H1 已销毁 / 无候选 ⇒ H3
+3. 录屏慢放"打开一刹那"区分 A 缩放残影 / B z序闪烁 / C 二实例
+
+## 2026-08-04 (第五次性能排查：便签白屏/启动慢/点两下/模块卡死 —— 五项根因查实，P0-A/B/C + P1-A~F 编码已落地，L4 实机待测)
+
+### ⚠️ 复发（P0 修复后用户实测：便签定位已恢复，但四项性能）
+1. 点便签**能定位到首页任务了**，但白屏好几秒才显示（要求秒级跳转）
+2. 打开软件等很久，窗口需再点一下（点两下）才展示
+3. 数据加载很卡很慢（明明已本地化）
+4. 点进后模块无法点、点击无反应卡住
+
+### 根因（3 个并行 trellis-research agent，证据链非假设；详见 research/track{1,2,3}-*.md）
+- **RC-A reschedule 黑洞（白屏主因）**：restore 激活窗口 → `AppLifecycleListener.onResume`(home_page:119) → `_onAppResume` `await _rescheduleTaskReminders()`(141) → Windows 平台线程串行 ~8000-16000 次 Toast 取消通道调用（每任务 24 次 cancel，notification_service_io:885-894）→ 首帧拖住数秒。flog 实测 115 任务 6.4s（11:27:08.563）。**定位本身已是毫秒级快路径，非瓶颈**
+- **RC-B Supabase.initialize 阻塞 runApp 前关键路径**（main:99-106 无超时）：过期会话 → refresh-token 网络 POST 悬挂 → 首帧白窗"打开等很久"；冷启动 runApp 后无显式 show()+focus() → Windows 前台锁（SetForegroundWindow）静默失败 → "点两下才出现"
+- **RC-C 加载路径三叠**：`_loadData` 三查询串行（home_page:899-912）+ 首帧 5 页 IndexedStack 全构建（554-560）+ 484 时间轴 overlay 每次 setState 全量重建（3784）+ **残留网络**：task_bloc:342 `unawaited(_syncCloudPrefsAfterLoad)` → fetchPreferences() 无 DataBackend 守卫无超时
+- **RC-D 模块无反应崩溃实锤**：home_page:1064 `_loadData` 闭包 → `_selectTask`(1324) setState 在 State 已 dispose → 2× `[UncaughtError] Null check`（flog 11:27:27.272/.503，启动后 25s）+ UI 构建风暴 + RC4 周期重载（onResume 被 setAlwaysOnTop/便签第二引擎抢焦点反复触发 → 6-12s 成对，2s 节流挡不住）
+
+### 排除项（避免再次误修）
+- 旧 WS_EX_LAYERED 分层窗口回归已确认删除（controller:191 无 setOpacity；setAlwaysOnTop cpp:877-882 用 SetWindowPos(HWND_TOPMOST)，不碰 WS_EX_LAYERED，双切安全）
+- 无 SynchronousFuture / 同步 IO / SQLite 主线程同步调用（grep 实证）；`_pages` late final 缓存非秒级重建；`_loadData` 全 drift 毫秒级
+
+### 方案（P0-A/B/C + P1-A~F，已定案且编码落地；文件级明细 + 7 条行为契约见 PRD「实施方案」，L4 实机验证为阻塞待办）
+- [x] **P0-A** 删 `_onAppResume` 的 `await _rescheduleTaskReminders()`（home_page:141）→ 便签白屏秒级 + RC4 周期重载减半（最大收益）
+- [x] **P0-B** `_loadData` 闭包 / `_selectTask` 加 `mounted` 守卫（home_page:1064/1324）→ 修崩溃
+- [x] **P0-C** `_syncCloudPrefsAfterLoad` 加 DataBackend 守卫（task_bloc:342）→ 本地模式彻底断网
+- [x] **P1-A** Supabase.initialize 抽 `_initSupabase()` 带 2s 超时（main）+ `_client` 字段改 getter / `currentUser` 容错（supabase_service）→ 启动不再被悬挂阻塞
+- [x] **P1-B** 冷启动 postFrame 调 `restoreFullWindow()` → 窗口直接弹最前，无需点两下
+- [x] **P1-C** tab2/3/4 懒构建（`_LazyIndexedPage` 按 `_tabIndex` 首选中才 build）→ 首帧 5 页全构建减为 2 页
+- [x] **P1-D** `_loadData` 三查询 `Future.wait` 并行
+- [x] **P1-E** resume 节流 ≥30s（`_lastResumeLoadTime`）
+- [x] **P1-F** reschedule 降量（`cancelReminderForSchedule` 加 `cancelRepeats` 折叠 21 次 repeat 取消；任务侧重调度传 false，每任务 24→2 次通道调用；web 签名同步）
+
+### 影响文件（已实施）
+- `lib/presentation/pages/home/home_page.dart`（P0-A/B + P1-C/D/E/F）
+- `lib/presentation/blocs/task_new/task_bloc.dart`（P0-C）
+- `lib/main.dart`（P1-A/B）
+- `lib/services/supabase_service.dart`（P1-A）
+- `lib/services/notification_service_io.dart` + `notification_service_web.dart`（P1-F）
+- `test/p0_perf_contract_test.dart`（新增，契约 3/5 语义验证）
+
+### ⏳ L4 实机验证（阻塞待办，重建后逐条实测）
+1. 便签点击 → 秒级跳转首页定位任务，无白屏数秒
+2. 启动明显变快 + 窗口直接弹出在最前（无需再点一下）
+3. 数据加载丝滑 + 模块点击即时响应（无卡死/无 UncaughtError）
+4. 便签定位仍正确（跨天切 day / 今天内切 hour / 四象限定位）
+5. 白屏不复发
+
+## 2026-08-04 (复发根因排查·第四次：setOpacity 回归确认 + 双实例 + 启动慢；P0-1/2/3 已编码，L4 待实测)
+
+### ⚠️ 复发（用户更新后实测 4 症状）
+1. 打开软件等很久 + 需点任务栏才跳出 + 首页加载仍慢（明明本地化了）
+2. 小窗（便签）右键"关闭便签"要等很久才能隐藏
+3. 经常无法关闭 / 切换模块无响应 / x 图标闪烁
+4. 点便签已能定位首页任务，但要等很久且窗口仍最小化不弹出
+
+### 根因（证据链，非假设）
+- **RC1（主）setOpacity 分层窗口回归（未删净）**：上一轮"白屏修复"加的 `setOpacity(0)`（hideToTray）/`setOpacity(1)`（restoreFullWindow）仍在本轮未提交代码。window_manager 源码实证：`setOpacity` → `SetWindowLong(WS_EX_LAYERED)` + `SetLayeredWindowAttributes(alpha=255*opacity)`（window_manager.cpp:1031-1038）→ 主窗变**分层窗口**。restore 时序 `show()` 时 alpha=0 全透明不可见 → `focus()` 前台锁静默失败 → **需点任务栏**；分层 + 未聚焦渲染节流 → **全窗冻结直到点击强制重绘**。便签窗与主窗**同进程**（desktop_multi_window 第二引擎）→ 小窗退出/关闭也卡（共享消息泵）。**结论：上一轮 setOpacity 是过度修正且引入新回归，必须回滚。**
+- **RC2 开机自启 + 无单实例锁 → 双实例抢库**：注册表实证 `HKCU\...\Run\Taskora` 指向 `Taskora.exe`（自启已开）；lib 全库无任何单实例互斥。开机自启实例 + 手动打开 = 两个进程抢同一 `smart_assistant.db`（WAL 锁竞争）+ 第二实例窗口无前台权 → **打开慢 + 需点任务栏**。
+- **RC3 启动 ~7.8s**（flog：10:49:40.163 启动 → 10:49:47.967 首次调度）：关键路径网络已排除（AuthBloc `currentUser` 同步 getter、`recoverSession` 只读 `hasAccessToken`、`_loadData` 全本地）→ 疑首帧 5 页 IndexedStack 构建 + drift open。
+- **RC4 周期 reschedule+LoadTasks（每 6-12s 成对）**：flog 实证；触发源 = `AppLifecycleListener.onResume` 频繁触发（疑 RC1 分层窗口异常激活态相关，RC1 修复后可能自愈）。
+
+### 修复（P0 编码已落地，2026-08-04；L4 实机待测）
+- [x] **P0-1 回滚 setOpacity**：删 hideToTray `setOpacity(0)` 与 restoreFullWindow `setOpacity(1)`（controller:165-193；白屏由 fetchPreferences 守卫保障，不复发）
+- [x] **P0-2 可靠置前台**：restoreFullWindow 改 `show()` → `setAlwaysOnTop(true)` → `setAlwaysOnTop(false)` → `focus()`（HWND_TOPMOST 强制置顶绕过前台锁，controller:172-176）
+- [x] **P0-3 单实例锁（本地回环 socket）**：新增 `lib/platform/single_instance.dart`（端口 49527 + `taskora-show`/`taskora-ok` 握手），main.dart `_initWindowManager` 后接入；第二实例 bind 失败 → 握手唤起首实例主窗 → exit(0)；无关程序占端口 → 放行；端口随进程退出自动释放（无陈旧锁）
+- [ ] **P1 启动提速 + 周期刷新收敛**：定位 7.8s 归属；Supabase.initialize 移出关键路径评估；onResume 节流
+- [ ] **L4 实机验证（阻塞 5 项）**：便签即弹最前 / 弹出即响应 / 小窗退出即时 / 无双实例 / 白屏不复发
+
+### 排除项（避免再次误修）
+- Supabase.initialize 联网（`recoverSession` 只读本地存储，非阻塞）；fetchPreferences 残留阻塞（home_page:997 守卫已生效）；便签定位查询慢（`_processFloatingTabFocusTask` = 内存遍历 + 一次本地 get）
+
+### 影响文件（计划）
+- `lib/core/desktop/desktop_floating_tab_controller.dart`（回滚 setOpacity + 置顶切换）
+- `lib/main.dart`（单实例锁调用）
+- `lib/platform/single_instance.dart`（新增，socket 互斥）
+
+## 2026-08-04 (断连本地化 + 便签定位修复：PRD 全量实施)
+
+### ① 立即止血（止住"任务消失"）
+- **停用 ProjectSync 级联软删（Bug A 根治）**：云端 projects 表 16 个墓碑项目（含 inbox）的 LWW tombstone-accept 会把本地存活项目翻为 deleted=1，级联块随后软删该项目下全部 tasks（活库 313/483 任务被误删，日志实证：创建 4 秒后被级联软删）。`_upsertProjectFromRow` 级联块注释停用，本地任务不再被墓碑级联软删。
+- 同步注释连带清理 unused import：`home_page` 的 `platform_utils.dart`、`attachment_sync_service.dart`、`checklist_sync_service.dart`。
+
+### ② 断连架构（Decision 3/4/5）
+- **`CloudSyncGateway` 抽象接口**（`lib/data/sync/cloud_sync_gateway.dart`）：`syncAll/pullAll/subscribe/unsubscribe/exportSnapshot/importSnapshot`，业务层只依赖接口，将来 `AliyunCloudSyncGateway` 实现同一接口即可切换云端，业务零改动。
+- **`LocalOnlyCloudSyncGateway`**（`lib/data/sync/local_only_cloud_sync_gateway.dart`）：同步全 no-op + **7 表 JSON 快照导出/导入**（迁移/备份桥，`exportSnapshot`/`importSnapshot`，含 format/version 校验）。
+- **`DataBackendConfig`**（`lib/data/sync/data_backend.dart`）：`local|cloud` 开关，默认 `local`；`main.dart` 装配 `LocalOnlyCloudSyncGateway(database)`。
+- **启用 WAL**：`connection_native.dart` `PRAGMA journal_mode=WAL` + `synchronous=NORMAL`（写读并发减少 `database is locked`；Web Wasm 不启用）。
+
+### ③ 断连执行（Decision 2，除 AI 外全断）
+- **6 个同步服务云操作全面 Local 后端守卫**（task/project/checklist/node_template/attachment/subscription，22 处）：`DataBackendConfig.current == local` 时直接 return，Supabase 业务表读/写/订阅全撤。
+- **日程云端写停用**：home_page 3 处 `ScheduleBloc.add`（Create/Update/Delete）注释，日程只走本地 SharedPreferences；`_initStorage` 停用旧 TaskBreakdown 云端合并 `fetchAndMergeFromCloud`。
+- **Realtime 全停**：5 条业务订阅 + 订阅实时推送在 UI 与服务层双停。
+- **VIP/支付本地判定**：`SubscriptionService.refresh` 守卫（local 时保留本地缓存判定）。
+- 认证纯本地：`LocalAuthenticated`（登录页"本地使用"）本已支持，本次去除回前台路径对本地用户的 auth 门。
+
+### ④ 便签定位修复（R1-R5/A1-A5）
+- **A1（核心）**：`restoreFullWindow` 写 `pendingFocusTaskId` 后 `notifyListeners()`；`_HomePageState` 监听控制器，postFrame 消费并选中+滚动时间轴。修复 V3 下主窗 hide→show 不重建 HomePage、`_loadData` 不触发导致的便签定位 100% 失效。
+- **A2**：`_onAppResume` 移除 `auth.currentUser == null` 门，本地用户回前台同样刷新。
+- **A3**：`_processFloatingTabFocusTask` 改 async + 仓库 `get(id)` 直查兜底（便签候选 `getAllRaw` 无过滤 vs 时间轴项目排除口径不一致时任务不再"消失"）。
+- **A4**：四象限点击 → 先 `Scrollable.ensureVisible` 竖向滚回时间轴（`_timelineSectionKey`），再选中+横向定位（`_selectTaskFromQuadrant`）。
+- **A5**：`_loadData` postFrame 消费 bloc `focusTaskId`（`_processBlocFocusTask`，日历/创建后定位）+ 无待定位时自动选中 `_nearestTask` 并切 day/hour + 滚动（替代无条件滚到今天，修复非今天任务在 hour 视图不可见）。
+
+### 影响文件
+- `lib/data/sync/`（新增 3 文件）、`lib/data/database/connection/connection_native.dart`、`lib/main.dart`
+- `lib/services/`（task/project/checklist/node_template/attachment/subscription 6 个 sync_service + 级联注释）
+- `lib/presentation/pages/home/home_page.dart`、`lib/presentation/blocs/task_new/task_bloc.dart`、`lib/core/desktop/desktop_floating_tab_controller.dart`
+- `test/cloud_sync_gateway_test.dart`（新增，快照 round-trip 3 用例）
+
+### 已知后续（本次未做）
+- **日程并入 drift 表**（现走 SharedPreferences，已 100% 本地，断连已达成；drift 表迁移含数据迁移风险，单独排期）。
+- **旧 TaskBreakdown 双轨收敛**（PRD 标记"单独排期"）。
+- **L4 实机验证**：新建任务→关窗重开不消失、便签点击→主窗定位、四象限竖向回滚、回前台不卡，需在 Windows 实测（见 change_report 待办）。
+
+### ⑤ 复发修复（2026-08-04 二次：用户实测反馈后根因深挖）
+- **tab0 重置**：`_HomePageState` 加 `_onDesktopTabRestore` 监听，restore 有 pendingFocusTaskId 时重置 `_tabIndex`/`_visibleTabIndex`=0 → 修复"点便签跳到日历模块"（Stage 4 只消费 focus 未切 tab0 的缺口，PRD R1/R2 补全）。
+- **白屏 setOpacity**：`hideToTray` 前置 `setOpacity(0)`、`restoreFullWindow` show 后 `setOpacity(1)`（isWindows + try/catch）→ 强制 window_manager hide→show 后 surface 重合成（#155/#258/#571）。
+- ⚠️ **回滚声明（第四次排查）**：上方"白屏 setOpacity"修复经实证为**回归**——`setOpacity` 把主窗变 WS_EX_LAYERED 分层窗口，导致全窗冻结/闪烁/不置顶（需点任务栏）+ restore 时序 alpha=0 不可见。白屏真因是 `fetchPreferences` 网络阻塞首页（已由 `DataBackendConfig` 守卫独立修复）。**计划回滚 setOpacity**（见本日期最上方最新条目）。
+- **断网守卫补全**：`_loadData` 的 `await fetchPreferences()`(982)、`_persistHomeFilterState`/`_syncHourWidth` 的 `syncPreferences`(1222/1228) 加 `DataBackendConfig.current==cloud` 守卫 → 本地后端完全断网，首页加载路径无网络 await（修复"仍卡"）。
+
+
+
+### 影响文件
+- `lib/services/project_sync_service.dart` — 级联软删块注释停用
+- `lib/presentation/pages/home/home_page.dart` — `_onAppResume`/`_setupProjectSyncOnAuth` 停同步调用 + 3 个 import 注释
+- `lib/presentation/blocs/task_new/task_bloc.dart` — `_onSyncFromCloud`/`_runOptimisticTaskChange` 停 syncAll
+
+### 待办（L4 需实机验证）
+- [ ] 重启应用 → 新建任务 → 等待 >10s → 关窗重开：任务不消失
+- [ ] 日志无 `[ProjectSync] 级联软删` 新记录、无新增 PGRST204
+- [ ] 切后台再回前台：无全量拉取（弱网不悬挂）
+
 ## 2026-08-03 (V3 重构：desktop_multi_window 独立便签窗)
 
 ### 架构重构

@@ -20,7 +20,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
-// TestedSource: _selectTask + _modeSwitchGuard@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: _selectTask + _modeSwitchGuard@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 void main() {
   final srcFile = 'lib/presentation/pages/home/home_page.dart';
   final src = File(srcFile).readAsStringSync();

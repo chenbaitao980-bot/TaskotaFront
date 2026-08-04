@@ -1,4 +1,4 @@
-// TestedSource: LazyLogResult + LazyLogResult.fromJson + HomeLazyLogService.structure@a4d8a7fd539d722f9a6ab66578c4e72e36f45fce
+// TestedSource: LazyLogResult + LazyLogResult.fromJson + HomeLazyLogService.structure@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 // Layer: REGRESSION
 //
 // 回归测试: 懒人日志父任务上下文 + 项目路由 + 空输入边界

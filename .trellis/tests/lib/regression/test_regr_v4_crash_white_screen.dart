@@ -6,7 +6,7 @@
 // 修复方式: 首帧 postFrame 后才初始化 chrome + show（渲染后自显示）；waitUntilReadyToShow 在 setSkipTaskbar 前
 // 对应提交: ea86621（V4 方案 A）
 // Layer: REGRESSION
-// TestedSource: _initNoteWindowChrome + runNoteWindow@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: _initNoteWindowChrome + runNoteWindow@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 //
 // === 必问三答 ===
 // Q1: 触发条件是什么？

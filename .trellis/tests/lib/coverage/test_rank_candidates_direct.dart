@@ -1,7 +1,7 @@
 // 覆盖测试: rankCandidates 分层排序（直接层，分支决策表穷举）
 // 变更点: ea86621 重写 rankCandidates 为分层规则
 // Layer: 直接
-// TestedSource: rankCandidates + _rankWithinLayer + _isMultiDayTask@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: rankCandidates + _rankWithinLayer + _isMultiDayTask@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 //
 // 决策表（层归属）:
 //   startDate=null → 剔除（不入任何层）

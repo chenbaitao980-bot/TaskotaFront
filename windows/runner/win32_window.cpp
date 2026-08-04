@@ -150,7 +150,9 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_MAXIMIZE);
+  // R3-1: show at normal size (initial rect 1280x860, see main.cpp) instead of
+  // SW_MAXIMIZE, eliminating the DWM maximize-zoom ghost on first frame.
+  return ShowWindow(window_handle_, SW_SHOW);
 }
 
 // static

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/utils/file_logger.dart';
@@ -81,6 +82,12 @@ class DesktopFloatingTabController extends ChangeNotifier {
   bool _canShowFloatingTab = false;
   bool _mainChannelRegistered = false;
 
+  /// R2-2 关闭请求代际：restore 递增可打断进行中的关闭请求，令其放弃 hideToTray。
+  int _closeRequestId = 0;
+
+  /// R2-4 上次摘要缓存：无候选时复用，避免"便签无故消失"（H3 兜底）。
+  DesktopFloatingTaskSummary? _lastSummary;
+
   /// 便签点击待定位任务：一次性消费，由首页 _loadData postFrame 读取后清空。
   String? pendingFocusTaskId;
   int? pendingFocusRequestToken;
@@ -143,9 +150,12 @@ class DesktopFloatingTabController extends ChangeNotifier {
       'title="${candidate.title}" extra=${candidate.extraTaskCount} -> 显示便签窗并隐藏主窗',
     );
 
+    final myCloseId = ++_closeRequestId;
     _isTransitioning = true;
     try {
       await _showNoteWindow(candidate);
+      // R2-2：期间若用户点便签触发 restore（代际已递增），放弃隐藏主窗，主窗照常恢复。
+      if (myCloseId != _closeRequestId) return;
       await hideToTray();
     } finally {
       _isTransitioning = false;
@@ -154,17 +164,40 @@ class DesktopFloatingTabController extends ChangeNotifier {
 
   /// 恢复主窗：隐藏便签窗，show+focus 主窗。openTaskId 时写入待定位字段。
   Future<void> restoreFullWindow({String? openTaskId}) async {
-    if (!isWindows || _isTransitioning) return;
+    // R2-2：代际递增，通知进行中的关闭请求放弃 hideToTray（竞态下主窗照常恢复）。
+    _closeRequestId++;
+    if (!isWindows) return;
     if (openTaskId != null && openTaskId.isNotEmpty) {
       pendingFocusTaskId = openTaskId;
       pendingFocusRequestToken = DateTime.now().microsecondsSinceEpoch;
     }
     _dismissedUntilRestore = false;
-    await _hideNoteWindow();
+    // R2-2：竞态（正在关闭）时跳过 note 交互，主窗照常 show；便签已由自身 _openMainWindow 自隐。
+    if (!_isTransitioning) {
+      await _hideNoteWindow();
+    }
 
     await windowManager.show();
+    // 可靠置前台（prd P0-2）：Windows 前台锁使 show()/focus() 的 SetForegroundWindow 静默
+    // 失败 → 主窗"不弹出"需点任务栏。setAlwaysOnTop(true/false) 的 HWND_TOPMOST 切换强制
+    // 提升 z 序再解除，绕过前台锁。同时回滚 setOpacity(1)——WS_EX_LAYERED 分层窗口病理
+    // （prd 复发根因 RC1），白屏由 home_page:997 fetchPreferences 守卫保障，不需透明度兜底。
+    if (isWindows) {
+      try {
+        // R3-2：前台已就绪时跳过 TOPMOST 双切，消除 z 序连爆导致的 DWM 重合成闪烁；
+        // 冷启动（未聚焦）仍走 TOPMOST，保留可靠置前台能力。
+        final alreadyFocused = await windowManager.isFocused();
+        if (!alreadyFocused) {
+          await windowManager.setAlwaysOnTop(true);
+          await windowManager.setAlwaysOnTop(false);
+        }
+      } catch (_) {}
+    }
     await windowManager.focus();
     desktopWindowVisible = true;
+    // 修复便签定位（prd R1/A1）：V3 下主窗 hide→show 不重建 HomePage、不触发 _loadData，
+    // 故 notifyListeners 通知 _HomePageState 监听器消费 pendingFocusTaskId（时间轴选中+滚动）。
+    notifyListeners();
   }
 
   /// 便签"关闭"：置 dismissed，隐藏便签窗；主窗保持隐藏（下次关闭不弹便签）。
@@ -175,6 +208,8 @@ class DesktopFloatingTabController extends ChangeNotifier {
 
   Future<void> hideToTray() async {
     desktopWindowVisible = false;
+    // 回滚（prd P0-1）：删 setOpacity(0)——alpha=0 使主窗变 WS_EX_LAYERED 分层窗口且全透明，
+    // show 时不可见 + 未聚焦渲染节流 → "不弹出/全窗冻结"回归源。白屏由 home_page:997 守卫保障。
     await windowManager.hide();
   }
 
@@ -192,6 +227,8 @@ class DesktopFloatingTabController extends ChangeNotifier {
           }),
         ),
       );
+      // R2-3：记录 windowId，便于实机比对「show 失败是否因引擎已销毁（failed to find target window）」。
+      flog('[FloatingTab] 便签窗已创建 windowId=${_noteWindow?.windowId}');
     } catch (e) {
       flog('[FloatingTab] 便签窗创建失败: $e');
       _noteWindow = null;
@@ -210,8 +247,15 @@ class DesktopFloatingTabController extends ChangeNotifier {
       await _notifyNote(summary);
       try {
         await note.show();
+        // R2-3：成功也打点 windowId，便于确认引擎存活。
+        flog('[FloatingTab] 便签窗 show 成功 windowId=${note.windowId}');
       } catch (e) {
-        flog('[FloatingTab] 便签窗 show 失败: $e');
+        // R2-3：提取异常 code——"failed to find target window" 证实引擎已被销毁（H1）。
+        final code = e is PlatformException ? e.code : e.runtimeType.toString();
+        flog(
+          '[FloatingTab] 便签窗 show 失败 code=$code '
+          'windowId=${note.windowId}: $e',
+        );
       }
     }
     // 首次创建：便签窗 hiddenAtLaunch，由便签引擎渲染首帧后自显示，避免白屏。
@@ -278,10 +322,15 @@ class DesktopFloatingTabController extends ChangeNotifier {
 
     final now = DateTime.now();
     final candidates = rankCandidates(activeTasks, now);
-    if (candidates.isEmpty) return null;
+    if (candidates.isEmpty) {
+      // R2-4：无候选时复用上次摘要，避免"便签无故消失"（H3 兜底）。
+      // 副作用：完成任务后仍可能弹旧便签摘要；实机确认 H3 不成立可回滚本条。
+      flog('[FloatingTab] 无候选，复用上次摘要=${_lastSummary != null}');
+      return _lastSummary;
+    }
 
     final top = candidates.first;
-    return DesktopFloatingTaskSummary(
+    final summary = DesktopFloatingTaskSummary(
       taskId: top.id,
       title: top.title,
       priority: top.priority,
@@ -291,6 +340,8 @@ class DesktopFloatingTabController extends ChangeNotifier {
           : DateTime.fromMillisecondsSinceEpoch(top.dueDate!),
       extraTaskCount: candidates.length - 1,
     );
+    _lastSummary = summary; // R2-4：更新缓存
+    return summary;
   }
 
   /// 任务锚点时间：startDate ?? dueDate ?? now。供便签展示用。

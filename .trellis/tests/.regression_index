@@ -11,3 +11,7 @@ c233936 | 时间轴去重 | test_regr_timeline_switch_guard.dart | 2026-08-03
 eee4e76f | 逾期数也用 startDate 的遗漏 | test_regr_overdue_date_base.dart | 2026-08-03
 6cac55f | 过期任务通知弹窗修复(点击导航/防重复) | test_regr_notification_nav.dart | 2026-08-03
 0c8c6ed | 点击逾期提醒跳转最早逾期任务 | test_regr_notification_nav.dart | 2026-08-03
+e4981d1 | 切换回首页脏标记刷新 + P0-A/P1-E resume 节流不破坏刷新链路 | test_regr_home_refresh_dirty.dart | 2026-08-04
+bf3e1cb | P0-1 回滚 setOpacity + P0-2 TOPMOST 置前台（分层窗口病理不再复发） | test_regr_window_restore_topmost.dart | 2026-08-04
+1834bce | Windows系统Toast + P1-F cancelRepeats 折叠 21 次 repeat 取消 | test_regr_notification_cancel.dart | 2026-08-04
+0a6107d | tab 切换 ValueNotifier + P1-C 懒构建 _LazyIndexedPage | test_regr_tab_valuenotifier.dart | 2026-08-04

@@ -1,0 +1,16 @@
+# 边界决策记录（快速通道 ≤3 文件，AI 自评估）
+## 功能边界
+1. restoreFullWindow 非 Windows / _isTransitioning → 保持现有 early return，不新增逻辑
+2. setAlwaysOnTop 失败（异常）→ try/catch 忽略，回退到原 focus() 行为（至少不更糟）
+3. openTaskId 为空 → 不写 pendingFocusTaskId，走纯恢复（现状不变）
+4. 单实例：bind 失败且收到 taskora-ok ack → 第二实例 exit(0)；无关程序占端口（无 ack/连接失败）→ 放行本实例继续启动（避免误杀用户应用）
+5. 第二实例在首实例 startup 早期连接 → onActivate 回调内 windowManager 可能未就绪；故单实例检查放在 _initWindowManager() 之后执行，保证回调时已初始化
+6. 便签引擎（note role）在同进程第二引擎，main() 在 note 分支提前 return，不参与单实例锁（无端口冲突）
+## 影响范围
+1. restoreFullWindow 2 调用者（showDesktopWindow / showMain 通道）行为增强，签名不变 → 接受
+2. hideToTray 2 调用者（handleCloseRequested / closeFloatingTab）删 setOpacity → 接受（白屏由 fetchPreferences 守卫兜底）
+3. main.dart 桌面启动路径加单实例检查，Web 端与 note 引擎跳过 → 接受
+## 失败策略
+1. windowManager 调用异常 → try/catch 降级，不抛致命错
+## 默认行为
+1. 单实例端口 49527（回环），进程退出由 OS 自动释放，无陈旧锁文件

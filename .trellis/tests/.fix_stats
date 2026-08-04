@@ -1,61 +1,71 @@
-initial_failures=4
-total_fix_rounds=1
-total_fixes_applied=1
-final_status=PASSED
-duration_seconds=600
-fixes:
-  - test: test_floating_tab_widget.dart (4 个用例)
-    bug: 便签卡片右侧图标按钮 Column 纵向溢出 4px（Material3 IconButton 最小 40px，两个=80>76px 内高；release 被 Clip 静默裁剪，debug/test 抛 RenderFlex overflow）
-    root_cause: IconButton constraints: tightFor(30,30) 被 Material 最小尺寸 enforce 覆盖（40x40），visualDensity.compact 不足以消除
-    fix: 两按钮加 style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap) + 图标列 mainAxisSize.min
-    judgment: code_bug
-    fixed: true
-failure_diagnostics:
-  - test: test_floating_tab_widget.dart::渲染标题
-    expected: 无 RenderFlex overflow；无 Border.all
-    actual: RenderFlex overflowed by 4.0px + Bad state: Too many elements（测试脆弱 ancestor 提取）
-    judgment: code_bug + test_bug（脆弱断言已改为全局扫描）
-    fixed: true
-  - test: test_floating_tab_widget.dart::点击打开/关闭/卡片主体
-    expected: onTap/onClose 回调触发
-    actual: tap 后立即 pump 未越过 DragToMoveArea 双击识别器 300ms 竞技场持有期 → 回调未触发
-    judgment: test_bug（tap 后需 pump 350ms）
-    fixed: true
+initial_failures=3
+total_fix_rounds=2
+total_fixes_applied=2
+final_status=PASSED (SELECTED_TESTS 21 文件 114 用例全过)
+duration_seconds=1800
 destructive_validated_files:
   - file: lib/core/desktop/desktop_floating_tab_controller.dart
-    change: rankCandidates 分层规则
-    test: test_regr_floating_tab_selection.dart
-    a_result: FAIL（去分层返回原序 → 小时级优先断言变红）
-    b_result: PASS（分层规则）
+    test: test_regr_window_restore_topmost.dart::TOPMOST 双切
+    a_result: FAIL (注释 setAlwaysOnTop 后 Expected non-empty)
+    b_result: PASS
     restored: true
-  - file: lib/presentation/widgets/desktop_floating_task_tab.dart
-    change: shrinkWrap 修复溢出
-    test: test_floating_tab_widget.dart
-    a_result: FAIL（移除 shrinkWrap → 4 处 RenderFlex overflow）
-    b_result: PASS（无溢出）
-    restored: true
-  - file: lib/presentation/pages/floating_note/note_window_app.dart
-    change: waitUntilReadyToShow 先于 setSkipTaskbar（V4 崩溃修复）
-    test: test_regr_v4_crash_white_screen.dart
-    a_result: FAIL（移除 waitUntilReadyToShow → 顺序断言变红）
-    b_result: PASS（顺序正确）
+  - file: lib/services/notification_service_io.dart
+    test: test_regr_notification_cancel.dart::guard 顺序
+    a_result: FAIL (注释 guard 后 Expected non-empty)
+    b_result: PASS
     restored: true
   - file: lib/presentation/pages/home/home_page.dart
-    change: _selectTask R1 跨天/isAllDay→day 分支
-    test: test_regr_timeline_switch_guard.dart
-    a_result: FAIL（移除 R1 → 3 个守卫断言变红）
-    b_result: PASS（R1 存在且在守卫后）
+    test: test_focus_task_selection.dart::_selectTask mounted 守卫
+    a_result: FAIL (注释 mounted 守卫后 1 失败)
+    b_result: PASS
     restored: true
-  - file: lib/main.dart
-    change: 便签引擎 role==note 分支
-    test: test_regr_v4_crash_white_screen.dart（结构断言 runNoteWindow + _isNoteWindowRole）
-    a_result: FAIL（结构断言） / b_result: PASS
+  - file: lib/presentation/blocs/task_new/task_bloc.dart
+    test: test_sync_cloud_prefs_guard.dart::DataBackend 守卫
+    a_result: FAIL (注释守卫后 2 失败)
+    b_result: PASS
     restored: true
-    note: 入口逻辑，无独立 R-G-R，用结构断言 + 编译验证
-reversals_confirmed:
-  - func: rankCandidates / _selectTaskForFloatingTab
-    old_behavior: priority*2+urgency 打分选候选（f68060b 引入）→ 选出陈旧高优先级任务
-    new_behavior: 分层时间最近（小时级优先→进行中→时间最近→平局 updatedAt；无 startDate 剔除）
-    old_direction_test: test_regr_floating_tab_selection.dart（断言新方向）
-    red_confirmed: true
-    verdict: intentional_reversal（用户 2026-08-03 最终确认分层规则）
+  - file: lib/services/supabase_service.dart
+    test: test_supabase_fault_tolerance.dart::currentUser 容错
+    a_result: FAIL (注释 getter 后 2 失败)
+    b_result: PASS
+    restored: true
+  - file: lib/services/project_sync_service.dart
+    test: test_project_sync_cascade_guard.dart::级联软删停用
+    a_result: FAIL (活动代码含 deleted=1 级联赋值 → activeLines 过滤后必红)
+    b_result: PASS
+    restored: true (结构性验证)
+  - file: lib/services/notification_service_web.dart
+    test: test_regr_notification_cancel.dart::web 签名同步
+    a_result: FAIL (参数移除后 activeLines 过滤必红)
+    b_result: PASS
+    restored: true (结构性验证)
+failure_diagnostics:
+  - test: test_project_sync_cascade_guard.dart::_upsertGroupFromRow 项目组同步保留
+    expected: "substring 不越界"
+    actual: "RangeError (end) 越界"
+    judgment: test_bug
+    fixed: true
+  - test: test/widget_test.dart::加载
+    expected: "MyApp 需 privacyAccepted 参数"
+    actual: "编译错误 Required named parameter 'privacyAccepted'"
+    judgment: test_outdated
+    fixed: true
+  - test: test/widget_test.dart::shows login page
+    expected: "登录页标题 Taskora"
+    actual: "旧标题 '智能小助手' 已不存在"
+    judgment: test_outdated
+    fixed: true
+  - test: test/single_instance_test.dart::首实例占端口
+    expected: "首 tryAcquire 返回 true"
+    actual: "真实 Taskora.exe(7728) 持有端口 49527 → bind 失败返回 false"
+    judgment: environment
+    fixed: false
+  - test: test/single_instance_test.dart::无关程序占端口
+    expected: "放行返回 true"
+    actual: "真实 Taskora.exe 占端口干扰"
+    judgment: environment
+    fixed: false
+pre_existing_failures (HEAD 基线实证非本任务引入):
+  - create_schedule_dialog_test.dart (布局溢出, HEAD 基线同失败)
+  - login_page_test.dart (OTP 模式, HEAD 基线同失败)
+  - profile_page_test.dart ×2 (编辑/导出, HEAD 基线同失败)

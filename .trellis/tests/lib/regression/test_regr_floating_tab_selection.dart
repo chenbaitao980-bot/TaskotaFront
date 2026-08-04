@@ -6,7 +6,7 @@
 //         无 startDate 的任务不进入排序（剔除）。
 // 对应提交: f68060b(旧规则) → ea86621(分层规则)
 // Layer: REGRESSION
-// TestedSource: rankCandidates + _rankWithinLayer + _isMultiDayTask@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: rankCandidates + _rankWithinLayer + _isMultiDayTask@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 //
 // === 必问三答 ===
 // Q1: 触发条件是什么？

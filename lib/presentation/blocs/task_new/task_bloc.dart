@@ -18,6 +18,7 @@ import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/task_sync_service.dart';
 import '../../../services/task_attachment_service.dart';
+import '../../../data/sync/data_backend.dart';
 
 class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   final ProjectRepository projectRepository;
@@ -338,8 +339,10 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
           preservedDateFrom = localPrefs['dateFrom'] as int?;
           preservedDateTo = localPrefs['dateTo'] as int?;
         }
-        // 后台拉取云端偏好，不 await
-        unawaited(_syncCloudPrefsAfterLoad(localPrefs));
+        // 后台拉取云端偏好，不 await；本地后端不发起网络（prd P0-C）
+        if (DataBackendConfig.current == DataBackend.cloud) {
+          unawaited(_syncCloudPrefsAfterLoad(localPrefs));
+        }
       }
       final excludedProjectIds = _storage.excludedProjectIds;
       final templateProjIds = templateProjects.map((p) => p.id).toSet();
@@ -511,6 +514,8 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
   Future<void> _syncCloudPrefsAfterLoad(
     Map<String, dynamic>? localPrefs,
   ) async {
+    // P0-C（prd）：本地后端直接返回，彻底断网路径不发 fetchPreferences
+    if (DataBackendConfig.current != DataBackend.cloud) return;
     try {
       final cloudPrefs = await supabaseService?.fetchPreferences();
       if (cloudPrefs != null && cloudPrefs != localPrefs) {
@@ -538,7 +543,8 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     Emitter<TaskNewState> emit,
   ) async {
     try {
-      await TaskSyncService.instance.syncAll();
+      // 立即止血（2026-08-04）：停用云端全量拉取对账（断连决策 prd Decision 2）。
+      // await TaskSyncService.instance.syncAll();
       if (state is TaskNewLoaded && (state as TaskNewLoaded).showArchivedView) {
         final currentFilter = (state as TaskNewLoaded).selectedStatusFilter;
         add(LoadArchivedTasks(statusFilter: currentFilter));
@@ -567,12 +573,14 @@ class TaskNewBloc extends Bloc<TaskEvent, TaskNewState> {
     try {
       await action();
       await _emitTaskSnapshot(previous, emit, adjustSnapshot: adjustSnapshot);
+      // 立即止血（2026-08-04）：停用任务变更后的后台云同步 syncAll。
+      // 断连决策（prd Decision 2）：数据只走本地 drift，不再推送云端。
       // W1: syncAll 改为后台执行，不阻塞用户后续操作（失败由下次对账兜底）
-      unawaited(
-        TaskSyncService.instance.syncAll().catchError((e) {
-          flog('[TaskBloc] syncAll failed (non-fatal): $e');
-        }),
-      );
+      // unawaited(
+      //   TaskSyncService.instance.syncAll().catchError((e) {
+      //     flog('[TaskBloc] syncAll failed (non-fatal): $e');
+      //   }),
+      // );
     } on QuotaExceededException catch (e) {
       emit(TaskNewError(e.toString(), isQuotaExceeded: true));
     } catch (e) {

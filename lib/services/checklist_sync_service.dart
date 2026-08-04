@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/database/app_database.dart';
 import '../data/repositories/checklist_repository.dart';
+import '../data/sync/data_backend.dart';
 
 /// Supabase 直连同步服务：清单项（checklist_items）独立 CRUD + Realtime + 双向对账
 class ChecklistSyncService {
@@ -20,6 +21,7 @@ class ChecklistSyncService {
 
   /// 双向 LWW 全量对账
   Future<void> syncAll() async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     if (_repo == null) return;
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
@@ -56,6 +58,7 @@ class ChecklistSyncService {
 
   /// 推送一条清单项（upsert）
   Future<void> push(ChecklistItem item) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     if (_client.auth.currentUser == null) return;
     try {
       await _client.from('checklist_items').upsert(_toRow(item));
@@ -66,6 +69,7 @@ class ChecklistSyncService {
 
   // ── Realtime ──
   void subscribe() {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final token = _client.auth.currentSession?.accessToken;
     if (token != null) {
       _client.realtime.setAuth(token);

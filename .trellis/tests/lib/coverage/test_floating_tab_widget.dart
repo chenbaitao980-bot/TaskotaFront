@@ -1,7 +1,7 @@
 // 覆盖测试: DesktopFloatingTaskTab 便签卡片 widget（直接层）
 // 变更点: ea86621 方案A 美化（去整圈彩色描边 + radius12 + 透明 bgCard + boxShadow 分层）
 // Layer: 直接
-// TestedSource: DesktopFloatingTaskTab@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: DesktopFloatingTaskTab@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 //
 // 业务不变量:
 // 1. 卡片无 Border.all（黑线根因之一 = 0.48 alpha 优先级色描边，已移除）

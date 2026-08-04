@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../data/sync/data_backend.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -24,6 +25,7 @@ class NodeTemplateSyncService {
   Future<void> pullAll() => syncAll();
 
   Future<void> syncAll() async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     if (_repo == null) return;
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
@@ -54,6 +56,7 @@ class NodeTemplateSyncService {
   }
 
   Future<void> push(NodeTemplate template) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
     try {
@@ -64,6 +67,7 @@ class NodeTemplateSyncService {
   }
 
   void subscribe() {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final token = _client.auth.currentSession?.accessToken;
     if (token != null) _client.realtime.setAuth(token);
     _channel?.unsubscribe();

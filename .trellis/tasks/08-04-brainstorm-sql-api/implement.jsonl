@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "性能规范：VLB替代setState、防抖、本地I/O不依赖网络、dispose释放 — 本任务全部性能修复遵循"}
+{"file": ".trellis/spec/frontend/platform-compatibility.md", "reason": "Web/native 分端 stub、条件导出 — notification_service_web 签名同步遵循"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Bloc Event→State + drift 唯一真源 — 断连架构 Decision 2 遵循"}
+{"file": ".trellis/tasks/08-04-brainstorm-sql-api/research/issue1a-sticky-restore-chain.md", "reason": "便签恢复链路根因（BP1-BP5）— restoreFullWindow/定位修复依据"}
+{"file": ".trellis/tasks/08-04-brainstorm-sql-api/research/issue1b-home-locate-creation.md", "reason": "首页定位/创建链路 — _selectTask/四象限定位依据"}
+{"file": ".trellis/tasks/08-04-brainstorm-sql-api/research/issue2-local-sql-feasibility.md", "reason": "本地 SQL 替代远程 API 可行性 — CloudSyncGateway/DataBackend 架构依据"}
+{"file": ".trellis/tasks/08-04-brainstorm-sql-api/research/track1-sticky-jump-latency.md", "reason": "便签跳转耗时根因（reschedule 黑洞）— P0-A/P1-E 依据"}
+{"file": ".trellis/tasks/08-04-brainstorm-sql-api/research/track2-startup-freeze.md", "reason": "启动冻结根因（Supabase 阻塞/前台锁）— P1-A/P1-B 依据"}
+{"file": ".trellis/tasks/08-04-brainstorm-sql-api/research/track3-evidence.md", "reason": "硬证据（日志时间戳/二进制新鲜度）— 性能根因实证"}

@@ -5,6 +5,7 @@ import '../data/database/app_database.dart';
 import '../data/repositories/project_repository.dart';
 import '../../core/utils/file_logger.dart';
 import '../data/repositories/project_group_repository.dart';
+import '../data/sync/data_backend.dart';
 
 /// 项目 + 分组的云端同步
 class ProjectSyncService {
@@ -39,6 +40,7 @@ class ProjectSyncService {
 
   /// 纯拉取：从云端拉取所有项目/分组并合并到本地（不推送本地数据）
   Future<void> forcePullAll() async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _client.auth.currentUser?.id;
     if (userId == null || _db == null) {
       flog('[ProjectSync] ⚠ forcePullAll 跳过 userId=$userId db=$_db');
@@ -70,6 +72,7 @@ class ProjectSyncService {
   /// 双向 LWW 全量对账：拉云端（含墓石）合并到本地；本地更新/云端缺失则推送上云
   /// [forcePush] 为 true 时跳过 updatedAt 比较，无条件推送所有本地数据（用于首次同步）
   Future<void> syncAll({bool forcePush = false}) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _client.auth.currentUser?.id;
     if (userId == null || _db == null) {
       flog('[ProjectSync] ⚠ syncAll 跳过 userId=$userId db=$_db');
@@ -121,6 +124,7 @@ class ProjectSyncService {
   }
 
   Future<void> pushProject(Project p) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _client.auth.currentUser?.id;
     if (userId == null) {
       flog('[ProjectSync] ⚠ pushProject ${p.id} 跳过（未登录 Supabase）');
@@ -147,6 +151,7 @@ class ProjectSyncService {
   }
 
   Future<void> removeProject(String id) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     try {
       await _client.from('projects').delete().eq('id', id);
       flog('[ProjectSync] ✓ removeProject $id');
@@ -156,6 +161,7 @@ class ProjectSyncService {
   }
 
   Future<void> pushGroup(ProjectGroup g) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _client.auth.currentUser?.id;
     if (userId == null) {
       flog('[ProjectSync] ⚠ pushGroup ${g.id} 跳过（未登录 Supabase）');
@@ -179,6 +185,7 @@ class ProjectSyncService {
   }
 
   Future<void> removeGroup(String id) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     try {
       await _client.from('project_groups').delete().eq('id', id);
       flog('[ProjectSync] ✓ removeGroup $id');
@@ -188,6 +195,7 @@ class ProjectSyncService {
   }
 
   void subscribe() {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     // 用当前 user JWT 认证 Realtime（不然 RLS 表的事件可能拿不到）
     final token = _client.auth.currentSession?.accessToken;
     if (token != null) {
@@ -320,28 +328,33 @@ class ProjectSyncService {
       updatedAt: Value(remoteUpdated),
     );
     await _db!.into(_db!.projects).insertOnConflictUpdate(companion);
-    // 远端项目墓石 → 级联软删本地该项目下 tasks/checklist
-    // 仅当本地项目原本就是墓碑或不存在时才执行
-    if (remoteDeleted == 1 && (localProject == null || localProject.deleted == 1)) {
-      flog('[ProjectSync] 级联软删项目 ${id.length > 8 ? id.substring(0, 8) : id} 下的任务');
-      // 使用远端 updated_at 而非 local now，避免 cascaded 墓碑时间戳 > 远端活任务
-      final cascadeSeed = remoteUpdated;
-      await _db!.transaction(() async {
-        final tasks = await (_db!.select(_db!.tasks)
-              ..where((t) => t.projectId.equals(id)))
-            .get();
-        for (final t in tasks) {
-          await (_db!.update(_db!.checklistItems)
-                ..where((c) => c.taskId.equals(t.id)))
-              .write(ChecklistItemsCompanion(
-            deleted: const Value(1),
-            updatedAt: Value(cascadeSeed),
-          ));
-        }
-        await (_db!.update(_db!.tasks)..where((t) => t.projectId.equals(id)))
-            .write(TasksCompanion(deleted: const Value(1), updatedAt: Value(cascadeSeed)));
-      });
-    }
+    // ── 立即止血（2026-08-04）：级联软删已停用 ────────────────────────────
+    // 根因（prd Bug A）：云端 projects 表有 16 个墓碑项目（含 inbox），墓碑 updated_at
+    // 晚于本地存活项目 → 上方 tombstone-accept 把本地项目翻为 deleted=1 → 此级联块
+    // 把该项目下所有 tasks 软删，导致"任务消失"（活库 313/483 任务被误删，日志实证）。
+    // 用户已拍板彻底断连远程库（prd Decision 2），数据只走本地 drift。
+    // ⚠️ 重启云同步前，必须给此级联加"任务 updatedAt > 墓碑 updated_at"保护，
+    //    否则仍会误删墓碑项目下新建的任务。
+    // if (remoteDeleted == 1 && (localProject == null || localProject.deleted == 1)) {
+    //   flog('[ProjectSync] 级联软删项目 ${id.length > 8 ? id.substring(0, 8) : id} 下的任务');
+    //   // 使用远端 updated_at 而非 local now，避免 cascaded 墓碑时间戳 > 远端活任务
+    //   final cascadeSeed = remoteUpdated;
+    //   await _db!.transaction(() async {
+    //     final tasks = await (_db!.select(_db!.tasks)
+    //           ..where((t) => t.projectId.equals(id)))
+    //         .get();
+    //     for (final t in tasks) {
+    //       await (_db!.update(_db!.checklistItems)
+    //             ..where((c) => c.taskId.equals(t.id)))
+    //           .write(ChecklistItemsCompanion(
+    //         deleted: const Value(1),
+    //         updatedAt: Value(cascadeSeed),
+    //       ));
+    //     }
+    //     await (_db!.update(_db!.tasks)..where((t) => t.projectId.equals(id)))
+    //         .write(TasksCompanion(deleted: const Value(1), updatedAt: Value(cascadeSeed)));
+    //   });
+    // }
     _emitChange();
   }
 

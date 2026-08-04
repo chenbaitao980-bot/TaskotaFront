@@ -2,7 +2,7 @@
 // 变更点: 控制器重写（_enterFloatingMode 删除 → 便签窗懒建复用 + 跨窗协议）+ 便签引擎通道
 // 本测试用 dart:io 读源文件做结构不变量断言（私有 State/窗口代码无法无头实例化）
 // Layer: REGRESSION
-// TestedSource: handleCloseRequested + restoreFullWindow + _ensureNoteWindow + _showNoteWindow + _registerMainWindowChannel + _registerNoteChannelHandler + _NoteWindowHome@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: handleCloseRequested + restoreFullWindow + _ensureNoteWindow + _showNoteWindow + _registerMainWindowChannel + _registerNoteChannelHandler + _NoteWindowHome@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';

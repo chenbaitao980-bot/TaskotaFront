@@ -1,5 +1,6 @@
 import 'dart:async';
-import '../../../core/utils/platform_utils.dart';
+// 立即止血：isDesktop 唯一引用点（runSyncAll 调用）已注释，import 一并注释避免 unused。
+// import '../../../core/utils/platform_utils.dart';
 import 'dart:math';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/gestures.dart';
@@ -12,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../../../core/desktop/desktop_floating_tab_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/database/app_database.dart';
+import '../../../data/sync/data_backend.dart';
 import '../../../data/repositories/checklist_repository.dart';
 import '../../../data/repositories/project_group_repository.dart';
 import '../../../data/repositories/project_repository.dart';
@@ -25,8 +27,9 @@ import '../../../services/lazy_log_draft_service.dart';
 import '../../../services/local_storage_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/permission_service.dart';
-import '../../../services/attachment_sync_service.dart';
-import '../../../services/checklist_sync_service.dart';
+// 立即止血（2026-08-04）：停用附件/清单云同步后无引用，import 一并注释。
+// import '../../../services/attachment_sync_service.dart';
+// import '../../../services/checklist_sync_service.dart';
 import '../../../services/project_sync_service.dart';
 import '../../../services/task_attachment_service.dart';
 import '../../../services/task_sync_service.dart';
@@ -37,7 +40,8 @@ import '../../../services/aliyun_push_service.dart';
 import '../../widgets/battery_optimization_guide.dart';
 import '../../../services/supabase_service.dart';
 import '../../blocs/auth/auth_bloc.dart';
-import '../../blocs/schedule/schedule_bloc.dart';
+// 断连（prd Decision 2）：日程云端同步已停用，ScheduleBloc 不再被触发，import 一并注释。
+// import '../../blocs/schedule/schedule_bloc.dart';
 import '../../blocs/task_new/task_bloc.dart';
 import '../../blocs/task_new/task_event.dart';
 import '../../blocs/task_new/task_state.dart';
@@ -78,6 +82,51 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+/// 懒构建包装器（prd P1-C）：IndexedStack 首帧会 build 全部 children，本包装器在
+/// tabIndex 首次切到自身 index 时才构建页面体，之后复用同一实例不重建。
+class _LazyIndexedPage extends StatefulWidget {
+  const _LazyIndexedPage({
+    required this.index,
+    required this.tabIndex,
+    required this.builder,
+  });
+
+  final int index;
+  final ValueNotifier<int> tabIndex;
+  final WidgetBuilder builder;
+
+  @override
+  State<_LazyIndexedPage> createState() => _LazyIndexedPageState();
+}
+
+class _LazyIndexedPageState extends State<_LazyIndexedPage> {
+  Widget? _child;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.tabIndex.addListener(_maybeBuild);
+    _maybeBuild();
+  }
+
+  @override
+  void dispose() {
+    widget.tabIndex.removeListener(_maybeBuild);
+    super.dispose();
+  }
+
+  void _maybeBuild() {
+    if (_child != null) return;
+    if (widget.tabIndex.value != widget.index) return;
+    setState(() => _child = widget.builder(context));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _child ?? const SizedBox.shrink();
+  }
+}
+
 class _HomePageState extends State<HomePage> {
   final ValueNotifier<int> _tabIndex = ValueNotifier<int>(0);
 
@@ -93,6 +142,10 @@ class _HomePageState extends State<HomePage> {
   Timer? _projectChangesDebounce;
   bool _projectSyncStarted = false;
   DateTime? _lastRescheduleTime;
+
+  /// 回前台 reload 节流（prd P1-E）：≥30s 才重载，断掉 setAlwaysOnTop/便签第二引擎
+  /// 抢焦点反复触发 onResume 导致的每 6-12s 成对 LoadTasks 重载风暴。
+  DateTime? _lastResumeLoadTime;
   AppLifecycleListener? _lifecycleListener;
 
   /// 防抖：短时间内密集的 LoadTasks 只执行最后一次
@@ -105,6 +158,9 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _initStorage();
+    // 便签恢复（prd R1/R2）：有 pending 定位任务时把 tab 重置到首页(0)，
+    // 避免恢复后停在日历/其它 tab（复发：跳到日历模块）。
+    DesktopFloatingTabController.instance.addListener(_onDesktopTabRestore);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PermissionService.showNotificationGuideIfNeeded(context);
     });
@@ -112,16 +168,36 @@ class _HomePageState extends State<HomePage> {
     _lifecycleListener = AppLifecycleListener(onResume: _onAppResume);
   }
 
+  /// 便签恢复定位：pendingFocusTaskId 非空时切回首页 tab0，再由 _HomeContent 消费定位。
+  void _onDesktopTabRestore() {
+    if (DesktopFloatingTabController.instance.pendingFocusTaskId == null) return;
+    if (_tabIndex.value != 0) {
+      _tabIndex.value = 0;
+      _visibleTabIndex.value = 0;
+    }
+  }
+
   void _onAppResume() {
-    final client = sb.Supabase.instance.client;
-    if (client.auth.currentUser == null) return;
-    // 回到前台后纯拉取云端数据，不推送本地（推送在首次登录和修改时已做）
-    Future.microtask(() async {
-      await ProjectSyncService.instance.forcePullAll();
-      await TaskSyncService.instance.syncAll();
+    // 回前台 reload 节流（prd P1-E）：≥30s 才重载。setAlwaysOnTop/便签第二引擎抢焦点会反复
+    // 触发 onResume → 每 6-12s 成对 LoadTasks 重载风暴。便签定位由 _onDesktopTabNotify 直连
+    // 控制器监听独立驱动，不依赖本方法，节流不影响定位。
+    final now = DateTime.now();
+    if (_lastResumeLoadTime != null &&
+        now.difference(_lastResumeLoadTime!) < const Duration(seconds: 30)) {
+      return;
+    }
+    _lastResumeLoadTime = now;
+    // 便签定位（prd R2/A2）：本地用户（auth.currentUser == null）同样需要回前台本地刷新，
+    // 移除 auth 门；云同步已在上面注释（断连 Decision 2）。
+    Future.microtask(() {
+      // 立即止血（2026-08-04）：停用回前台全量拉取对账（弱网悬挂 + 级联误删源）。
+      // 断连决策（prd Decision 2）：数据只走本地 drift，保留本地刷新与提醒调度。
+      // await ProjectSyncService.instance.forcePullAll();
+      // await TaskSyncService.instance.syncAll();
       _debounceLoadTasks();
-      // 重新调度所有提醒（国产ROM杀进程后AlarmManager可能被清除）
-      await _rescheduleTaskReminders();
+      // P0-A（prd）：移除 resume 秒级重调度——rescheduleTaskReminders 每任务 24 次平台通道
+      // 取消调用，115 任务 ~6.4s 拖住首帧（白屏主因）。启动 _initStorage(230) 已调度一次，
+      // Windows 提醒进程内 Timer 存活即有效，无需每次回前台重排。
     });
   }
 
@@ -149,6 +225,7 @@ class _HomePageState extends State<HomePage> {
     _nodeTemplateChangesSub?.cancel();
     _projectChangesDebounce?.cancel();
     _loadTasksDebounce?.cancel();
+    DesktopFloatingTabController.instance.removeListener(_onDesktopTabRestore);
     _tabIndex.dispose();
     _visibleTabIndex.dispose();
     _lifecycleListener?.dispose();
@@ -175,21 +252,38 @@ class _HomePageState extends State<HomePage> {
           key: const ValueKey('home_content'),
         ),
       ),
+      // tab0/1 保持即时构建（prd P1-C）：首页时间轴 + TasksPage（_jumpToMindMap 直驱 tab1）。
       const RepaintBoundary(child: TasksPage()),
-      RepaintBoundary(child: CalendarPage(onJumpToMindMap: _jumpToMindMap)),
+      // tab2/3/4 懒构建（prd P1-C）：IndexedStack 首帧会 build 全部 children，故用
+      // _LazyIndexedPage 按 _tabIndex 首次选中才构建页面体，切到才首次 build，之后复用不重建。
       RepaintBoundary(
-        child: AssistantPage(
-          storage: _storage,
-          taskRepository: widget.taskRepository,
-          projectRepository: widget.projectRepository,
+        child: _LazyIndexedPage(
+          index: 2,
+          tabIndex: _tabIndex,
+          builder: (_) => CalendarPage(onJumpToMindMap: _jumpToMindMap),
         ),
       ),
       RepaintBoundary(
-        child: ProfilePage(
-          database: widget.database,
-          taskRepository: widget.taskRepository,
-          projectRepository: widget.projectRepository,
-          projectGroupRepository: widget.projectGroupRepository,
+        child: _LazyIndexedPage(
+          index: 3,
+          tabIndex: _tabIndex,
+          builder: (_) => AssistantPage(
+            storage: _storage,
+            taskRepository: widget.taskRepository,
+            projectRepository: widget.projectRepository,
+          ),
+        ),
+      ),
+      RepaintBoundary(
+        child: _LazyIndexedPage(
+          index: 4,
+          tabIndex: _tabIndex,
+          builder: (_) => ProfilePage(
+            database: widget.database,
+            taskRepository: widget.taskRepository,
+            projectRepository: widget.projectRepository,
+            projectGroupRepository: widget.projectGroupRepository,
+          ),
         ),
       ),
     ];
@@ -198,7 +292,9 @@ class _HomePageState extends State<HomePage> {
   Future<void> _initStorage() async {
     await _storage.init();
     _storageReady = true;
-    await _storage.fetchAndMergeFromCloud();
+    // 断连（prd Decision 2）：停用旧 TaskBreakdown 双轨的云端合并（无超时网络调用，弱网悬挂源）。
+    // 当前任务数据走 drift Tasks 表，此路径仅为旧 task_breakdowns 快照。
+    // await _storage.fetchAndMergeFromCloud();
     // 所有业务数据同步统一在登录后启动（见 _setupProjectSyncOnAuth）
     _setupProjectSyncOnAuth();
     _loadStats();
@@ -228,7 +324,12 @@ class _HomePageState extends State<HomePage> {
       ...dbTasks.map((t) => t.id),
     };
     for (final id in allIds) {
-      await notificationService.cancelReminderForSchedule(id);
+      // P1-F（prd）：批量重调度路径跳过 21 次 repeat 取消，立即重建同等 id 的 repeat；
+      // 单任务删除/停用路径仍全量取消。每任务平台通道调用 24→2 次。
+      await notificationService.cancelReminderForSchedule(
+        id,
+        cancelRepeats: false,
+      );
     }
 
     // 提醒来源也统一取消+重调度
@@ -248,31 +349,35 @@ class _HomePageState extends State<HomePage> {
   /// 监听 Supabase 登录状态：登录后才启动项目/分组同步
   void _setupProjectSyncOnAuth() {
     final client = sb.Supabase.instance.client;
-    // 全量对账（projects/tasks/checklist/attachments），完成后刷新 UI
-    Future<void> runSyncAll({bool forcePush = false}) async {
-      await ProjectSyncService.instance.syncAll(forcePush: forcePush);
-      await TaskSyncService.instance.syncAll();
-      await ChecklistSyncService.instance.syncAll();
-      await NodeTemplateSyncService.instance.syncAll();
-      await AttachmentSyncService.instance.pullAll();
-      _debounceLoadTasks();
-      await _rescheduleTaskReminders();
-    }
+    // 立即止血（2026-08-04）：登录后的全量对账 runSyncAll 已停用（断连决策 prd Decision 2）。
+    // 停用原因：① 全表拉取无超时/增量游标 → 弱网悬挂卡顿；② 墓碑级联软删 → 任务消失。
+    // Future<void> runSyncAll({bool forcePush = false}) async {
+    //   await ProjectSyncService.instance.syncAll(forcePush: forcePush);
+    //   await TaskSyncService.instance.syncAll();
+    //   await ChecklistSyncService.instance.syncAll();
+    //   await NodeTemplateSyncService.instance.syncAll();
+    //   await AttachmentSyncService.instance.pullAll();
+    //   _debounceLoadTasks();
+    //   await _rescheduleTaskReminders();
+    // }
 
     void startIfReady() {
       if (client.auth.currentUser == null) return;
-      final isFirstSync = !_projectSyncStarted;
+      // 立即止血：isFirstSync 仅供已停用的 runSyncAll 使用，一并注释避免 unused。
+      // final isFirstSync = !_projectSyncStarted;
       if (!_projectSyncStarted) {
         _projectSyncStarted = true;
         print('[Sync] 检测到登录用户 ${client.auth.currentUser?.id}，启动同步');
         AliyunPushService().onUserLoggedIn(); // 登录后上传推送 registrationId
-        ProjectSyncService.instance.subscribe();
-        TaskSyncService.instance.subscribe();
-        ChecklistSyncService.instance.subscribe();
-        NodeTemplateSyncService.instance.subscribe();
-        AttachmentSyncService.instance.subscribe();
+        // 立即止血（2026-08-04）：停用 5 条 Realtime 订阅 + 订阅实时推送。
+        // 保留 SubscriptionService.refresh()（本地缓存 3s 超时刷新，非阻塞）。
+        // ProjectSyncService.instance.subscribe();
+        // TaskSyncService.instance.subscribe();
+        // ChecklistSyncService.instance.subscribe();
+        // NodeTemplateSyncService.instance.subscribe();
+        // AttachmentSyncService.instance.subscribe();
         SubscriptionService.instance.refresh();
-        SubscriptionService.instance.startRealtime();
+        // SubscriptionService.instance.startRealtime();
         // 远端变更（Realtime/拉取）后 debounce 触发 LoadTasks，让 sidebar 实时刷新
         _projectChangesSub ??= ProjectSyncService.instance.changes.listen((_) {
           _projectChangesDebounce?.cancel();
@@ -297,8 +402,9 @@ class _HomePageState extends State<HomePage> {
               _debounceLoadTasks();
             });
       }
+      // 立即止血：runSyncAll 已停用（见上方注释）。
       // 桌面端每次登录都 forcePush（本地数据权威），移动端首次登录 forcePush
-      runSyncAll(forcePush: isFirstSync || isDesktop);
+      // runSyncAll(forcePush: isFirstSync || isDesktop);
     }
 
     startIfReady();
@@ -363,18 +469,19 @@ class _HomePageState extends State<HomePage> {
             repeatInterval: newSchedule.repeatInterval,
           );
         }
+        // 断连（prd Decision 2）：停用日程云端同步，日程只走本地 SharedPreferences。
         // 同步到 Supabase 云端
-        try {
-          if (context.mounted) {
-            context.read<ScheduleBloc>().add(
-              CreateSchedule(
-                schedule: newSchedule.copyWith(syncStatus: 'synced'),
-              ),
-            );
-          }
-        } catch (_) {
-          // 云端同步失败不影响本地使用
-        }
+        // try {
+        //   if (context.mounted) {
+        //     context.read<ScheduleBloc>().add(
+        //       CreateSchedule(
+        //         schedule: newSchedule.copyWith(syncStatus: 'synced'),
+        //       ),
+        //     );
+        //   }
+        // } catch (_) {
+        //   // 云端同步失败不影响本地使用
+        // }
         _loadStats();
         if (mounted) {
           showAppSnackBar(context, '日程已创建');
@@ -453,14 +560,15 @@ class _HomePageState extends State<HomePage> {
       } else {
         await NotificationService().cancelReminderForSchedule(updated.id);
       }
+      // 断连（prd Decision 2）：停用日程云端同步。
       // 同步更新到 Supabase 云端
-      try {
-        if (context.mounted) {
-          context.read<ScheduleBloc>().add(
-            UpdateSchedule(schedule: updated.copyWith(syncStatus: 'synced')),
-          );
-        }
-      } catch (_) {}
+      // try {
+      //   if (context.mounted) {
+      //     context.read<ScheduleBloc>().add(
+      //       UpdateSchedule(schedule: updated.copyWith(syncStatus: 'synced')),
+      //     );
+      //   }
+      // } catch (_) {}
       _loadStats();
       if (mounted) {
         showAppSnackBar(context, '日程已更新');
@@ -507,14 +615,15 @@ class _HomePageState extends State<HomePage> {
 
     if (confirm == true) {
       await _storage.deleteSchedule(schedule.id as String);
+      // 断连（prd Decision 2）：停用日程云端同步。
       // 同步删除到 Supabase 云端
-      try {
-        if (context.mounted) {
-          context.read<ScheduleBloc>().add(
-            DeleteSchedule(id: schedule.id as String),
-          );
-        }
-      } catch (_) {}
+      // try {
+      //   if (context.mounted) {
+      //     context.read<ScheduleBloc>().add(
+      //       DeleteSchedule(id: schedule.id as String),
+      //     );
+      //   }
+      // } catch (_) {}
       _loadStats();
       if (mounted) {
         showAppSnackBar(context, '日程已删除');
@@ -747,6 +856,9 @@ class _HomeContentState extends State<_HomeContent> {
   LazyLogDraftService? _lazyLogDraftService;
   bool _lazyLogSubmitting = false;
   late final ScrollController _timelineController;
+  // 四象限定位（prd R3/A4）：用于把外层竖向 CustomScrollView 滚回时间轴可视区。
+  final GlobalKey _timelineSectionKey = GlobalKey();
+  String? _pendingBlocFocusTaskId; // 日历/创建后待定位任务（prd R4/A5）
   String _timelineMode = 'hour'; // 'day' | 'hour'
   String _statsPeriod = 'day'; // 完成率统计周期: 'day'|'week'|'month'|'year'
   final Set<String> _filterProjectIds = {};
@@ -813,7 +925,19 @@ class _HomeContentState extends State<_HomeContent> {
       });
     _visible = widget.visibleTabIndex.value == 0;
     widget.visibleTabIndex.addListener(_onVisibleTabChanged);
+    // 便签定位（prd R1/A1）：监听控制器，restoreFullWindow 恢复主窗时消费 pendingFocusTaskId。
+    DesktopFloatingTabController.instance.addListener(_onDesktopTabNotify);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  }
+
+  /// 便签/控制器通知 → 若有待定位任务，postFrame 消费（时间轴选中+滚动）。
+  void _onDesktopTabNotify() {
+    final controller = DesktopFloatingTabController.instance;
+    if (controller.pendingFocusTaskId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _processFloatingTabFocusTask();
+    });
   }
 
   void _onVisibleTabChanged() {
@@ -833,6 +957,7 @@ class _HomeContentState extends State<_HomeContent> {
     _hourWidthSyncDebounce?.cancel();
     _descriptionSaveDebounce?.cancel();
     widget.visibleTabIndex.removeListener(_onVisibleTabChanged);
+    DesktopFloatingTabController.instance.removeListener(_onDesktopTabNotify);
     _timelineController.dispose();
     _hourWidthNotifier.dispose();
     _timelineDragDxNotifier.dispose();
@@ -851,20 +976,23 @@ class _HomeContentState extends State<_HomeContent> {
     }
     _loading = true;
 
-    // Load projects
+    // Load projects / groups / DB tasks（prd P1-D）：三路互不依赖，Future.wait 并行替代串行 await。
+    final projectsF = widget.projectRepository?.getActive();
+    final groupsF = widget.projectGroupRepository?.getAll();
+    final tasksF = widget.taskRepository?.getAll();
+    final results = await Future.wait<List<Object>>([
+      projectsF ?? Future.value(<Project>[]),
+      groupsF ?? Future.value(<ProjectGroup>[]),
+      tasksF ?? Future.value(<Task>[]),
+    ]);
+    final projects = results[0] as List<Project>;
+    final groups = results[1] as List<ProjectGroup>;
+    List<Task> dbTasks = results[2] as List<Task>;
     if (widget.projectRepository != null) {
-      final projects = await widget.projectRepository!.getActive();
       _projectCache = {for (final p in projects) p.id: p};
     }
     if (widget.projectGroupRepository != null) {
-      final groups = await widget.projectGroupRepository!.getAll();
       _projectGroupCache = {for (final group in groups) group.id: group};
-    }
-
-    // Load DB tasks (primary source)
-    List<Task> dbTasks = [];
-    if (widget.taskRepository != null) {
-      dbTasks = await widget.taskRepository!.getAll();
     }
     final excludedProjectIds = widget.storage.excludedProjectIds;
     dbTasks = dbTasks
@@ -949,30 +1077,33 @@ class _HomeContentState extends State<_HomeContent> {
     }
     if (!_homeFilterStateRestored) {
       _homeFilterStateRestored = true;
-      final cloudPrefs = await SupabaseService().fetchPreferences();
-      final cloudHome = cloudPrefs?['homeFilters'];
-      final cloudState = cloudHome is Map<String, dynamic>
-          ? cloudHome
-          : (cloudHome is Map ? Map<String, dynamic>.from(cloudHome) : null);
-      if (cloudState != null) {
-        _filterProjectIds
-          ..clear()
-          ..addAll(
-            (cloudState['projectIds'] as List<dynamic>? ?? []).cast<String>(),
+      // 断连（prd Decision 2）：本地后端跳过云端偏好拉取（该 await 阻塞首页加载路径，弱网卡顿）。
+      if (DataBackendConfig.current == DataBackend.cloud) {
+        final cloudPrefs = await SupabaseService().fetchPreferences();
+        final cloudHome = cloudPrefs?['homeFilters'];
+        final cloudState = cloudHome is Map<String, dynamic>
+            ? cloudHome
+            : (cloudHome is Map ? Map<String, dynamic>.from(cloudHome) : null);
+        if (cloudState != null) {
+          _filterProjectIds
+            ..clear()
+            ..addAll(
+              (cloudState['projectIds'] as List<dynamic>? ?? []).cast<String>(),
+            );
+          _nodeTypeFilters
+            ..clear()
+            ..addAll(
+              (cloudState['nodeTypes'] as List<dynamic>? ?? []).cast<String>(),
+            );
+          _completionFilter = cloudState['completion'] as String? ?? 'all';
+        }
+        final cloudHourWidth = cloudPrefs?['timelineHourWidth'];
+        if (cloudHourWidth is num) {
+          _hourWidthNotifier.value = cloudHourWidth.toDouble().clamp(
+            _hourWidthMin,
+            _hourWidthMax,
           );
-        _nodeTypeFilters
-          ..clear()
-          ..addAll(
-            (cloudState['nodeTypes'] as List<dynamic>? ?? []).cast<String>(),
-          );
-        _completionFilter = cloudState['completion'] as String? ?? 'all';
-      }
-      final cloudHourWidth = cloudPrefs?['timelineHourWidth'];
-      if (cloudHourWidth is num) {
-        _hourWidthNotifier.value = cloudHourWidth.toDouble().clamp(
-          _hourWidthMin,
-          _hourWidthMax,
-        );
+        }
       }
     }
 
@@ -1005,10 +1136,23 @@ class _HomeContentState extends State<_HomeContent> {
     }
 
     // Auto-scroll to nearest task after build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // P0-B（prd）：State 已 dispose 时直接返回，避免 _selectTask 的 setState 抛
+      // [UncaughtError] Null check（flog 11:27:27 实证 ×2）。
+      if (!mounted) return;
       _processPendingNotificationTask();
-      final focused = _processFloatingTabFocusTask();
-      if (!focused) _scrollToNow(animated: false);
+      final blocFocused = _processBlocFocusTask();
+      final tabFocused = await _processFloatingTabFocusTask();
+      if (!blocFocused && !tabFocused) {
+        // 加载后定位（prd R4/A5）：自动选中 nearest 任务时也切 day/hour + 滚动，
+        // 修复"非今天任务被选中但 hour 视图不可见"；无选中才滚到今天。
+        final sel = _selectedTask;
+        if (sel != null) {
+          _selectTask(sel);
+        } else {
+          _scrollToNow(animated: false);
+        }
+      }
     });
   }
 
@@ -1044,7 +1188,7 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   /// 消费桌面便签点击待定位任务；命中并定位返回 true（此时跳过默认滚到 now）。
-  bool _processFloatingTabFocusTask() {
+  Future<bool> _processFloatingTabFocusTask() async {
     final controller = DesktopFloatingTabController.instance;
     final taskId = controller.pendingFocusTaskId;
     if (taskId == null) return false;
@@ -1058,10 +1202,51 @@ class _HomeContentState extends State<_HomeContent> {
         break;
       }
     }
+    if (task == null && widget.taskRepository != null) {
+      // 便签候选口径（prd BP3/A3）：getAllRaw 无过滤，时间轴可能因项目排除/筛选不含该任务。
+      // 仓库直查兜底，确保任务"不消失"（选中+切模式+滚动）。
+      final dbTask = await widget.taskRepository!.get(taskId);
+      if (dbTask != null) {
+        final date = dbTask.startDate != null
+            ? DateTime.fromMillisecondsSinceEpoch(dbTask.startDate!)
+            : (dbTask.dueDate != null
+                  ? DateTime.fromMillisecondsSinceEpoch(dbTask.dueDate!)
+                  : DateTime.now());
+        task = _TimelineTask(
+          id: dbTask.id,
+          title: dbTask.title,
+          description: dbTask.description,
+          date: date,
+          endDate: dbTask.dueDate != null
+              ? DateTime.fromMillisecondsSinceEpoch(dbTask.dueDate!)
+              : null,
+          isCompleted: dbTask.status == 2,
+          isAllDay: dbTask.isAllDay == 1,
+          priority: _dbPriorityToLabel(dbTask.priority),
+          source: 'db',
+          projectId: dbTask.projectId,
+          taskId: dbTask.id,
+          parentId: dbTask.parentId,
+        );
+      }
+    }
     if (task == null) return false;
     _selectTask(task);
-    _scrollToTask(task);
     return true;
+  }
+
+  /// 消费日历/创建后 bloc 写入的 focusTaskId（prd R4/A5）；命中返回 true。
+  bool _processBlocFocusTask() {
+    final taskId = _pendingBlocFocusTaskId;
+    if (taskId == null) return false;
+    _pendingBlocFocusTaskId = null;
+    for (final t in _timelineTasks) {
+      if (t.id == taskId || t.taskId == taskId) {
+        _selectTask(t);
+        return true;
+      }
+    }
+    return false;
   }
 
   void _navigateToFirstOverdueTask() {
@@ -1138,13 +1323,19 @@ class _HomeContentState extends State<_HomeContent> {
       'completion': _completionFilter,
     };
     await widget.storage.saveHomeFilterState(data);
-    await SupabaseService().syncPreferences({'homeFilters': data});
+    // 断连（prd Decision 2）：本地后端跳过云端偏好同步。
+    if (DataBackendConfig.current == DataBackend.cloud) {
+      await SupabaseService().syncPreferences({'homeFilters': data});
+    }
   }
 
   void _syncHourWidth() {
     _hourWidthSyncDebounce?.cancel();
     _hourWidthSyncDebounce = Timer(const Duration(milliseconds: 800), () {
-      SupabaseService().syncPreferences({'timelineHourWidth': _hourWidth});
+      // 断连（prd Decision 2）：本地后端跳过云端偏好同步。
+      if (DataBackendConfig.current == DataBackend.cloud) {
+        SupabaseService().syncPreferences({'timelineHourWidth': _hourWidth});
+      }
     });
   }
 
@@ -1217,6 +1408,8 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   void _selectTask(_TimelineTask task) {
+    // P0-B（prd）：State 已 dispose 时直接返回，避免 setState 抛 Null check（flog 11:27:27）。
+    if (!mounted) return;
     setState(() {
       _selectedTaskId = task.id;
       _selectedTask = task;
@@ -1256,6 +1449,22 @@ class _HomeContentState extends State<_HomeContent> {
     } else {
       _scrollToTask(task);
     }
+  }
+
+  /// 四象限点击（prd R3/A4）：先竖向滚回时间轴可视区，再走 _selectTask 选中+横向定位。
+  void _selectTaskFromQuadrant(_TimelineTask task) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _timelineSectionKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          alignment: 0.15,
+        );
+      }
+    });
+    _selectTask(task);
   }
 
   /// Normalize DB priority int to label format.
@@ -1373,6 +1582,10 @@ class _HomeContentState extends State<_HomeContent> {
           return;
         }
         if (state is TaskNewLoaded && !_loading && mounted) {
+          // 日历/创建后定位（prd R4/A5）：捕获 bloc 写入的 focusTaskId 供 _loadData postFrame 消费。
+          if (state.focusTaskId != null) {
+            _pendingBlocFocusTaskId = state.focusTaskId;
+          }
           if (!_visible) {
             _needsRefresh = true;
             return;
@@ -1413,7 +1626,11 @@ class _HomeContentState extends State<_HomeContent> {
                       const SizedBox(height: 12),
                       _buildLazyLogPanel(),
                       const SizedBox(height: 12),
-                      _buildTimeline(),
+                      // 挂 key：四象限点击后竖向滚回时间轴可视区（prd R3/A4）
+                      KeyedSubtree(
+                        key: _timelineSectionKey,
+                        child: _buildTimeline(),
+                      ),
                       const SizedBox(height: 16),
                       if (_selectedTask != null) _buildTaskDetail(),
                       const SizedBox(height: 24),
@@ -5398,7 +5615,8 @@ class _HomeContentState extends State<_HomeContent> {
       final isOverdueItem = (task.endDate ?? task.date).isBefore(today);
       final isSelected = task.id == _selectedTaskId;
       return GestureDetector(
-        onTap: () => _selectTask(task),
+        // 四象限定位（prd R3/A4）：先竖向滚回时间轴，再选中+横向定位
+        onTap: () => _selectTaskFromQuadrant(task),
         child: Container(
           margin: const EdgeInsets.only(bottom: 4),
           padding: EdgeInsets.symmetric(

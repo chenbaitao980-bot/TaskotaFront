@@ -40,7 +40,68 @@ await _clearOverdueAlarms(ids); // 又取消一次 ← 重复工作
 
 ---
 
+### setOpacity(0) 强制重绘 → WS_EX_LAYERED 分层窗口病理
+
+窗口显示/隐藏时**禁止用 `setOpacity` 做"强制重绘/闪白兜底"**——它是本任务"便签定位白屏"复发轮的最大回归源（prd 复发根因 RC1）。
+
+```dart
+// ❌ 错误：hideToTray 先 setOpacity(0)，restoreFullWindow 后 setOpacity(1)
+// → SetWindowLong(GWL_EXSTYLE|WS_EX_LAYERED) 把主窗变分层窗口
+// → alpha=0 时 show() 整窗全透明不可见（需点任务栏）
+// → 分层窗口 + 未聚焦渲染节流 → 全窗卡顿直到点击强制重绘
+await windowManager.setOpacity(0); // ← 病理源头
+```
+
+**为什么坏**：window_manager 的 `setOpacity` 走 `WS_EX_LAYERED` + `SetLayeredWindowAttributes(alpha)`。alpha=0 使窗口全透明；分层窗口不走正常 D3D 合成 + Windows 对后台未聚焦窗口降渲染优先级 → "不弹出 + 全窗冻结"。
+
+**替代**：白屏应修根因（网络守卫/懒加载），不是透明度兜底。置前台用 TOPMOST 双切（见 platform-compatibility 的 Windows 窗口模式）。
+
+---
+
 ## Required Patterns
+
+### AppLifecycle onResume 节流（≥30s）+ 移除秒级重调度
+
+`AppLifecycleListener.onResume` 会被窗口激活/置顶/第二引擎抢焦点**反复触发**。若回调里有重活（全量 reschedule、LoadTasks），会变成每 6-12s 成对重载风暴。
+
+```dart
+// ✅ 正确：时间节流 + 只做必要的本地刷新，不重调度提醒
+DateTime? _lastResumeLoadTime;
+
+void _onAppResume() {
+  final now = DateTime.now();
+  if (_lastResumeLoadTime != null &&
+      now.difference(_lastResumeLoadTime!) < const Duration(seconds: 30)) {
+    return; // 30s 节流
+  }
+  _lastResumeLoadTime = now;
+  _debounceLoadTasks(); // 本地刷新
+  // 不要 await _rescheduleTaskReminders() —— 启动已调度一次，Timer 存活即有效
+}
+```
+
+**关键**：`rescheduleTaskReminders` 每任务产生 N 次平台通道取消调用（本任务实测 24 次/任务，115 任务 ~6.4s）——每次回前台全量重排会拖死首帧。启动 `_initStorage` 调度一次即可，窗口激活无需重排。
+
+### 平台通道批量调用降量（cancelRepeats 折叠）
+
+批量重调度路径调用的平台通道方法必须支持"跳过重活"参数，否则每任务 × 每重复次数的通道调用在数据量大时秒级阻塞。
+
+```dart
+// ✅ 正确：cancelRepeats=false 折叠 21 次 repeat 取消（每任务 24→2 次）
+Future<void> cancelReminderForSchedule(
+  String scheduleId, {
+  bool cancelRepeats = true, // 批量重调度传 false，单任务删除传默认 true
+}) async {
+  await cancelNotification(notificationIdForSchedule(scheduleId));
+  await cancelNotification(notificationIdForSchedule(scheduleId, offset: 1));
+  if (!cancelRepeats) return; // ← 跳过 21 次 repeat 循环
+  ...
+}
+```
+
+**注意**：批量重调度路径会立刻用相同 id 重建 repeat 通知，无需先清；单任务删除/停用才需全量取消。
+
+---
 
 ### 通知防重复弹窗模式
 

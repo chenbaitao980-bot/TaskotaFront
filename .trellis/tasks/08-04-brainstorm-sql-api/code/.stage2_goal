@@ -1,0 +1,9 @@
+目标: Stage 2 断连架构
+改动:
+  1. 新建 lib/data/sync/data_backend.dart — DataBackend enum(local|cloud) + DataBackendConfig.current 默认 local
+  2. 新建 lib/data/sync/cloud_sync_gateway.dart — CloudSyncGateway 抽象接口(syncAll/pullAll/subscribe/unsubscribe/exportSnapshot/importSnapshot)
+  3. 新建 lib/data/sync/local_only_cloud_sync_gateway.dart — 同步全 no-op + JSON 快照导出/导入(7 表 round-trip)
+  4. 编辑 lib/data/database/connection/connection_native.dart — WAL+ synchronous=NORMAL
+  5. 新建 test/cloud_sync_gateway_test.dart — 快照 round-trip 契约验证
+排除: 不改任何 sync_service 接线（Stage 3 做）、不改认证/支付/日程
+症状宿主层级: L1/L2(新代码编译+逻辑) + L4(WAL 实机生效)

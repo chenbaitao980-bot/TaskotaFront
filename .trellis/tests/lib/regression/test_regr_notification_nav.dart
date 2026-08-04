@@ -17,7 +17,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
-// TestedSource: _processFloatingTabFocusTask + _processPendingNotificationTask@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: _processFloatingTabFocusTask + _processPendingNotificationTask@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 void main() {
   test('postFrame 时序：通知处理 → focus 消费 → 未命中才 scrollToNow', () {
     final src = File('lib/presentation/pages/home/home_page.dart')

@@ -1,7 +1,7 @@
 // 覆盖测试: DesktopFloatingTaskSummary 跨窗序列化（直接层）
 // 变更点: ea86621 新增跨引擎摘要协议（便签窗不读 SQLite，靠 toJson/fromJson 传递）
 // Layer: 直接
-// TestedSource: DesktopFloatingTaskSummary@425e7564f1881ab73d67f37b83b673f31427bd37
+// TestedSource: DesktopFloatingTaskSummary@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 //
 // 业务不变量:
 // 1. toJson → fromJson 往返无损（含 dueDate=null）

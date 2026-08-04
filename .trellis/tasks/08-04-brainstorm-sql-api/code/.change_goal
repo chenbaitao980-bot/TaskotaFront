@@ -1,0 +1,16 @@
+目标: 第六轮三窗口症状修复——任务栏退出慢（R1）/ 关主窗→点便签→再关→便签消失（R2）/ 启动一刹那重影（R3）
+改动:
+  R1(1): tray_service_desktop.dart 退出改 `destroy().timeout(1s)`+`exit(0)`+flog（原 exit(0) 竞态死代码）
+  R2-1(2): note_window_app.dart runNoteWindow 在 runApp 前 setPreventClose(true) + _NoteWindowCloseListener 兜底只隐藏
+  R2-2(3): window_manager_bridge_desktop.dart onWindowClose 改 async await；desktop_floating_tab_controller.dart 代际 _closeRequestId + restore 主窗照常 show
+  R2-3(4): controller _ensureNoteWindow/_showNoteWindow flog windowId + show 失败含异常 code
+  R2-4(5): controller _selectTaskForFloatingTab 无候选复用 _lastSummary（用户确认实施）
+  R3-1(6): win32_window.cpp Show 改 SW_SHOW（用户确认正常窗口大小 1280×860）
+  R3-2(7): controller restoreFullWindow isFocused() 已聚焦则跳过 TOPMOST 双切
+  R3-3(8): main.cpp C++ 单实例唤醒 SW_SHOW（ASCII 注释避免 C4819）
+排除: 不改便签窗 UI/定位逻辑（第五轮 A1-A5 已修）；不改主窗 WM_CLOSE 隐藏到托盘语义（H4 产品行为）；不动 .vcxproj 构建配置
+症状宿主层级: L4（窗口/原生/渲染 ① + 时序/竞态 ② + 生命周期/状态机 ③ + 性能/体感 ⑥ + 配置/依赖组合 ⑧）
+根因测量（round6_diagnosis.md 证据）:
+  RC-1: `await windowManager.destroy(); exit(0)` —— destroy Future 永不完成 → exit(0) 死代码（代码实证，强）
+  RC-2: note 窗 setPreventClose 在首帧后才设（note_window_app:114）→ 创建到首帧无保护期 WM_CLOSE 击穿销毁引擎；restoreFullWindow `_isTransitioning` 早退（:157）+ onWindowClose 不 await（bridge:50）→ 竞态（代码实证，强/中）
+  RC-3: 首帧 Show=SW_MAXIMIZE（win32_window.cpp:152-154）+ hbrBackground=0（:100）→ DWM 缩放残影；restoreFullWindow z 序连爆 4 次 SetWindowPos（controller:165-176）；C++ 单实例 SW_MAXIMIZE（main.cpp:13-18）→ 跳变（代码实证，强）

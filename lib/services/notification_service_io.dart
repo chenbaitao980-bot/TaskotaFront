@@ -882,9 +882,15 @@ class NotificationService {
     }
   }
 
-  Future<void> cancelReminderForSchedule(String scheduleId) async {
+  /// 取消任务提醒。cancelRepeats=false（prd P1-F）跳过 21 次 repeat 取消循环——
+  /// 批量重调度路径会立刻用相同 id 重建 repeat，无需先清；单任务删除/停用仍全量取消。
+  Future<void> cancelReminderForSchedule(
+    String scheduleId, {
+    bool cancelRepeats = true,
+  }) async {
     await cancelNotification(notificationIdForSchedule(scheduleId));
     await cancelNotification(notificationIdForSchedule(scheduleId, offset: 1));
+    if (!cancelRepeats) return;
     // 取消所有预调度的重复通知（offset 1000 + 0..N）
     final baseId = notificationIdForSchedule(scheduleId, offset: 1000);
     for (var i = 0; i <= _maxRepeatOccurrences; i++) {
@@ -946,7 +952,7 @@ class NotificationService {
     int scheduled = 0;
     final List<String> overdueTaskIds = [];
     for (final task in tasks) {
-      await cancelReminderForSchedule(task.id);
+      await cancelReminderForSchedule(task.id, cancelRepeats: false);
       if (task.deleted != 0 || task.status == 2) continue;
       if (task.reminderEnabled <= 0) continue;
       final startTime = task.startDate == null
@@ -989,7 +995,7 @@ class NotificationService {
     final now = DateTime.now();
     final List<String> overdueTaskIds = [];
     for (final task in tasks) {
-      await cancelReminderForSchedule(task.id);
+      await cancelReminderForSchedule(task.id, cancelRepeats: false);
       if (task.status == 'completed') continue;
       if (!task.reminderEnabled) continue;
       if (task.startDate == null) continue;

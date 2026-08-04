@@ -1,4 +1,4 @@
-// TestedSource: HomeLazyLogService._thinkingParams + HomeLazyLogService._omitTemperature + AssistantModelConfig@a4d8a7fd539d722f9a6ab66578c4e72e36f45fce
+// TestedSource: HomeLazyLogService._thinkingParams + HomeLazyLogService._omitTemperature + AssistantModelConfig@bf3e1cb072553db828e25b7fd3b67fdc2e61b50d
 // Layer: DIRECT
 //
 // 边界补充: _thinkingParams 大小写/空白归一化 + _omitTemperature 推理模型变体

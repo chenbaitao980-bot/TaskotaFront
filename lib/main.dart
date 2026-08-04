@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
@@ -22,6 +23,10 @@ import 'data/repositories/project_group_repository.dart';
 import 'data/repositories/task_repository.dart';
 import 'data/repositories/checklist_repository.dart';
 import 'data/repositories/node_template_repository.dart';
+import 'data/sync/cloud_sync_gateway.dart';
+import 'data/sync/data_backend.dart';
+import 'data/sync/local_only_cloud_sync_gateway.dart';
+import 'platform/single_instance.dart';
 import 'platform/tray_service.dart';
 import 'platform/window_manager_bridge.dart';
 import 'presentation/blocs/auth/auth_bloc.dart';
@@ -73,16 +78,28 @@ void main() async {
         await _initWindowManager();
       }
 
+      // 单实例锁（prd P0-3）：注册表自启 + 无锁 → 双进程抢同一 drift 库（WAL 锁竞争）
+      // 且第二实例无前台权（打开慢/需点任务栏）。放 _initWindowManager 之后保证 onActivate
+      // 回调时 windowManager 已就绪。第二实例经回环 socket 握手唤起首实例主窗后自行退出。
+      if (!kIsWeb && isDesktop) {
+        final isPrimary = await SingleInstance.tryAcquire(
+          onActivate: () {
+            unawaited(DesktopFloatingTabController.instance.restoreFullWindow());
+          },
+        );
+        if (!isPrimary) {
+          flog('[App] 单实例锁：检测到已运行实例，唤起其主窗后本实例退出');
+          exit(0);
+        }
+      }
+
       // 主题 / 隐私标记 / Supabase 会话恢复互不依赖，并行执行（W8+W15）
-      // Supabase.initialize 必须在 runApp 前完成（首屏 auth 状态依赖）
+      // Supabase.initialize 带 2s 超时（prd P1-A）：弱网悬挂不再阻塞 runApp 前关键路径。
       var privacyAccepted = false;
       await Future.wait<void>([
         themeController.load(),
         PrivacyConsentPage.isAccepted().then((v) => privacyAccepted = v),
-        Supabase.initialize(
-          url: AppConstants.supabaseUrl,
-          anonKey: AppConstants.supabaseAnonKey,
-        ),
+        _initSupabase(),
       ]);
 
       // 始终只调用一次 runApp，由 MyApp 内部决定展示隐私页还是主界面
@@ -103,6 +120,9 @@ void main() async {
       // 首帧后再做托盘 / 通知 / 推送 / 会员配置等非首屏必需初始化（W1/W2/W3/W7/W13/W14）
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!kIsWeb && isDesktop) {
+          // 冷启动置前台（prd P1-B）：注册表自启进程无前台权限，SetForegroundWindow 静默
+          // 失败 → 窗口需再点一下。restoreFullWindow 的 HWND_TOPMOST 切换绕过前台锁直接弹出。
+          unawaited(DesktopFloatingTabController.instance.restoreFullWindow());
           unawaited(initTray());
         }
         if (kIsWeb) {
@@ -156,6 +176,19 @@ Future<bool> _isNoteWindowRole() async {
   }
 }
 
+/// Supabase 初始化（prd P1-A）：带 2s 超时，弱网悬挂不再阻塞 runApp 前关键路径。
+/// 超时/失败仅记录；本地模式（DataBackend.local）不依赖云端会话，currentUser 降级 null。
+Future<void> _initSupabase() async {
+  try {
+    await Supabase.initialize(
+      url: AppConstants.supabaseUrl,
+      anonKey: AppConstants.supabaseAnonKey,
+    ).timeout(const Duration(seconds: 2));
+  } catch (e) {
+    flog('[App] Supabase.initialize 超时/失败：$e（本地模式继续，currentUser 降级 null）');
+  }
+}
+
 class _AppDeps {
   final AppDatabase database;
   final ProjectRepository projectRepository;
@@ -163,6 +196,7 @@ class _AppDeps {
   final TaskRepository taskRepository;
   final ChecklistRepository checklistRepository;
   final NodeTemplateRepository nodeTemplateRepository;
+  final CloudSyncGateway cloudSyncGateway;
 
   _AppDeps({
     required this.database,
@@ -171,11 +205,15 @@ class _AppDeps {
     required this.taskRepository,
     required this.checklistRepository,
     required this.nodeTemplateRepository,
+    required this.cloudSyncGateway,
   });
 }
 
 Future<_AppDeps> _initServices() async {
   final database = AppDatabase();
+  // 断连（prd Decision 2/4）：默认本地后端；同步网关为 LocalOnly（同步 no-op + 快照导出/导入桥）
+  DataBackendConfig.current = DataBackend.local;
+  final cloudSyncGateway = LocalOnlyCloudSyncGateway(database);
   final projectRepository = ProjectRepository(
     database,
     syncService: ProjectSyncService.instance,
@@ -217,6 +255,7 @@ Future<_AppDeps> _initServices() async {
     taskRepository: taskRepository,
     checklistRepository: checklistRepository,
     nodeTemplateRepository: nodeTemplateRepository,
+    cloudSyncGateway: cloudSyncGateway,
   );
 }
 

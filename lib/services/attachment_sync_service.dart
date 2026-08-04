@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/database/app_database.dart' as db;
+import '../data/sync/data_backend.dart';
 
 /// 附件 metadata 云同步：pullAll + Realtime upsert/delete。
 /// 不下载文件本体 —— 用户点击附件时按需 download（TaskAttachmentService.ensureLocalFile）
@@ -23,6 +24,7 @@ class AttachmentSyncService {
   }
 
   Future<void> pullAll() async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _client.auth.currentUser?.id;
     if (userId == null || _db == null) return;
     try {
@@ -50,6 +52,7 @@ class AttachmentSyncService {
   }
 
   Future<void> _pushRow(db.TaskAttachment a, String userId) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     try {
       await _client.from('task_attachments').upsert({
         'id': a.id,
@@ -68,6 +71,7 @@ class AttachmentSyncService {
   }
 
   void subscribe() {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final token = _client.auth.currentSession?.accessToken;
     if (token != null) {
       _client.realtime.setAuth(token);

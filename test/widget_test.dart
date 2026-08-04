@@ -46,6 +46,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MyApp(
+        privacyAccepted: true,
         database: database,
         projectRepository: projectRepository,
         projectGroupRepository: projectGroupRepository,
@@ -56,7 +57,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('智能小助手'), findsOneWidget);
+    expect(find.text('Taskora'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
     expect(find.text('立即注册'), findsOneWidget);
   });

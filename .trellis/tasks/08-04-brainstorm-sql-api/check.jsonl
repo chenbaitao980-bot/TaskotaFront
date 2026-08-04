@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量检查规范：forbidden patterns、性能约束、通知防重复 — check 子 agent 审计依据"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend 规范索引 — 检查覆盖完整性"}
+{"file": ".trellis/tasks/08-04-brainstorm-sql-api/research/track3-evidence.md", "reason": "硬证据基准 — 检查修复与根因证据一致"}

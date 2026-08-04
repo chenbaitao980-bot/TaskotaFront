@@ -5,6 +5,7 @@ import '../core/constants/app_constants.dart';
 import '../core/utils/file_logger.dart';
 import '../models/entities/user_subscription.dart';
 import 'member_config_service.dart';
+import '../data/sync/data_backend.dart';
 
 class SubscriptionService {
   static final SubscriptionService _instance = SubscriptionService._();
@@ -55,6 +56,7 @@ class SubscriptionService {
   static const _refreshTimeout = Duration(seconds: 3);
 
   Future<void> refresh() async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _currentUserId;
     if (userId == null) return;
 
@@ -106,6 +108,7 @@ class SubscriptionService {
   }
 
   void startRealtime() {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final userId = _currentUserId;
     if (userId == null) return;
 

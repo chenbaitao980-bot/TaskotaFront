@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/database/app_database.dart';
 import '../data/repositories/task_repository.dart';
 import '../core/utils/file_logger.dart';
+import '../data/sync/data_backend.dart';
 
 /// Supabase 鐩磋繛鍚屾鏈嶅姟锛氭瘡涓€琛屼换鍔＄嫭绔?CRUD锛屾敮鎸?Realtime 瀹炴椂鎺ㄩ€?
 class TaskSyncService {
@@ -34,6 +35,7 @@ class TaskSyncService {
 
   /// 鍙屽悜 LWW 鍏ㄩ噺瀵硅处锛氭媺浜戠锛堝惈澧撶煶锛夆啋 鏈湴鍚堝苟锛涙湰鍦版洿鏂?浜戠缂哄け 鈫?鎺ㄩ€佷笂浜?
   Future<void> syncAll({bool rethrowErrors = false}) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     if (_taskRepo == null) return;
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
@@ -156,6 +158,7 @@ class TaskSyncService {
 
   /// 鎺ㄩ€佷竴鏉′换鍔″埌浜戠锛坲psert锛?
   Future<void> push(Task task, {bool rethrowErrors = false}) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     if (_client.auth.currentUser == null) return;
     _recentlyPushedIds.add(task.id);
     Future.delayed(const Duration(seconds: 3), () => _recentlyPushedIds.remove(task.id));
@@ -170,6 +173,7 @@ class TaskSyncService {
 
   /// 浠庝簯绔垹闄や竴鏉′换鍔?
   Future<void> remove(String taskId) async {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     try {
       await _client.from('user_tasks').delete().eq('id', taskId);
     } catch (e) {
@@ -181,6 +185,7 @@ class TaskSyncService {
 
   /// 璁㈤槄浜戠鍙樻洿锛岃嚜鍔ㄦ洿鏂版湰鍦版暟鎹簱
   void subscribe() {
+    if (DataBackendConfig.current == DataBackend.local) return; // 断连（prd Decision 2）：本地后端不走云
     final token = _client.auth.currentSession?.accessToken;
     if (token != null) {
       _client.realtime.setAuth(token);

@@ -1,0 +1,21 @@
+# 行为契约（第六轮三窗口症状修复：R1 退出 / R2 便签消失 / R3 启动重影）
+## 契约A (R1, L4) 托盘退出实时
+   输入: 用户点托盘"退出"
+   预期: destroy().timeout(1s) 有上限 → exit(0) 立即执行，进程 ≤1.5s 退出（flog「退出: 用户点击」→「退出: 进程 exit(0)」）
+## 契约B (R2-1, L4) 便签引擎创建即保护
+   输入: note 窗口任意阶段（含创建到首帧之间）收 WM_CLOSE
+   预期: setPreventClose 提前生效拦截 + _NoteWindowCloseListener 兜底只 hide 不销毁引擎 → 后续 note.show() 不抛 failed to find target window
+## 契约C (R2-2, L3/L4) 竞态下主窗照常恢复
+   输入: _isTransitioning==true 时 showMain（点便签）
+   预期: _closeRequestId++ 打断进行中的关闭请求 → 主窗 show+focus（不 hideToTray），清 _dismissedUntilRestore；恢复后二次关闭便签仍可复用
+## 契约D (R3-2, L3/L4) 已聚焦跳过 TOPMOST
+   输入: windowManager.isFocused()==true 时 restoreFullWindow
+   预期: 不执行 setAlwaysOnTop(true/false) 双切 → 无 z 序连爆；冷启动未聚焦仍走 TOPMOST 保可靠置前台
+## 契约E (R3-3, L4) 第二实例非最大化唤醒
+   输入: 已有驻留实例时启动第二实例
+   预期: C++ 单实例分支 SW_SHOW（非 SW_MAXIMIZE）唤醒首实例 → 无最大化跳变；Dart restoreFullWindow 统一接管恢复
+## 实机契约 (L4) 用户实测（阻塞，未过不宣称完成）
+   1) 托盘点"退出" → ≤1.5s 退出（flog 两段时间戳差）
+   2) 关主窗→点便签→再关主窗 → 便签应再次显示（flog 应见「便签窗 show 成功 windowId=...」）
+   3) 启动瞬间录屏慢放 → 无重影/闪烁；启动窗口为正常尺寸 1280×860 非全屏
+   无头环境不可执行 → 验证确认表「实机验证」标 ⚠️（阻塞待办）

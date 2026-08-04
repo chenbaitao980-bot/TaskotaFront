@@ -12,7 +12,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
     HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"Taskora");
     if (existing) {
-      ::ShowWindow(existing, SW_MAXIMIZE);
+      // R3-3: use SW_SHOW (non-maximized) to wake the primary instance,
+      // avoiding the second-instance maximize flash; foregrounding is
+      // best-effort only, main-window restore is handled by Dart.
+      ::ShowWindow(existing, SW_SHOW);
       ::SetForegroundWindow(existing);
     }
     if (hMutex) ::CloseHandle(hMutex);

@@ -44,14 +44,16 @@ Future<void> setupCloseToTray() async {
 
 class _TrayCloseListener extends WindowListener {
   @override
-  void onWindowClose() {
+  // R2-2：改 await —— 原 handler() fire-and-forget 与下方 windowManager.hide() 竞态，
+  // handleCloseRequested 未完成即隐藏，主窗时序错乱（便签窗创建期间被跳过）。
+  Future<void> onWindowClose() async {
     final handler = handleDesktopWindowCloseRequested;
     if (handler != null) {
-      handler();
+      await handler();
       return;
     }
     desktopWindowVisible = false;
-    windowManager.hide();
+    await windowManager.hide();
   }
 
   @override

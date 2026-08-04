@@ -31,6 +31,16 @@ Future<void> runNoteWindow() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _registerNoteChannelHandler();
   await _loadInitialSummary();
+  // R2-1：提前到 runApp 前。原 setPreventClose 在 _initNoteWindowChrome:114（首帧渲染后才设），
+  // 创建→首帧之间为无保护窗口期，WM_CLOSE 可击穿销毁本引擎 → 复用 note.show() 静默失败 → 便签消失。
+  // 注册兜底监听：即使 preventClose 未生效，onWindowClose 也只隐藏不销毁引擎。
+  try {
+    await windowManager.ensureInitialized();
+    await windowManager.setPreventClose(true);
+    windowManager.addListener(_NoteWindowCloseListener());
+  } catch (e) {
+    flog('[NoteWindow] 提前 setPreventClose 失败: $e');
+  }
   runApp(const NoteWindowApp());
   // 窗口以 hiddenAtLaunch 创建。首帧渲染完成后再初始化样式并显示，
   // 保证用户看到的便签已渲染完成（否则短暂白屏）。
@@ -41,6 +51,16 @@ Future<void> runNoteWindow() async {
       flog('[NoteWindow] 便签窗 chrome 初始化失败: $e');
     }
   });
+}
+
+/// R2-1 兜底：便签引擎收 WM_CLOSE 只隐藏不销毁（双保险，即使 preventClose 未生效也绝不放行引擎析构）。
+class _NoteWindowCloseListener extends WindowListener {
+  @override
+  void onWindowClose() {
+    WindowController.fromCurrentEngine()
+        .then((c) => c.hide())
+        .catchError((_) {});
+  }
 }
 
 /// 从 create arguments 读初始摘要。创建即携带，规避首次 notifyTask 的注册竞态。
